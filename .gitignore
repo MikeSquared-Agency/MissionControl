@@ -1,0 +1,18 @@
+# Rust
+stream-parser/target/
+
+# Go
+orchestrator/agent-orchestra
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
