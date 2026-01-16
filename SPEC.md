@@ -6,23 +6,6 @@ A visual multi-agent orchestration system where you can spawn, monitor, and coor
 
 ---
 
-## Agent Types
-
-The orchestrator supports **two types of agents**:
-
-| Type | Description | Use Case |
-|------|-------------|----------|
-| **Python** | Our custom agents (v0-v3) | Educational, lightweight, full control |
-| **Claude Code** | Anthropic's CLI agent | Production power, real tooling |
-
-**Why both?**
-- Python agents: Learn how agents work, customize everything
-- Claude Code: Battle-tested, MCP support, advanced features
-
-**Key insight:** Claude Code supports `--output-format stream-json`, which outputs structured JSON events instead of terminal UI. This means both agent types can be parsed uniformly by our Rust stream parser.
-
----
-
 ## Stack
 
 | Component | Language | Why |
@@ -38,7 +21,7 @@ The orchestrator supports **two types of agents**:
 
 **User installs orchestrator via:**
 - Homebrew: `brew install mike/tap/agent-orchestra`
-- Go: `go install github.com/mike/agent-orchestra@latest`
+- Go: `go install github.com/mike/agent-orchestra@latest`  
 - Direct download from GitHub Releases
 
 **All three point to the same binaries** built by GoReleaser on git tag.
@@ -86,70 +69,56 @@ while True:
 
 ### v2: Orchestrator
 
-**Goal:** Manage multiple agent processes (both Python and Claude Code).
+**Goal:** Manage multiple agent processes.
 
 **Components:**
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                  Go Orchestrator                         │
-│                                                          │
-│   spawn("python", ["agents/v1.py", task])               │
-│   spawn("claude", ["-p", task, "--output-format",       │
-│                    "stream-json"])                       │
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │     Agent Process Manager                           ││
-│  │  - Spawn/kill Python OR Claude Code processes       ││
-│  │  - Track PID, status, tokens per agent              ││
-│  │  - Route stdout through stream parser               ││
-│  └─────────────────────────────────────────────────────┘│
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │        Rust Stream Parser                           ││
-│  │  - Parse TWO JSON formats:                          ││
-│  │    1. Python agent output (our format)              ││
-│  │    2. Claude Code stream-json (Anthropic's)         ││
-│  │  - Normalize both → unified event stream            ││
-│  │  - Count tokens                                     ││
-│  └─────────────────────────────────────────────────────┘│
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │     WebSocket Event Bus                             ││
-│  │  - Broadcast to connected UIs                       ││
-│  │  - Receive commands from UI                         ││
-│  └─────────────────────────────────────────────────────┘│
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │         REST API                                    ││
-│  │  - POST /agents (spawn python OR claude)            ││
-│  │  - DELETE /agents/:id (kill)                        ││
-│  │  - POST /agents/:id/message                         ││
-│  └─────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│           Go Orchestrator               │
+│                                         │
+│  ┌─────────────────────────────────────┐│
+│  │     Agent Process Manager           ││
+│  │  - Spawn/kill Python processes      ││
+│  │  - Track PID, status, tokens        ││
+│  └─────────────────────────────────────┘│
+│                                         │
+│  ┌─────────────────────────────────────┐│
+│  │        Rust Stream Parser           ││
+│  │  - Parse agent stdout               ││
+│  │  - Count tokens (tiktoken-rs)       ││
+│  │  - Emit structured JSON events      ││
+│  └─────────────────────────────────────┘│
+│                                         │
+│  ┌─────────────────────────────────────┐│
+│  │     WebSocket Event Bus             ││
+│  │  - Broadcast to connected UIs       ││
+│  │  - Receive commands from UI         ││
+│  └─────────────────────────────────────┘│
+│                                         │
+│  ┌─────────────────────────────────────┐│
+│  │         REST API                    ││
+│  │  - POST /agents (spawn)             ││
+│  │  - DELETE /agents/:id (kill)        ││
+│  │  - POST /agents/:id/message         ││
+│  └─────────────────────────────────────┘│
+└─────────────────────────────────────────┘
 ```
 
 **Data flow:**
 ```
-Python Agent stdout          Claude Code stdout
-(our JSON format)            (--output-format stream-json)
-         │                            │
-         └──────────┬─────────────────┘
-                    ▼
-          Rust Stream Parser
-          (normalizes both)
-                    │
-                    ▼
-           Unified JSON events
-                    │
-                    ▼
-            Go Orchestrator
-                    │
-                    ▼
-           WebSocket → React UI
+Python Agent stdout
+       ↓
+  agent-stream (Rust binary)
+       ↓
+  Structured JSON events
+       ↓
+  Go Orchestrator
+       ↓
+  WebSocket → React UI
 ```
 
-**Deliverable:** `agent-orchestra` binary that can spawn and manage both Python agents and Claude Code instances via REST API.
+**Deliverable:** `agent-orchestra` binary that can spawn and manage multiple agents via REST API.
 
 ---
 
@@ -251,20 +220,25 @@ Python Agent stdout          Claude Code stdout
 
 ---
 
-### v5: Persistence Layer (Future)
+### v5: Persistence + Skills
 
-**Goal:** Survive restarts, enable long-running work.
+**Goal:** Survive restarts, enable long-running work, extend Claude Code.
 
-**Not building this weekend.** Placeholder for when we need:
+**Persistence Layer:**
 - Resume work after closing laptop
 - Track what agents did while you were away
 - Multi-agent task dependencies
 - Audit trail
 
-**Options to evaluate later:**
-- Use Beads (Steve Yegge's solution)
-- Simple SQLite file
-- Supabase integration (ties into Personal OS)
+**Options to evaluate:**
+- Beads (Steve Yegge's git-backed solution)
+- SQLite (simple, embedded)
+- Supabase (ties into Personal OS)
+
+**Conductor Skill:**
+- A Claude Code skill that uses our orchestrator CLI
+- "Spin up a review team for this PR" → spawns agents via `agent-orchestra spawn`
+- Claude Code gains multi-agent powers through our infrastructure
 
 ---
 
@@ -272,7 +246,6 @@ Python Agent stdout          Claude Code stdout
 
 **Orchestrator Wizard**
 - A meta-agent (visualized as a wizard character) that helps manage other agents
-- "Spin up a review team for this PR" → spawns coder, reviewer, QA agents
 - Monitors progress, reassigns work, handles failures
 - Inspired by gastown's "major" concept
 
@@ -282,9 +255,10 @@ Python Agent stdout          Claude Code stdout
 - Control agents from phone while away from desk
 
 **Multi-Model Support**
-- GPT-4, Gemini, Grok alongside Claude
+- OpenAI Codex CLI, Gemini CLI, Grok alongside Claude
 - Compare outputs, use different models for different tasks
 - Cost optimization (cheap model for simple tasks)
+- Note: Aider intentionally avoids JSON output (hurts code quality) - will need text parsing
 
 ---
 
@@ -345,19 +319,6 @@ GET    /api/zones               # List zones
 PUT    /api/zones/:id/agents    # Assign agents to zone
 ```
 
-**Spawn Agent Request:**
-```json
-{
-  "type": "python" | "claude",
-  "task": "fix the auth bug",
-  "workdir": "/path/to/repo",
-  "agent": "v3_subagent"        // For python type only
-}
-```
-
-- `type: "python"` → spawns `python agents/{agent}.py "{task}"`
-- `type: "claude"` → spawns `claude -p "{task}" --output-format stream-json`
-
 ### WebSocket Events
 
 **Server → Client:**
@@ -383,57 +344,81 @@ PUT    /api/zones/:id/agents    # Assign agents to zone
 
 **Purpose:** Normalize agent output from multiple sources into unified events.
 
-The stream parser is the **normalization layer** that lets the UI treat all agents uniformly, regardless of whether they're Python agents or Claude Code instances.
+The stream parser is the **normalization layer** that lets the UI treat all agents uniformly.
+
+### Leveraging Existing Crates
+
+For Claude Code parsing, we use the `claude-codes` crate:
+
+```toml
+[dependencies]
+claude-codes = "0.3"  # Battle-tested Claude Code protocol parsing
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+```
+
+Our Rust code handles:
+- Python agent format (our custom)
+- Normalization layer (unified events)
+- Token counting
+- Future: Codex CLI, Aider, Gemini
 
 ### Input Formats
 
-**Format 1: Python Agent (our custom format)**
+**Python Agent (our format):**
 ```json
 {"type":"turn","number":1}
 {"type":"thinking","content":"I'll read the file."}
 {"type":"tool_call","tool":"bash","args":{"command":"cat auth.py"}}
-{"type":"tool_result","content":"def login():..."}
 ```
 
-**Format 2: Claude Code (`--output-format stream-json`)**
+**Claude Code (`--output-format stream-json`):**
 ```json
 {"type":"assistant","message":{"content":[{"type":"text","text":"I'll read..."}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"auth.py"}}]}}
-{"type":"result","result":"def login():..."}
 ```
 
 ### Output (Unified Events)
 
-Both formats are normalized to:
+Both normalized to:
 ```json
-{"type":"turn","number":1,"agentId":"abc123"}
-{"type":"thinking","content":"I'll read the file.","tokens":8}
-{"type":"tool_call","tool":"read","args":{"path":"auth.py"}}
-{"type":"tool_result","content":"def login():...","tokens":12}
-```
-
-### Implementation
-
-```rust
-enum AgentFormat {
-    Python,
-    ClaudeCode,
-}
-
-fn parse_line(line: &str, format: AgentFormat) -> Option<UnifiedEvent> {
-    match format {
-        AgentFormat::Python => parse_python_event(line),
-        AgentFormat::ClaudeCode => parse_claude_event(line),
-    }
-}
+{"type":"thinking","content":"I'll read the file.","tokens":8,"agentId":"abc123"}
+{"type":"tool_call","tool":"read","args":{"path":"auth.py"},"agentId":"abc123"}
 ```
 
 **What you'll learn:**
 - String vs &str (ownership)
 - Option and Result (error handling)
-- serde for JSON (with multiple schemas)
-- Enums for format switching
+- serde for JSON (multiple schemas)
+- Using external crates
 - Pattern matching
+
+---
+
+## Context Sharing
+
+### Session Context (v3-v4)
+
+Agents share context through the **orchestrator**:
+
+```go
+type Session struct {
+    ID       string
+    Agents   []Agent
+    Findings []Finding  // What agents discovered
+}
+
+// Inject context when spawning new agents
+agentB.SystemPrompt += formatFindings(session.Findings)
+```
+
+### Persistent Memory (v5+)
+
+Across sessions, context persists via Beads/SQLite/Supabase:
+
+```
+Session ends → Save findings/TODOs → Next session loads history
+```
 
 ---
 
