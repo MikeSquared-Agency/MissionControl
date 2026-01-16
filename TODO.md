@@ -24,45 +24,56 @@
 
 ---
 
-## Current Focus: v2 - Orchestrator (Python Agents)
+## Completed: v2 - Orchestrator
 
 ### Go Orchestrator
-- [ ] Project setup (go.mod)
-- [ ] Agent process manager (spawn/kill Python processes)
-- [ ] Track PID, status, tokens per agent
-- [ ] REST API endpoints
-  - [ ] POST /api/agents (spawn)
-  - [ ] GET /api/agents (list)
-  - [ ] DELETE /api/agents/:id (kill)
-  - [ ] POST /api/agents/:id/message
-- [ ] WebSocket event bus
-  - [ ] Broadcast events to connected UIs
-  - [ ] Receive commands from UI
+- [x] Project setup (go.mod)
+- [x] Agent process manager (spawn/kill processes)
+- [x] Track PID, status, tokens per agent
+- [x] Environment passthrough (ANTHROPIC_API_KEY)
+- [x] REST API endpoints
+  - [x] POST /api/agents (spawn)
+  - [x] GET /api/agents (list)
+  - [x] DELETE /api/agents/:id (kill)
+  - [x] POST /api/agents/:id/message
+- [x] WebSocket event bus
+  - [x] Broadcast events to connected UIs
+  - [x] Receive commands from UI
 
 ### Rust Stream Parser
-- [ ] Project setup (Cargo.toml)
-- [ ] Parse Python agent JSON format
-- [ ] Token counting (tiktoken-rs)
-- [ ] Emit unified JSON events
+- [x] Project setup (Cargo.toml)
+- [x] Parse Python agent format (JSON + plain text)
+- [x] Parse Claude Code stream-json format
+- [x] Normalize both to unified events
+- [x] Unit tests
 
 ---
 
-## Up Next: v2.5 - Claude Code Support
+## Current Focus: v3 - 2D Dashboard
 
-### Rust Stream Parser (Extended)
-- [ ] Parse Claude Code `stream-json` format
-- [ ] Normalize to same unified events as Python agents
-- [ ] Handle Claude Code specific events (tool_use, result, etc.)
+### Project Setup
+- [ ] Create React app with Vite
+- [ ] Install Tailwind CSS
+- [ ] Install Zustand for state
+- [ ] WebSocket connection hook
 
-### Go Orchestrator (Extended)
-- [ ] Add `type` field to spawn endpoint (python | claude)
-- [ ] Spawn Claude Code with `--output-format stream-json`
-- [ ] Route Claude Code stdout through parser
+### Components
+- [ ] Layout (header, sidebar, main)
+- [ ] AgentList - list all agents with status
+- [ ] AgentCard - expandable card per agent
+- [ ] SpawnDialog - form to spawn new agent
+- [ ] ChatPanel - send messages, see responses
+- [ ] ToolLog - real-time tool calls stream
+- [ ] StatsBar - total tokens, active count
+
+### State Management
+- [ ] Agents store (list, add, update, remove)
+- [ ] WebSocket store (connection, events)
+- [ ] UI store (selected agent, panels)
 
 ---
 
 ## Later
 
-- [ ] v3: 2D Dashboard (React + Tailwind + Zustand)
 - [ ] v4: 3D Visualization (React Three Fiber)
 - [ ] v5: Persistence layer
