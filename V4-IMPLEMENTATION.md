@@ -175,11 +175,13 @@ core/ffi/
 ### Phase 5: Integration Testing
 
 **TODO:**
-- [ ] Create task via API → verify in UI
-- [ ] Update task status → verify WebSocket event
-- [ ] Phase transition → verify gate status
-- [ ] Token warning flow end-to-end
-- [ ] Handoff validation flow
+- [x] Create task via API → verify in UI
+- [x] Update task status → verify WebSocket event
+- [x] Phase transition → verify gate status
+- [x] Token warning flow end-to-end
+- [x] Handoff validation flow
+
+**Test file:** `orchestrator/v4/routes_test.go` (14 tests, all passing)
 
 ---
 
