@@ -1,49 +1,52 @@
 # MissionControl
 
-A visual multi-agent orchestration system for spawning, monitoring, and coordinating AI agents working on your codebase.
+A visual multi-agent orchestration system where a **King** agent coordinates **worker** agents through a **6-phase workflow**. Workers spawn, complete tasks, and die. Context lives in files, not conversation memory.
 
-Inspired by [Vibecraft](https://vibecraft.dev) and [Ralv](https://ralv.dev).
+Inspired by [Vibecraft](https://vibecraft.dev), [Ralv](https://ralv.dev), and [Gastown](https://gastown.dev).
 
-## What It Does
-
-Spawn multiple AI agents, watch them work in real-time, and coordinate their efforts through a visual interface.
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Web UI (React)                       │
-│   ┌─────────┐  ┌─────────┐  ┌─────────┐                │
-│   │ Agent 1 │  │ Agent 2 │  │ Agent 3 │                │
-│   │ working │  │  idle   │  │ working │                │
-│   └─────────┘  └─────────┘  └─────────┘                │
-└───────────────────────┬─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     Web UI (React)                          │
+│   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐       │
+│   │  King   │  │  Zones  │  │ Agents  │  │Settings │       │
+│   │  Panel  │  │  List   │  │  Panel  │  │  Panel  │       │
+│   └─────────┘  └─────────┘  └─────────┘  └─────────┘       │
+└───────────────────────┬─────────────────────────────────────┘
                         │ WebSocket
-┌───────────────────────▼─────────────────────────────────┐
-│              Go Orchestrator (localhost:8080)            │
-│                        │                                 │
-│         ┌──────────────┼──────────────┐                 │
-│         ▼              ▼              ▼                 │
-│   Claude Code    Python Agent   Claude Code             │
-│   (stream-json)   (our format)  (stream-json)           │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────▼─────────────────────────────────────┐
+│                   Go API Layer                               │
+│   Agents │ Zones │ King │ (v4: Workflow │ Knowledge)        │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ (v4: FFI)
+┌───────────────────────▼─────────────────────────────────────┐
+│               Rust Core (v4 - planned)                       │
+│   Workflow Engine │ Knowledge Manager │ Health Monitor       │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+         ┌──────────────┼──────────────┐
+         ▼              ▼              ▼
+      King           Worker         Worker
+     (Opus)         (Sonnet)        (Haiku)
 ```
 
-## Agent Types
+## Key Concepts
 
-| Type | Description | Use Case |
-|------|-------------|----------|
-| **Python** | Our custom agents (v0-v3) | Educational, lightweight, full control |
-| **Claude Code** | Anthropic's CLI agent | Production power, MCP support |
+### King Agent
+The King is the only persistent agent. It talks to you, decides what to build, spawns workers, and approves phase gates. It never implements directly.
 
-Both output structured JSON, both appear in the same UI.
+### Workers
+Workers are ephemeral. They receive a **briefing** (~300 tokens), do their task, output **findings**, and die. This keeps context lean and costs low.
 
-## Stack
+### 6-Phase Workflow
+```
+IDEA → DESIGN → IMPLEMENT → VERIFY → DOCUMENT → RELEASE
+```
+Each phase has a **gate** requiring approval before proceeding.
 
-| Component | Language | Purpose |
-|-----------|----------|---------|
-| Agents | Python | Custom agents we build from scratch |
-| Orchestrator | Go | Process management, API, WebSocket |
-| Stream Parser | Rust | Normalize different agent output formats |
-| Web UI | React + Three.js | 2D dashboard → 3D visualization |
+### Zones
+Zones organize the codebase (Frontend, Backend, Database, Infra, Shared). Workers are assigned to zones and stay in their lane.
 
 ## Status
 
@@ -51,20 +54,31 @@ Both output structured JSON, both appear in the same UI.
 |---------|--------|-------------|
 | v1 | ✅ Done | Python agent fundamentals |
 | v2 | ✅ Done | Go orchestrator + Rust parser |
-| v3 | ✅ Done | Full 2D dashboard with zones, personas, King mode |
-| v4 | 🔄 Current | 3D visualization |
-| v5 | 📋 Planned | Persistence + Claude Code skill |
-| v6+ | 📋 Future | Multi-model, wizard agent |
+| v3 | ✅ Done | Full 2D dashboard (81 tests) |
+| v4 | 🔄 Current | Architecture foundation (Rust core) |
+| v5 | 📋 Planned | King agent + workflow system |
+| v6 | 📋 Planned | 3D visualization + polish |
 
-### v3 Features
-- Zone-based agent organization
-- Persona system (Code Reviewer, Full Developer, Test Writer, Documentation)
-- King Mode - AI orchestrator to manage agent teams
-- Real-time conversation view with tool call display
-- Attention system for agent-user interaction
-- Toast notifications, loading states, empty states
-- Keyboard shortcuts (⌘N spawn, ⌘K kill, ↑/↓ navigate, etc.)
-- 81 unit tests (29 Go + 52 React)
+## v3 Features
+
+- **Zone System** — Create, edit, split, merge zones; move agents between zones
+- **Persona System** — 4 default personas + custom creation
+- **King Mode** — UI shell with KingPanel, TeamOverview (full logic in v5)
+- **Attention System** — Notifications with quick response buttons
+- **Settings** — General, Personas, Shortcuts tabs
+- **Keyboard Shortcuts** — ⌘N spawn, ⌘K kill, ⌘⇧K king mode, etc.
+- **81 Unit Tests** — 29 Go + 52 React
+
+## Stack
+
+| Component | Language | Purpose |
+|-----------|----------|---------|
+| **Agents** | Python | Custom agents, educational |
+| **API** | Go | Process management, REST, WebSocket |
+| **Core** | Rust | Workflow engine, token counting (v4) |
+| **Strategy** | Claude Opus | King agent (v5) |
+| **Workers** | Claude Sonnet/Haiku | Task execution |
+| **UI** | React + Three.js | Dashboard + 3D visualization |
 
 ## Quick Start
 
@@ -102,13 +116,18 @@ curl -X POST localhost:8080/api/agents \
 
 curl -X POST localhost:8080/api/agents \
   -H "Content-Type: application/json" \
-  -d '{"type": "claude", "task": "review hello.py", "workdir": "."}'
+  -d '{"type": "claude-code", "task": "review hello.py", "workingDir": "."}'
 
 # List agents
 curl localhost:8080/api/agents
+
+# Create zone
+curl -X POST localhost:8080/api/zones \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Frontend", "color": "#3b82f6"}'
 ```
 
-### Web Dashboard (v3+)
+### Web Dashboard (v3)
 
 ```bash
 cd web
@@ -133,30 +152,73 @@ npm test
 
 - Python 3.11+ with `anthropic` package
 - Go 1.21+
-- Rust (for stream parser)
+- Rust 1.75+ (for v4+ core)
 - Node.js 18+ (for web UI)
 - `ANTHROPIC_API_KEY` environment variable
-- Claude Code CLI (for claude agent type)
+- Claude Code CLI (for claude-code agent type)
+
+## API Endpoints
+
+### Agents
+```
+POST   /api/agents              # Spawn agent
+GET    /api/agents              # List agents
+DELETE /api/agents/:id          # Kill agent
+POST   /api/agents/:id/message  # Send message
+POST   /api/agents/:id/respond  # Respond to attention
+```
+
+### Zones
+```
+POST   /api/zones               # Create zone
+GET    /api/zones               # List zones
+PUT    /api/zones/:id           # Update zone
+DELETE /api/zones/:id           # Delete zone
+```
+
+### King
+```
+POST   /api/king/message        # Send message to King
+```
+
+## Worker Personas
+
+| Persona | Phase | Model | Purpose |
+|---------|-------|-------|---------|
+| Researcher | Idea | Sonnet | Feasibility research |
+| Designer | Design | Sonnet | UI mockups |
+| Architect | Design | Sonnet | System design |
+| Developer | Implement | Sonnet | Build features |
+| Debugger | Implement | Sonnet | Fix issues |
+| Reviewer | Verify | Haiku | Code review |
+| Security | Verify | Sonnet | Vulnerability check |
+| Tester | Verify | Haiku | Write tests |
+| QA | Verify | Haiku | E2E validation |
+| Docs | Document | Haiku | Documentation |
+| DevOps | Release | Haiku | Deployment |
 
 ## Docs
 
 - [SPEC.md](SPEC.md) — Full specification
 - [TODO.md](TODO.md) — Progress tracker
+- [ARCHITECTURE.md](MISSIONCONTROL-ARCHITECTURE-SPEC.md) — Technical architecture
 
 ## Architecture Insights
 
-**Why both Python agents and Claude Code?**
-- Python agents: Learn how agents work, ~50-450 lines, we control everything
-- Claude Code: Battle-tested, MCP support, `--output-format stream-json` for structured output
+**Why King + Workers?**
+- King maintains continuity with user
+- Workers are disposable, context stays lean
+- Handoffs are cheap: spawn fresh vs accumulate
 
-**Why Rust for the parser?**
-- Existing `claude-codes` crate handles Claude Code protocol
-- Real value when adding text-based agents (Aider, Gemini) in v6+
-- Learning Rust with a practical, contained project
+**Why Rust Core (v4)?**
+- Deterministic logic shouldn't use LLM tokens
+- Token counting needs to be fast and accurate
+- Validation should be strict (JSON schemas)
 
-**How do agents share context?**
-- v3-v4: Orchestrator injects context into system prompts
-- v5+: Persistent storage (Beads/SQLite/Supabase)
+**Why 6 Phases?**
+- Prevents rushing to implementation
+- Gates force quality checks
+- Each phase has clear entry/exit criteria
 
 ## Future Ideas
 
@@ -164,3 +226,4 @@ npm test
 - **Wizard Agent** — Meta-agent that orchestrates other agents
 - **Multi-Model** — Codex CLI, Gemini, Grok alongside Claude
 - **Remote Access** — Control from phone via cloudflared tunnel
+- **Persistence** — Beads/SQLite for cross-session memory

@@ -88,12 +88,13 @@
 - [x] Pulsing indicators on agent cards
 - [x] Backend respond endpoint
 
-### King Mode
+### King Mode (UI Shell)
 - [x] KingPanel with conversation view
 - [x] KingHeader with team stats
 - [x] TeamOverview with agent badges
 - [x] Amber-themed input
-- [x] King message API endpoint
+- [x] King message API endpoint (POST /api/king/message)
+- [x] SendKingMessage in manager
 
 ### Polish
 - [x] Toast notification system
@@ -135,95 +136,255 @@
 
 ---
 
-## 🔄 Current: v4 - 3D Visualization
+## 🔄 Current: v4 - Architecture Foundation
 
-### Setup
+Building the layers × domains architecture with Rust core.
+
+### Rust Core: Workflow Engine
+- [ ] Project setup (core/workflow/Cargo.toml)
+- [ ] Phase enum (Idea, Design, Implement, Verify, Document, Release)
+- [ ] Task struct with status (Pending, Ready, InProgress, Blocked, Done)
+- [ ] Gate struct with criteria checking
+- [ ] WorkflowEngine state machine
+  - [ ] Phase transitions
+  - [ ] Task dependency resolution
+  - [ ] Gate status computation
+- [ ] Unit tests
+
+### Rust Core: Knowledge Manager
+- [ ] Project setup (core/knowledge/Cargo.toml)
+- [ ] Token counting (tiktoken-rs)
+- [ ] Token budget tracking per worker
+- [ ] Handoff schema validation (serde)
+- [ ] Checkpoint serialization
+- [ ] Delta computation (diff between checkpoints)
+- [ ] Pruning rules (stale, duplicate, superseded)
+- [ ] Briefing input compilation
+- [ ] Unit tests
+
+### Rust Core: Runtime Monitor
+- [ ] Project setup (core/runtime/Cargo.toml)
+- [ ] Health status enum
+- [ ] Worker health tracking
+- [ ] Stuck detection (timeout-based)
+- [ ] Activity timestamps
+- [ ] Unit tests
+
+### Rust FFI
+- [ ] Project setup (core/ffi/Cargo.toml)
+- [ ] C bindings for Go
+- [ ] Workflow engine exports
+- [ ] Knowledge manager exports
+- [ ] Runtime monitor exports
+- [ ] Build script for shared library
+
+### Go API: Domain Routes
+- [ ] Strategy routes
+  - [ ] POST /api/gates/:id/approve
+- [ ] Workflow routes
+  - [ ] GET /api/phases
+  - [ ] GET /api/tasks
+  - [ ] PUT /api/tasks/:id/status
+- [ ] Knowledge routes
+  - [ ] GET /api/specs/:id
+  - [ ] GET /api/briefings/:worker
+  - [ ] POST /api/handoffs
+- [ ] Integrate Rust via FFI
+
+### React UI: Domain Structure
+- [ ] Reorganize src/ into domains/
+  - [ ] domains/strategy/
+  - [ ] domains/workflow/
+  - [ ] domains/knowledge/
+  - [ ] domains/runtime/
+- [ ] Keep existing components working
+- [ ] Add PhaseView component
+- [ ] Add TokenUsage component
+
+### WebSocket Events
+- [ ] phase_changed event
+- [ ] task_updated event
+- [ ] gate_status event
+- [ ] token_warning event
+- [ ] checkpoint_created event
+- [ ] agent_health event
+
+---
+
+## 📋 v5: King + Workflow
+
+### King Agent (Full Implementation)
+- [ ] King system prompt design (Opus)
+- [ ] Strategic decision making
+- [ ] Worker spawning with briefings
+- [ ] Finding synthesis
+- [ ] Gate approval logic
+- [ ] Never implements directly
+
+### Briefing System
+- [ ] Briefing template per persona
+- [ ] LLM-based briefing generation (Sonnet)
+- [ ] Spec → briefing distillation (~300 tokens)
+- [ ] Zone-scoped context filtering
+
+### Worker Personas
+- [ ] 11 persona definitions (Researcher → DevOps)
+- [ ] Tool restrictions per persona
+- [ ] MCP access levels per persona
+- [ ] Model selection per persona (Sonnet/Haiku)
+
+### Handoff System
+- [ ] Structured handoff output from workers
+- [ ] Rust validation of handoff JSON
+- [ ] Delta storage in .mission/handoffs/
+- [ ] Fresh worker spawning with briefing
+- [ ] Context continuity across handoffs
+
+### Phase Progression
+- [ ] Idea phase (Researcher)
+- [ ] Design phase (Designer, Architect)
+- [ ] Implement phase (Developer per zone)
+- [ ] Verify phase (Reviewer, Security, Tester, QA)
+- [ ] Document phase (Docs)
+- [ ] Release phase (DevOps)
+- [ ] Gate approval UI flow
+
+### .mission/ Directory
+- [ ] File watcher for state changes
+- [ ] Spec file management
+- [ ] Progress file management
+- [ ] Checkpoint creation
+- [ ] Delta tracking
+
+---
+
+## 📋 v6: 3D + Polish
+
+### 3D Visualization
 - [ ] Install React Three Fiber + drei
-- [ ] Create 3D scene with isometric camera
-- [ ] Integrate with existing Zustand store
-
-### Scene Elements
+- [ ] Isometric camera setup
 - [ ] Floor/ground plane with grid
-- [ ] Agent avatars (simple 3D characters)
-- [ ] Zone areas (colored floor regions)
-- [ ] Connection lines (parent/child agents)
+- [ ] Zone areas (colored regions)
+
+### Agent Avatars
+- [ ] Simple 3D characters per persona
+- [ ] Status-based coloring
+- [ ] Working animations
+- [ ] Spawn/despawn effects
 
 ### Interactions
 - [ ] Click agent to select
-- [ ] Floating UI panels (agent stats)
+- [ ] Floating UI panels
 - [ ] Smooth position animations
 - [ ] Camera pan/zoom controls
 
+### King Visualization
+- [ ] King avatar (distinct from workers)
+- [ ] Connection lines to workers
+- [ ] Conversation indicator
+
 ### Polish
-- [ ] Custom 3D assets (or nice primitives)
-- [ ] Marketable naming (TBD)
+- [ ] Dark/light themes
 - [ ] Landing page
-- [ ] Documentation
+- [ ] Documentation site
+- [ ] Demo video
 
 ---
 
-## 📋 v5: Persistence + Skills
+## 📋 v7+: Future
 
-### Persistence Layer
-- [ ] Evaluate options (Beads vs SQLite vs Supabase)
-- [ ] Save session findings on exit
-- [ ] Load previous context on start
+### Persistence
+- [ ] Evaluate Beads vs SQLite vs Supabase
+- [ ] Cross-session state restoration
 - [ ] Audit trail of agent actions
+- [ ] Session replay
 
 ### Conductor Skill
-- [ ] Create `.claude/skills/conductor/SKILL.md`
-- [ ] CLI interface for skill to call orchestrator
-- [ ] "Spin up review team" → spawns 3 agents
-- [ ] Document skill usage
-
-### Context Sharing Improvements
-- [ ] Structured handoff protocol
-- [ ] Shared scratchpad files
-- [ ] Inter-agent MCP (stretch)
-
----
-
-## 📋 v6+: Future
-
-### Orchestrator Wizard
-- [ ] Meta-agent that manages other agents
-- [ ] Wizard avatar in 3D UI
-- [ ] Natural language agent control
-
-### Remote Access
-- [ ] --host 0.0.0.0 flag
-- [ ] Optional cloudflared tunnel integration
-- [ ] Auth for remote access
+- [ ] Claude Code skill (SKILL.md)
+- [ ] CLI interface for orchestrator
+- [ ] "Spin up review team" → spawns agents
+- [ ] Skill documentation
 
 ### Multi-Model Support
 - [ ] OpenAI Codex CLI parsing
 - [ ] Gemini CLI parsing
-- [ ] Aider text parsing (no JSON)
-- [ ] Grok (when available)
-- [ ] Model selection in UI
+- [ ] Model selection per persona
 - [ ] Cost tracking per model
 
-### Distribution Polish
-- [ ] GoReleaser setup
-- [ ] Homebrew tap
-- [ ] Embed uv in Go binary
-- [ ] One-command install experience
+### Remote Access
+- [ ] --host 0.0.0.0 flag
+- [ ] cloudflared tunnel integration
+- [ ] Auth for remote access
+- [ ] Mobile-friendly UI
+
+### Wizard Agent
+- [ ] Meta-agent design
+- [ ] Progress monitoring
+- [ ] Work reassignment
+- [ ] Failure handling
+
+---
+
+## Implementation Order (v4)
+
+Recommended sequence:
+
+```
+1. Rust workflow engine (no dependencies)
+   └── Phase, Task, Gate structs
+   └── State machine logic
+   └── Unit tests
+
+2. Rust knowledge manager (no dependencies)
+   └── Token counting
+   └── Handoff validation
+   └── Checkpoint/delta
+
+3. Rust runtime monitor (no dependencies)
+   └── Health tracking
+   └── Stuck detection
+
+4. Rust FFI (depends on 1-3)
+   └── C bindings
+   └── Shared library build
+
+5. Go API routes (depends on 4)
+   └── Import Rust library
+   └── Domain routes
+
+6. React domain structure (parallel with 5)
+   └── Reorganize folders
+   └── New components
+
+7. WebSocket events (depends on 5-6)
+   └── New event types
+   └── UI handlers
+
+8. Integration testing
+   └── End-to-end flow
+```
 
 ---
 
 ## Research Notes
 
+### Token Efficiency
+- Context rot is real (middle content forgotten)
+- Simple masking often beats LLM summarization
+- 40-60% token savings possible via pruning
+- Handoffs should be structured JSON, not prose
+
 ### Rust Ecosystem
-- `claude-codes` crate handles Claude Code protocol parsing
 - `tiktoken-rs` for token counting
-- Don't reinvent the wheel — build on existing crates
+- `serde` + `serde_json` for serialization
+- `thiserror` for error types
 
-### Context Sharing
-- v3-v4: Orchestrator-mediated (inject into system prompts)
-- v5+: Persistent storage (Beads/SQLite/Supabase)
+### Model Allocation
+- Opus: King (strategic judgment)
+- Sonnet: Designer, Architect, Developer, Security
+- Haiku: Reviewer, Tester, QA, Docs, DevOps
 
-### Multi-Agent Parsing
-- Claude Code: `--output-format stream-json` ✅
-- Codex CLI: Has structured JSON modes ✅
-- Aider: Intentionally outputs text (JSON hurts code quality)
-- Gemini CLI: JSON support requested (issue #8022)
+### Gastown Lessons
+- External state (files) over conversation memory
+- Handoffs are cheap: spawn fresh vs accumulate context
+- Workers should be disposable

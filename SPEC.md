@@ -2,59 +2,237 @@
 
 ## Vision
 
-A visual multi-agent orchestration system where you can spawn, monitor, and coordinate AI agents working on your codebase. Inspired by Vibecraft and Ralv.
+A visual multi-agent orchestration system where a **King** agent coordinates **worker** agents through a **6-phase workflow**. Workers spawn, complete tasks, and die. Context lives in files, not conversation memory.
+
+Inspired by [Vibecraft](https://vibecraft.dev), [Ralv](https://ralv.dev), and [Gastown](https://gastown.dev).
 
 ---
 
-## Stack
+## Architecture
+
+### Layers × Domains
+
+```
+                         LAYERS
+     ┌─────────────────────┼─────────────────────┐
+     ▼                     ▼                     ▼
+┌─────────┐          ┌──────────┐          ┌──────────┐
+│   UI    │   ────►  │   API    │   ────►  │   CORE   │
+│ (React) │          │   (Go)   │          │(Rust/LLM)│
+└─────────┘          └──────────┘          └──────────┘
+                           │
+          ┌────────────────┼────────────────┬────────────────┐
+          ▼                ▼                ▼                ▼
+     ┌─────────┐     ┌──────────┐    ┌───────────┐    ┌─────────┐
+     │STRATEGY │     │ WORKFLOW │    │ KNOWLEDGE │    │ RUNTIME │
+     └─────────┘     └──────────┘    └───────────┘    └─────────┘
+     
+                         DOMAINS
+```
+
+| Domain | Responsibility | Intelligence | Owner |
+|--------|---------------|--------------|-------|
+| **Strategy** | High-level decisions, user conversation | LLM (Opus) | King |
+| **Workflow** | Phases, gates, task state | Deterministic | Rust Engine |
+| **Knowledge** | Specs, findings, briefings, tokens | Rust + LLM | Knowledge Manager |
+| **Runtime** | Process management, health | Deterministic | Go + Rust |
+
+### Stack
 
 | Component | Language | Why |
 |-----------|----------|-----|
-| **Agents** | Python | Anthropic SDK is first-class, matches tutorials |
-| **Orchestrator** | Go | Goroutines for concurrency, single binary, gastown's choice |
-| **Stream Parser** | Rust | Learn Rust, real-time parsing, token counting |
-| **Web UI** | React + Three.js | Interactive 3D visualization |
+| **Agents** | Python | Anthropic SDK, educational |
+| **API** | Go | Goroutines, single binary |
+| **Core** | Rust | Deterministic logic, token counting |
+| **Strategy** | Claude Opus | Judgment, synthesis |
+| **Workers** | Claude Sonnet/Haiku | Implementation |
+| **UI** | React + Three.js | Interactive 3D |
 
 ---
 
-## Distribution
+## Workflow
 
-**User installs orchestrator via:**
-- Homebrew: `brew install mike/tap/mission-control`
-- Go: `go install github.com/mike/mission-control@latest`  
-- Direct download from GitHub Releases
+### Six Phases
 
-**All three point to the same binaries** built by GoReleaser on git tag.
+```
+IDEA → DESIGN → IMPLEMENT → VERIFY → DOCUMENT → RELEASE
+  │       │          │          │         │          │
+  ▼       ▼          ▼          ▼         ▼          ▼
+ Gate    Gate       Gate       Gate      Gate       Gate
+```
 
-**Python environment:**
-- Go binary embeds `uv` (Rust-based Python manager)
-- On first run: extracts to `~/.mission-control/`, installs deps automatically
-- User never touches pip or venv
+| Phase | Purpose | Workers | Gate Criteria |
+|-------|---------|---------|---------------|
+| **Idea** | Research feasibility | Researcher | Spec drafted |
+| **Design** | UI mockups + system design | Designer, Architect | Mockups + API design approved |
+| **Implement** | Build features | Developer (per zone) | Code complete, builds |
+| **Verify** | Quality checks | Reviewer, Security, Tester, QA | All checks pass |
+| **Document** | README + docs | Docs | Docs complete |
+| **Release** | Deploy | DevOps | Deployed, verified |
 
-**Web UI:**
-- Deployed to Vercel
-- Connects to `localhost:8080`
-- Shows setup instructions if orchestrator not running
+Gates require explicit approval before proceeding.
+
+### Zones
+
+Zones are WHERE in the codebase:
+
+```
+System (root)
+├── Frontend
+├── Backend
+├── Database
+├── Infra
+└── Shared
+```
+
+Workers are assigned to zones. A Developer in Frontend doesn't touch Backend.
+
+---
+
+## Agents
+
+### King (Persistent)
+
+The King is the only persistent agent. It:
+- Talks to the user
+- Approves phase gates
+- Spawns workers with briefings
+- Synthesizes findings
+- Never implements directly
+
+Model: Claude Opus
+
+### Workers (Ephemeral)
+
+Workers spawn, complete a task, and die. They receive:
+- A briefing (~300 tokens)
+- Zone assignment
+- Tool/MCP restrictions
+
+| Persona | Phase | Tools | Model |
+|---------|-------|-------|-------|
+| Researcher | Idea | web_search, read | Sonnet |
+| Designer | Design | figma (read), write | Sonnet |
+| Architect | Design | read, write | Sonnet |
+| Developer | Implement | bash, read, write, edit | Sonnet |
+| Debugger | Implement | bash, read, edit | Sonnet |
+| Reviewer | Verify | read, github | Haiku |
+| Security | Verify | read, bash (limited) | Sonnet |
+| Tester | Verify | bash, read, write | Haiku |
+| QA | Verify | bash, read | Haiku |
+| Docs | Document | read, write | Haiku |
+| DevOps | Release | bash, vercel, github | Haiku |
+
+---
+
+## Token Efficiency
+
+### Problem
+
+Context accumulates → costs explode → performance degrades.
+
+### Solution: Files are truth, briefings are context
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  SOURCE OF TRUTH (.mission/ files)                          │
+│  Complete specs, full history, git-tracked                  │
+│  Tokens: 2000+                                              │
+└─────────────────────────────────────────────────────────────┘
+                      │
+                      ▼ Knowledge Manager compiles
+┌─────────────────────────────────────────────────────────────┐
+│  BRIEFING (what worker receives)                            │
+│  - Task description                                         │
+│  - Key requirements (3-5 bullets)                           │
+│  - Relevant decisions                                       │
+│  - File paths for deep-dive                                 │
+│  Tokens: ~300                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Token Budgets
+
+| Threshold | Action |
+|-----------|--------|
+| < 50% | Continue |
+| 50-75% | Warning, consider handoff |
+| > 75% | Prepare handoff |
+| > 90% | Force handoff |
+
+### Handoff Protocol
+
+```typescript
+interface WorkerHandoff {
+  task_id: string;
+  status: 'complete' | 'blocked' | 'partial';
+  findings: Finding[];
+  artifacts: string[];        // File paths
+  open_questions: string[];
+  context_for_successor?: {
+    key_decisions: string[];
+    gotchas: string[];
+  };
+}
+```
+
+Workers output structured JSON. Rust validates. Fresh worker spawns with lean briefing.
+
+---
+
+## File Structure
+
+### Project State (.mission/)
+
+```
+.mission/
+├── config.md              # Project settings
+├── ideas/                 # IDEA-{name}.md
+├── specs/                 # SPEC-{name}.md, api.md, models.md
+├── mockups/               # UI iterations
+├── progress/              # TODO-{name}.md
+├── reviews/               # REVIEW-{name}.md
+├── checkpoints/           # Periodic full state
+├── handoffs/              # Worker handoff records
+└── releases/              # RELEASE-{version}.md
+```
+
+### Codebase
+
+```
+mission-control/
+├── SPEC.md
+├── ARCHITECTURE.md
+│
+├── web/                     # UI Layer (v3 ✅)
+│   └── src/
+│       ├── components/      # AgentCard, KingPanel, ZoneGroup, etc.
+│       ├── stores/          # Zustand (useStore)
+│       ├── hooks/           # useWebSocket, useKeyboardShortcuts
+│       └── types/           # TypeScript definitions
+│
+├── orchestrator/            # API Layer (v3 ✅)
+│   ├── manager/             # Agent + Zone management
+│   ├── api/                 # REST routes
+│   └── ws/                  # WebSocket hub
+│
+├── core/                    # Core Layer (v4 - TODO)
+│   ├── workflow/            # Rust state machine
+│   ├── knowledge/           # Rust token/checkpoint mgmt
+│   ├── runtime/             # Rust health monitor
+│   └── ffi/                 # Go bindings
+│
+└── agents/                  # Python agents (v1 ✅)
+    └── v0-v3
+```
 
 ---
 
 ## Versions
 
-### v1: Agent Fundamentals
+### v1: Agent Fundamentals ✅
 
-**Goal:** Understand how agents work by building from scratch.
-
-**The Core Loop:**
-```python
-while True:
-    response = model(messages, tools)
-    if response.stop_reason != "tool_use":
-        return response.text
-    results = execute(response.tool_calls)
-    messages.append(results)
-```
-
-**Build progression:**
+Build agents from scratch to understand the core loop.
 
 | Agent | Lines | Tools | Concept |
 |-------|-------|-------|---------|
@@ -63,393 +241,122 @@ while True:
 | v2_todo | ~300 | + todo | Explicit planning |
 | v3_subagent | ~450 | + task | Isolated child agents |
 
-**Deliverable:** Working CLI agents you can run locally.
+### v2: Orchestrator ✅
 
----
+Go orchestrator + Rust stream parser.
 
-### v2: Orchestrator
+- Agent process manager (spawn/kill)
+- REST API endpoints
+- WebSocket event bus
+- Stream parsing (Python + Claude Code formats)
 
-**Goal:** Manage multiple agent processes.
+### v3: 2D Dashboard ✅
 
-**Components:**
+Full-featured React dashboard with 81 unit tests.
 
-```
-┌─────────────────────────────────────────┐
-│           Go Orchestrator               │
-│                                         │
-│  ┌─────────────────────────────────────┐│
-│  │     Agent Process Manager           ││
-│  │  - Spawn/kill Python processes      ││
-│  │  - Track PID, status, tokens        ││
-│  └─────────────────────────────────────┘│
-│                                         │
-│  ┌─────────────────────────────────────┐│
-│  │        Rust Stream Parser           ││
-│  │  - Parse agent stdout               ││
-│  │  - Count tokens (tiktoken-rs)       ││
-│  │  - Emit structured JSON events      ││
-│  └─────────────────────────────────────┘│
-│                                         │
-│  ┌─────────────────────────────────────┐│
-│  │     WebSocket Event Bus             ││
-│  │  - Broadcast to connected UIs       ││
-│  │  - Receive commands from UI         ││
-│  └─────────────────────────────────────┘│
-│                                         │
-│  ┌─────────────────────────────────────┐│
-│  │         REST API                    ││
-│  │  - POST /agents (spawn)             ││
-│  │  - DELETE /agents/:id (kill)        ││
-│  │  - POST /agents/:id/message         ││
-│  └─────────────────────────────────────┘│
-└─────────────────────────────────────────┘
-```
+**Completed Features:**
+- Zustand state with persistence + WebSocket reconnection
+- Header, Sidebar, AgentCard, AgentPanel
+- Zone System (CRUD, split/merge, move agents)
+- Persona System (4 defaults + custom creation)
+- King Mode UI (KingPanel, KingHeader, TeamOverview)
+- Attention System (notifications, quick responses)
+- Settings Panel + Keyboard shortcuts
+- Zone API endpoints + King message endpoint
 
-**Data flow:**
-```
-Python Agent stdout
-       ↓
-  agent-stream (Rust binary)
-       ↓
-  Structured JSON events
-       ↓
-  Go Orchestrator
-       ↓
-  WebSocket → React UI
-```
+### v4: Architecture Foundation 🔄 CURRENT
 
-**Deliverable:** `mission-control` binary that can spawn and manage multiple agents via REST API.
+Implement the Rust core and domain organization.
 
----
+**Rust Core:**
+- Workflow engine (phases, gates, tasks)
+- Knowledge manager (tokens, checkpoints, handoffs)
+- Health monitor
+- FFI bindings for Go
 
-### v3: 2D Dashboard
+**Go API:**
+- Strategy routes (full King logic)
+- Workflow routes (phases, gates)
+- Knowledge routes (briefings, handoffs)
 
-**Goal:** Web UI to visualize and control agents.
+**React UI:**
+- Domain-organized structure
+- Phase/workflow view
+- Token usage display
 
-**Tech:**
-- React 18
-- Tailwind CSS
-- Zustand (state)
-- Native WebSocket
+### v5: King + Workflow
 
-**Components:**
+Full King agent implementation with 6-phase workflow.
 
-| Component | Function |
-|-----------|----------|
-| AgentList | Table of all agents with status |
-| AgentCard | Expandable card per agent |
-| ChatPanel | Send messages, see responses |
-| ToolLog | Real-time tool calls stream |
-| StatsBar | Total tokens, active count |
-| ZoneManager | Group agents by project/directory |
+### v6: 3D + Polish
 
-**Wireframe:**
-```
-┌────────────────────────────────────────────────────────┐
-│  MissionControl                     [+New Agent] [⚙️]  │
-├────────────────────────────────────────────────────────┤
-│  Stats: 3 agents | 12.4k tokens | 2 working            │
-├──────────────────────────┬─────────────────────────────┤
-│                          │                             │
-│  ┌────────────────────┐  │  Agent: code-reviewer       │
-│  │ 🟢 code-reviewer   │  │  Status: working            │
-│  │    working         │  │  Task: Review auth.py       │
-│  │    2.1k tokens     │  │  Tokens: 2,147              │
-│  └────────────────────┘  │                             │
-│                          │  ┌───────────────────────┐  │
-│  ┌────────────────────┐  │  │ $ cat auth.py         │  │
-│  │ 🟡 test-writer     │  │  │ 📖 Reading auth.py    │  │
-│  │    idle            │  │  │ ✏️ Editing line 42    │  │
-│  │    1.8k tokens     │  │  └───────────────────────┘  │
-│  └────────────────────┘  │                             │
-│                          │  ┌───────────────────────┐  │
-│  ┌────────────────────┐  │  │ > Type message...     │  │
-│  │ 🔴 refactorer      │  │  └───────────────────────┘  │
-│  │    error           │  │                             │
-│  │    956 tokens      │  │                             │
-│  └────────────────────┘  │                             │
-│                          │                             │
-└──────────────────────────┴─────────────────────────────┘
-```
+3D visualization with Three.js/React Three Fiber.
 
-**Deliverable:** Working web dashboard on Vercel that connects to local orchestrator.
+### v7+: Future
 
----
-
-### v4: 3D Visualization + Polish
-
-**Goal:** The "wow factor" — Vibecraft/Ralv style. User-facing polish.
-
-**Tech:**
-- React Three Fiber (React bindings for Three.js)
-- drei (Three.js helpers)
-- Same Zustand store as v3
-
-**Scene:**
-```
-       ┌─────────────────────────────────────┐
-      ╱                                     ╱│
-     ╱     🤖        🤖        🤖         ╱ │
-    ╱    Claude    Gemini    Claude      ╱  │
-   ╱                                    ╱   │
-  ┌─────────────────────────────────────┐   │
-  │  ═══════════════════════════════════│   │
-  │  ║  Zone: Frontend  ║  Zone: API   ║│   │
-  │  ║                  ║              ║│   │
-  │  ║    📦    📦     ║     📦       ║│  ╱
-  │  ║   task   task   ║    task      ║│ ╱
-  │  ═══════════════════════════════════│╱
-  └─────────────────────────────────────┘
-```
-
-**3D Features:**
-- Isometric camera (like Ralv)
-- Agent avatars as 3D characters
-- Zones as floor areas
-- Connection lines for parent/child agents
-- Floating UI panels per agent
-- Click agent → open chat
-
-**Polish (for release):**
-- Marketable naming (Orchestra? Conductor? TBD)
-- Custom 3D assets
-- Landing page
-- Documentation
-
-**Deliverable:** 3D interface + release-ready polish.
-
----
-
-### v5: Persistence + Skills
-
-**Goal:** Survive restarts, enable long-running work, extend Claude Code.
-
-**Persistence Layer:**
-- Resume work after closing laptop
-- Track what agents did while you were away
-- Multi-agent task dependencies
-- Audit trail
-
-**Options to evaluate:**
-- Beads (Steve Yegge's git-backed solution)
-- SQLite (simple, embedded)
-- Supabase (ties into Personal OS)
-
-**Conductor Skill:**
-- A Claude Code skill that uses our orchestrator CLI
-- "Spin up a review team for this PR" → spawns agents via `mission-control spawn`
-- Claude Code gains multi-agent powers through our infrastructure
-
----
-
-### v6+: Future Ideas
-
-**Orchestrator Wizard**
-- A meta-agent (visualized as a wizard character) that helps manage other agents
-- Monitors progress, reassigns work, handles failures
-- Inspired by gastown's "major" concept
-
-**Remote Access**
-- Bind to 0.0.0.0 for local network access
-- Optional cloudflared tunnel for phone access from anywhere
-- Control agents from phone while away from desk
-
-**Multi-Model Support**
-- OpenAI Codex CLI, Gemini CLI, Grok alongside Claude
-- Compare outputs, use different models for different tasks
-- Cost optimization (cheap model for simple tasks)
-- Note: Aider intentionally avoids JSON output (hurts code quality) - will need text parsing
-
----
-
-## File Structure
-
-```
-mission-control/
-├── SPEC.md
-│
-├── agents/                     # Python
-│   ├── v0_minimal.py
-│   ├── v1_basic.py
-│   ├── v2_todo.py
-│   └── v3_subagent.py
-│
-├── stream-parser/              # Rust
-│   ├── Cargo.toml
-│   └── src/
-│       └── main.rs
-│
-├── orchestrator/               # Go
-│   ├── go.mod
-│   ├── main.go
-│   ├── manager/
-│   │   └── manager.go
-│   ├── api/
-│   │   └── routes.go
-│   └── ws/
-│       └── hub.go
-│
-├── web/                        # React
-│   ├── package.json
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── components/
-│   │   ├── stores/
-│   │   └── hooks/
-│   └── public/
-│
-└── .goreleaser.yml             # Build config
-```
+Persistence, Conductor Skill, Multi-Model, Remote Access.
 
 ---
 
 ## API
 
-### REST
+### REST (Current v3)
 
 ```
+# Agents
 POST   /api/agents              # Spawn agent
 GET    /api/agents              # List agents
-GET    /api/agents/:id          # Get agent
 DELETE /api/agents/:id          # Kill agent
 POST   /api/agents/:id/message  # Send message
+POST   /api/agents/:id/respond  # Respond to attention
 
+# Zones
 POST   /api/zones               # Create zone
 GET    /api/zones               # List zones
-PUT    /api/zones/:id/agents    # Assign agents to zone
+PUT    /api/zones/:id           # Update zone
+DELETE /api/zones/:id           # Delete zone
+
+# King (UI shell)
+POST   /api/king/message        # Send to King
 ```
 
-### WebSocket Events
-
-**Server → Client:**
-```typescript
-{ type: "agent_spawned", agent: Agent }
-{ type: "agent_status", agentId: string, status: "idle" | "working" | "error" }
-{ type: "tool_call", agentId: string, tool: string, args: object }
-{ type: "tool_result", agentId: string, result: string, tokens: number }
-{ type: "message", agentId: string, role: "assistant" | "user", content: string }
-{ type: "agent_killed", agentId: string }
-```
-
-**Client → Server:**
-```typescript
-{ type: "spawn_agent", name: string, task?: string, zone?: string }
-{ type: "send_message", agentId: string, content: string }
-{ type: "kill_agent", agentId: string }
-```
-
----
-
-## Rust Component: agent-stream
-
-**Purpose:** Normalize agent output from multiple sources into unified events.
-
-The stream parser is the **normalization layer** that lets the UI treat all agents uniformly.
-
-### Leveraging Existing Crates
-
-For Claude Code parsing, we use the `claude-codes` crate:
-
-```toml
-[dependencies]
-claude-codes = "0.3"  # Battle-tested Claude Code protocol parsing
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-```
-
-Our Rust code handles:
-- Python agent format (our custom)
-- Normalization layer (unified events)
-- Token counting
-- Future: Codex CLI, Aider, Gemini
-
-### Input Formats
-
-**Python Agent (our format):**
-```json
-{"type":"turn","number":1}
-{"type":"thinking","content":"I'll read the file."}
-{"type":"tool_call","tool":"bash","args":{"command":"cat auth.py"}}
-```
-
-**Claude Code (`--output-format stream-json`):**
-```json
-{"type":"assistant","message":{"content":[{"type":"text","text":"I'll read..."}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"auth.py"}}]}}
-```
-
-### Output (Unified Events)
-
-Both normalized to:
-```json
-{"type":"thinking","content":"I'll read the file.","tokens":8,"agentId":"abc123"}
-{"type":"tool_call","tool":"read","args":{"path":"auth.py"},"agentId":"abc123"}
-```
-
-**What you'll learn:**
-- String vs &str (ownership)
-- Option and Result (error handling)
-- serde for JSON (multiple schemas)
-- Using external crates
-- Pattern matching
-
----
-
-## Context Sharing
-
-### Session Context (v3-v4)
-
-Agents share context through the **orchestrator**:
-
-```go
-type Session struct {
-    ID       string
-    Agents   []Agent
-    Findings []Finding  // What agents discovered
-}
-
-// Inject context when spawning new agents
-agentB.SystemPrompt += formatFindings(session.Findings)
-```
-
-### Persistent Memory (v5+)
-
-Across sessions, context persists via Beads/SQLite/Supabase:
+### REST (v4+ additions)
 
 ```
-Session ends → Save findings/TODOs → Next session loads history
+# Strategy
+POST   /api/gates/:id/approve   # Approve gate
+
+# Workflow
+GET    /api/phases              # List phases
+GET    /api/tasks               # List tasks
+PUT    /api/tasks/:id/status    # Update task
+
+# Knowledge
+GET    /api/specs/:id           # Get spec
+GET    /api/briefings/:worker   # Get briefing
+POST   /api/handoffs            # Submit handoff
 ```
 
 ---
 
-## Decisions Made
+## Model Allocation
 
-1. **Agent models** - Claude only for v1-4. Multi-model support in v6+.
-2. **Zone semantics** - Arbitrary containers. Can optionally bind to one or more git branches. UI will offer "create branch" when starting a zone.
-3. **3D models** - We'll create custom assets when we get to v4.
-4. **Remote access** - Post-v3 feature. Will use 0.0.0.0 binding + optional cloudflared tunnel.
-
----
-
-## Non-Goals (For Now)
-
-- Multi-user collaboration
-- Cloud-hosted agents
-- Mobile app
-- Voice interface
-- Persistent storage (v5)
+| Role | Model | Rationale |
+|------|-------|-----------|
+| King | Opus | Strategic judgment |
+| Briefing generation | Sonnet | Distillation |
+| Designer, Architect, Developer | Sonnet | Complex work |
+| Reviewer, Tester, QA, Docs, DevOps | Haiku | Pattern matching |
 
 ---
 
 ## Success Criteria
 
-**v1:** Can run `python v3_subagent.py "build a todo app"` and watch it work.
+**v4:** Rust core compiles, Go integrates via FFI, domain routes work.
 
-**v2:** Can `curl localhost:8080/api/agents` and see running agents.
+**v5:** King conversation works end-to-end, workers spawn with briefings.
 
-**v3:** Can open browser, see agents, send messages, watch tool calls.
-
-**v4:** Can see agents as 3D characters moving around zones.
+**v6:** 3D visualization renders agents in zones.
 
 ---
 
