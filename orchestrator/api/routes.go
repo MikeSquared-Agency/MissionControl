@@ -26,6 +26,13 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/agents", h.handleAgents)
 	mux.HandleFunc("/api/agents/", h.handleAgent)
 
+	// Zone routes
+	mux.HandleFunc("/api/zones", h.handleZones)
+	mux.HandleFunc("/api/zones/", h.handleZone)
+
+	// King mode routes
+	mux.HandleFunc("/api/king/message", h.handleKingMessage)
+
 	// Health check
 	mux.HandleFunc("/api/health", h.handleHealth)
 
@@ -37,7 +44,7 @@ func (h *Handler) Routes() http.Handler {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 		if r.Method == "OPTIONS" {
@@ -51,6 +58,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 // handleHealth handles GET /api/health
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
@@ -82,6 +90,26 @@ func (h *Handler) handleAgent(w http.ResponseWriter, r *http.Request) {
 	if len(parts) > 1 && parts[1] == "message" {
 		if r.Method == "POST" {
 			h.sendMessage(w, r, id)
+			return
+		}
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check for /move subpath
+	if len(parts) > 1 && parts[1] == "move" {
+		if r.Method == "POST" {
+			h.moveAgent(w, r, id)
+			return
+		}
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check for /respond subpath (attention response)
+	if len(parts) > 1 && parts[1] == "respond" {
+		if r.Method == "POST" {
+			h.respondToAttention(w, r, id)
 			return
 		}
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -174,6 +202,200 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request, id string)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+}
+
+// MoveAgentRequest represents a request to move an agent to a zone
+type MoveAgentRequest struct {
+	ZoneID string `json:"zoneId"`
+}
+
+// moveAgent handles POST /api/agents/:id/move
+func (h *Handler) moveAgent(w http.ResponseWriter, r *http.Request, id string) {
+	var req MoveAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Manager.MoveAgent(id, req.ZoneID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "moved"})
+}
+
+// RespondRequest represents a response to an attention request
+type RespondRequest struct {
+	Response string `json:"response"`
+}
+
+// respondToAttention handles POST /api/agents/:id/respond
+func (h *Handler) respondToAttention(w http.ResponseWriter, r *http.Request, id string) {
+	var req RespondRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Send the response as a message to the agent
+	// The manager will handle clearing attention state
+	if err := h.Manager.SendMessage(id, req.Response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "responded"})
+}
+
+// Zone handlers
+
+// handleZones handles /api/zones
+func (h *Handler) handleZones(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		h.listZones(w, r)
+	case "POST":
+		h.createZone(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleZone handles /api/zones/:id
+func (h *Handler) handleZone(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from path
+	path := strings.TrimPrefix(r.URL.Path, "/api/zones/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		http.Error(w, "Zone ID required", http.StatusBadRequest)
+		return
+	}
+
+	id := parts[0]
+
+	switch r.Method {
+	case "GET":
+		h.getZone(w, r, id)
+	case "PUT":
+		h.updateZone(w, r, id)
+	case "DELETE":
+		h.deleteZone(w, r, id)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// listZones handles GET /api/zones
+func (h *Handler) listZones(w http.ResponseWriter, r *http.Request) {
+	zones := h.Manager.ListZones()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(zones)
+}
+
+// createZone handles POST /api/zones
+func (h *Handler) createZone(w http.ResponseWriter, r *http.Request) {
+	var zone manager.Zone
+	if err := json.NewDecoder(r.Body).Decode(&zone); err != nil {
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if zone.Name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	created, err := h.Manager.CreateZone(&zone)
+	if err != nil {
+		http.Error(w, "Failed to create zone: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(created)
+}
+
+// getZone handles GET /api/zones/:id
+func (h *Handler) getZone(w http.ResponseWriter, r *http.Request, id string) {
+	zone, ok := h.Manager.GetZone(id)
+	if !ok {
+		http.Error(w, "Zone not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(zone)
+}
+
+// updateZone handles PUT /api/zones/:id
+func (h *Handler) updateZone(w http.ResponseWriter, r *http.Request, id string) {
+	var updates manager.Zone
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	zone, err := h.Manager.UpdateZone(id, &updates)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(zone)
+}
+
+// deleteZone handles DELETE /api/zones/:id
+func (h *Handler) deleteZone(w http.ResponseWriter, r *http.Request, id string) {
+	if err := h.Manager.DeleteZone(id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// King Mode handlers
+
+// KingMessageRequest represents a message to the King
+type KingMessageRequest struct {
+	Content string `json:"content"`
+}
+
+// handleKingMessage handles POST /api/king/message
+func (h *Handler) handleKingMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req KingMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Content == "" {
+		http.Error(w, "content is required", http.StatusBadRequest)
+		return
+	}
+
+	// Send to King agent via manager
+	if err := h.Manager.SendKingMessage(req.Content); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
 }

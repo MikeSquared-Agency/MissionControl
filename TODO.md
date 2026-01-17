@@ -52,20 +52,86 @@
 ### Setup
 - [x] Vite + React + TypeScript
 - [x] Tailwind CSS
-- [x] Zustand state management
-- [x] WebSocket connection hook
+- [x] Zustand state management with persistence
+- [x] WebSocket connection hook with reconnection
 
-### Components
-- [x] Header with stats
-- [x] AgentList sidebar
-- [x] AgentCard with status
-- [x] SpawnDialog (Python + Claude Code)
-- [x] EventLog stream
+### Core Components
+- [x] Header with stats, King toggle, connection status
+- [x] Sidebar with collapsible zone groups
+- [x] AgentCard with persona badge, attention pulse, context menu
+- [x] AgentPanel with conversation view
+- [x] AgentHeader with details
 
-### Tested
-- [x] Spawn agents from UI
-- [x] View agent list
-- [x] See agent status updates
+### Zone System
+- [x] Zone CRUD (create, edit, duplicate, delete)
+- [x] Zone-based agent organization
+- [x] Split/merge zones
+- [x] Move agents between zones
+- [x] Backend Zone API endpoints
+
+### Conversation View
+- [x] Scrollable message list with auto-scroll
+- [x] User/assistant/error message bubbles
+- [x] Collapsible tool call blocks
+- [x] Chat input with Enter to send
+- [x] Findings section
+
+### Persona System
+- [x] Default personas (Code Reviewer, Full Developer, Test Writer, Documentation)
+- [x] Persona selection in spawn dialog
+- [x] Persona badges on agent cards
+- [x] Custom persona creation in settings
+
+### Attention System
+- [x] AttentionBar for global notifications
+- [x] Quick response buttons (Yes/No, Allow/Deny)
+- [x] Pulsing indicators on agent cards
+- [x] Backend respond endpoint
+
+### King Mode
+- [x] KingPanel with conversation view
+- [x] KingHeader with team stats
+- [x] TeamOverview with agent badges
+- [x] Amber-themed input
+- [x] King message API endpoint
+
+### Polish
+- [x] Toast notification system
+- [x] Loading spinners
+- [x] Skeleton loaders
+- [x] Empty states for all views
+- [x] Confirmation dialogs
+
+### Dialogs
+- [x] SpawnDialog with persona/zone selection
+- [x] ZoneDialog (create/edit)
+- [x] SettingsPanel (General, Personas, Shortcuts)
+- [x] SplitZoneDialog
+- [x] MergeZoneDialog
+- [x] MoveAgentDialog
+- [x] ContextShareDialog
+
+### Keyboard Shortcuts
+- [x] ⌘N - spawn agent
+- [x] ⌘K - kill selected agent
+- [x] ↑/↓ or j/k - navigate agents
+- [x] ⌘⇧K - toggle King mode
+- [x] ⌘⇧N - new zone
+- [x] ⌘, - settings
+- [x] ⌘/ - focus chat
+- [x] Esc - close modal
+
+### Testing
+- [x] Go backend unit tests (29 tests)
+- [x] React frontend unit tests (52 tests)
+- [x] API endpoint testing
+- [x] Agent spawn/kill end-to-end
+
+### Bug Fixes
+- [x] Fixed infinite loop in useStats selector
+- [x] Fixed button nesting in ZoneGroup
+- [x] Fixed stdin handling for Claude Code agents
+- [x] Added --dangerously-skip-permissions for headless execution
 
 ---
 

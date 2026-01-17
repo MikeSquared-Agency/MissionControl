@@ -51,10 +51,20 @@ Both output structured JSON, both appear in the same UI.
 |---------|--------|-------------|
 | v1 | ✅ Done | Python agent fundamentals |
 | v2 | ✅ Done | Go orchestrator + Rust parser |
-| v3 | ✅ Done | 2D web dashboard |
+| v3 | ✅ Done | Full 2D dashboard with zones, personas, King mode |
 | v4 | 🔄 Current | 3D visualization |
 | v5 | 📋 Planned | Persistence + Claude Code skill |
 | v6+ | 📋 Future | Multi-model, wizard agent |
+
+### v3 Features
+- Zone-based agent organization
+- Persona system (Code Reviewer, Full Developer, Test Writer, Documentation)
+- King Mode - AI orchestrator to manage agent teams
+- Real-time conversation view with tool call display
+- Attention system for agent-user interaction
+- Toast notifications, loading states, empty states
+- Keyboard shortcuts (⌘N spawn, ⌘K kill, ↑/↓ navigate, etc.)
+- 81 unit tests (29 Go + 52 React)
 
 ## Quick Start
 
@@ -104,7 +114,19 @@ curl localhost:8080/api/agents
 cd web
 npm install
 npm run dev
-# Open http://localhost:5173
+# Open http://localhost:3000
+```
+
+### Running Tests
+
+```bash
+# Go backend tests (29 tests)
+cd orchestrator
+go test ./...
+
+# React frontend tests (52 tests)
+cd web
+npm test
 ```
 
 ## Requirements

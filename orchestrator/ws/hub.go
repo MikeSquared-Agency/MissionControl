@@ -57,8 +57,8 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			log.Printf("Client connected. Total clients: %d", len(h.clients))
 
-			// Send current agent list to new client
-			h.sendAgentList(client)
+			// Send current state to new client
+			h.sendInitialState(client)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -96,15 +96,25 @@ func (h *Hub) listenForEvents() {
 	}
 }
 
-// sendAgentList sends the current agent list to a client
-func (h *Hub) sendAgentList(client *Client) {
+// sendInitialState sends the current agents and zones to a client
+func (h *Hub) sendInitialState(client *Client) {
+	// Send agent list
 	agents := h.manager.List()
-	event := map[string]interface{}{
+	agentEvent := map[string]interface{}{
 		"type":   "agent_list",
 		"agents": agents,
 	}
-	data, _ := json.Marshal(event)
-	client.send <- data
+	agentData, _ := json.Marshal(agentEvent)
+	client.send <- agentData
+
+	// Send zone list
+	zones := h.manager.ListZones()
+	zoneEvent := map[string]interface{}{
+		"type":  "zone_list",
+		"zones": zones,
+	}
+	zoneData, _ := json.Marshal(zoneEvent)
+	client.send <- zoneData
 }
 
 // HandleWebSocket handles WebSocket connections
@@ -169,10 +179,13 @@ type Command struct {
 
 // SpawnCommand represents a spawn_agent command
 type SpawnCommand struct {
-	Type    manager.AgentType `json:"type"`
-	Task    string            `json:"task"`
-	Workdir string            `json:"workdir"`
-	Agent   string            `json:"agent"`
+	Type       manager.AgentType `json:"type"`
+	Name       string            `json:"name"`
+	Task       string            `json:"task"`
+	Persona    string            `json:"persona"`
+	Zone       string            `json:"zone"`
+	WorkingDir string            `json:"workingDir"`
+	Agent      string            `json:"agent"`
 }
 
 // handleCommand processes commands from the client
@@ -191,10 +204,13 @@ func (c *Client) handleCommand(message []byte) {
 			return
 		}
 		_, err := c.hub.manager.Spawn(manager.SpawnRequest{
-			Type:    spawn.Type,
-			Task:    spawn.Task,
-			Workdir: spawn.Workdir,
-			Agent:   spawn.Agent,
+			Type:       spawn.Type,
+			Name:       spawn.Name,
+			Task:       spawn.Task,
+			Persona:    spawn.Persona,
+			Zone:       spawn.Zone,
+			WorkingDir: spawn.WorkingDir,
+			Agent:      spawn.Agent,
 		})
 		if err != nil {
 			log.Printf("Failed to spawn agent: %v", err)
@@ -224,6 +240,58 @@ func (c *Client) handleCommand(message []byte) {
 		if err := c.hub.manager.SendMessage(payload.AgentID, payload.Content); err != nil {
 			log.Printf("Failed to send message: %v", err)
 		}
+
+	case "create_zone":
+		var zone manager.Zone
+		if err := json.Unmarshal(cmd.Payload, &zone); err != nil {
+			log.Printf("Invalid create_zone command: %v", err)
+			return
+		}
+		if _, err := c.hub.manager.CreateZone(&zone); err != nil {
+			log.Printf("Failed to create zone: %v", err)
+		}
+
+	case "update_zone":
+		var payload struct {
+			ID      string       `json:"id"`
+			Updates manager.Zone `json:"updates"`
+		}
+		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+			log.Printf("Invalid update_zone command: %v", err)
+			return
+		}
+		if _, err := c.hub.manager.UpdateZone(payload.ID, &payload.Updates); err != nil {
+			log.Printf("Failed to update zone: %v", err)
+		}
+
+	case "delete_zone":
+		var payload struct {
+			ZoneID string `json:"zone_id"`
+		}
+		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+			log.Printf("Invalid delete_zone command: %v", err)
+			return
+		}
+		if err := c.hub.manager.DeleteZone(payload.ZoneID); err != nil {
+			log.Printf("Failed to delete zone: %v", err)
+		}
+
+	case "move_agent":
+		var payload struct {
+			AgentID string `json:"agent_id"`
+			ZoneID  string `json:"zone_id"`
+		}
+		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+			log.Printf("Invalid move_agent command: %v", err)
+			return
+		}
+		if err := c.hub.manager.MoveAgent(payload.AgentID, payload.ZoneID); err != nil {
+			log.Printf("Failed to move agent: %v", err)
+		}
+
+	case "request_sync":
+		// Send full state to this client
+		c.hub.sendInitialState(c)
 
 	default:
 		log.Printf("Unknown command type: %s", cmd.Type)

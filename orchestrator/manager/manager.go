@@ -17,8 +17,8 @@ import (
 type AgentType string
 
 const (
-	AgentTypePython AgentType = "python"
-	AgentTypeClaude AgentType = "claude"
+	AgentTypePython    AgentType = "python"
+	AgentTypeClaudeCode AgentType = "claude-code"
 )
 
 // AgentStatus represents the current status of an agent
@@ -26,8 +26,9 @@ type AgentStatus string
 
 const (
 	StatusStarting AgentStatus = "starting"
-	StatusRunning  AgentStatus = "running"
+	StatusWorking  AgentStatus = "working"
 	StatusIdle     AgentStatus = "idle"
+	StatusWaiting  AgentStatus = "waiting"
 	StatusError    AgentStatus = "error"
 	StatusStopped  AgentStatus = "stopped"
 )
@@ -35,12 +36,16 @@ const (
 // Agent represents a running agent process
 type Agent struct {
 	ID        string      `json:"id"`
+	Name      string      `json:"name"`
 	Type      AgentType   `json:"type"`
 	Task      string      `json:"task"`
-	Workdir   string      `json:"workdir"`
+	Persona   string      `json:"persona,omitempty"`
+	Zone      string      `json:"zone"`
+	WorkingDir string     `json:"workingDir"`
 	Status    AgentStatus `json:"status"`
 	PID       int         `json:"pid"`
 	Tokens    int         `json:"tokens"`
+	Cost      float64     `json:"cost"`
 	CreatedAt time.Time   `json:"created_at"`
 	Error     string      `json:"error,omitempty"`
 
@@ -50,6 +55,14 @@ type Agent struct {
 	stderr io.ReadCloser
 }
 
+// Zone represents an agent grouping
+type Zone struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Color      string `json:"color"`
+	WorkingDir string `json:"workingDir"`
+}
+
 // Event represents a normalized event from an agent
 type Event struct {
 	Type    string          `json:"type"`
@@ -57,9 +70,10 @@ type Event struct {
 	Data    json.RawMessage `json:"data,omitempty"`
 }
 
-// Manager manages all agent processes
+// Manager manages all agent processes and zones
 type Manager struct {
 	agents     map[string]*Agent
+	zones      map[string]*Zone
 	mu         sync.RWMutex
 	eventsChan chan Event
 	agentsDir  string
@@ -67,11 +81,22 @@ type Manager struct {
 
 // NewManager creates a new agent manager
 func NewManager(agentsDir string) *Manager {
-	return &Manager{
+	m := &Manager{
 		agents:     make(map[string]*Agent),
+		zones:      make(map[string]*Zone),
 		eventsChan: make(chan Event, 100),
 		agentsDir:  agentsDir,
 	}
+
+	// Create default zone
+	m.zones["default"] = &Zone{
+		ID:         "default",
+		Name:       "Default",
+		Color:      "#6b7280",
+		WorkingDir: "",
+	}
+
+	return m
 }
 
 // Events returns the channel for agent events
@@ -81,21 +106,43 @@ func (m *Manager) Events() <-chan Event {
 
 // SpawnRequest represents a request to spawn an agent
 type SpawnRequest struct {
-	Type    AgentType `json:"type"`
-	Task    string    `json:"task"`
-	Workdir string    `json:"workdir"`
-	Agent   string    `json:"agent"` // For python type: v0_minimal, v1_basic, etc.
+	Type       AgentType `json:"type"`
+	Name       string    `json:"name"`
+	Task       string    `json:"task"`
+	Persona    string    `json:"persona"`
+	Zone       string    `json:"zone"`
+	WorkingDir string    `json:"workingDir"`
+	Agent      string    `json:"agent"` // For python type: v0_minimal, v1_basic, etc.
 }
 
 // Spawn creates and starts a new agent
 func (m *Manager) Spawn(req SpawnRequest) (*Agent, error) {
+	id := uuid.New().String()[:8]
+
+	// Use provided name or generate from ID
+	name := req.Name
+	if name == "" {
+		name = id
+	}
+
+	// Default to "default" zone if not specified
+	zone := req.Zone
+	if zone == "" {
+		zone = "default"
+	}
+
 	agent := &Agent{
-		ID:        uuid.New().String()[:8],
-		Type:      req.Type,
-		Task:      req.Task,
-		Workdir:   req.Workdir,
-		Status:    StatusStarting,
-		CreatedAt: time.Now(),
+		ID:         id,
+		Name:       name,
+		Type:       req.Type,
+		Task:       req.Task,
+		Persona:    req.Persona,
+		Zone:       zone,
+		WorkingDir: req.WorkingDir,
+		Status:     StatusStarting,
+		Tokens:     0,
+		Cost:       0,
+		CreatedAt:  time.Now(),
 	}
 
 	var cmd *exec.Cmd
@@ -109,15 +156,18 @@ func (m *Manager) Spawn(req SpawnRequest) (*Agent, error) {
 		agentPath := fmt.Sprintf("%s/%s.py", m.agentsDir, agentFile)
 		cmd = exec.Command("python3", agentPath, req.Task)
 
-	case AgentTypeClaude:
-		cmd = exec.Command("claude", "-p", req.Task, "--output-format", "stream-json")
+	case AgentTypeClaudeCode:
+		// Use --dangerously-skip-permissions for headless execution
+		// In production, consider using --permission-mode with more granular control
+		cmd = exec.Command("claude", "-p", req.Task, "--output-format", "stream-json", "--dangerously-skip-permissions")
+		fmt.Printf("Spawning Claude Code agent: claude -p %q --output-format stream-json --dangerously-skip-permissions\n", req.Task)
 
 	default:
 		return nil, fmt.Errorf("unknown agent type: %s", req.Type)
 	}
 
-	if req.Workdir != "" {
-		cmd.Dir = req.Workdir
+	if req.WorkingDir != "" {
+		cmd.Dir = req.WorkingDir
 	}
 
 	// Pass through environment variables (includes ANTHROPIC_API_KEY)
@@ -150,7 +200,7 @@ func (m *Manager) Spawn(req SpawnRequest) (*Agent, error) {
 	}
 
 	agent.PID = cmd.Process.Pid
-	agent.Status = StatusRunning
+	agent.Status = StatusWorking
 
 	// Store agent
 	m.mu.Lock()
@@ -160,8 +210,15 @@ func (m *Manager) Spawn(req SpawnRequest) (*Agent, error) {
 	// Emit spawn event
 	m.emitEvent("agent_spawned", agent.ID, agent)
 
+	// For non-interactive prompts (-p flag), close stdin to signal EOF
+	if req.Type == AgentTypeClaudeCode {
+		stdin.Close()
+		agent.stdin = nil
+	}
+
 	// Start reading output
 	go m.readOutput(agent)
+	go m.readStderr(agent)
 
 	// Wait for process to complete
 	go m.waitForCompletion(agent)
@@ -171,9 +228,16 @@ func (m *Manager) Spawn(req SpawnRequest) (*Agent, error) {
 
 // readOutput reads stdout from the agent and emits events
 func (m *Manager) readOutput(agent *Agent) {
+	// Use larger buffer for JSON output (1MB)
 	scanner := bufio.NewScanner(agent.stdout)
+	buf := make([]byte, 0, 1024*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	fmt.Printf("Agent %s: Starting to read output...\n", agent.ID)
+
 	for scanner.Scan() {
 		line := scanner.Text()
+		fmt.Printf("Agent %s output: %s\n", agent.ID, truncate(line, 200))
 
 		// Try to parse as JSON event
 		var event map[string]interface{}
@@ -186,14 +250,29 @@ func (m *Manager) readOutput(agent *Agent) {
 		}
 	}
 
-	// Also read stderr
-	go func() {
-		scanner := bufio.NewScanner(agent.stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			m.emitEvent("agent_error", agent.ID, map[string]string{"text": line})
-		}
-	}()
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Agent %s: Scanner error: %v\n", agent.ID, err)
+	}
+
+	fmt.Printf("Agent %s: Finished reading output\n", agent.ID)
+}
+
+// truncate truncates a string for logging
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// readStderr reads stderr from the agent
+func (m *Manager) readStderr(agent *Agent) {
+	scanner := bufio.NewScanner(agent.stderr)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Printf("Agent %s stderr: %s\n", agent.ID, line)
+		m.emitEvent("agent_error", agent.ID, map[string]string{"text": line})
+	}
 }
 
 // waitForCompletion waits for the agent process to finish
@@ -204,8 +283,10 @@ func (m *Manager) waitForCompletion(agent *Agent) {
 	if err != nil {
 		agent.Status = StatusError
 		agent.Error = err.Error()
+		fmt.Printf("Agent %s (%s) exited with error: %v\n", agent.Name, agent.ID, err)
 	} else {
 		agent.Status = StatusStopped
+		fmt.Printf("Agent %s (%s) completed successfully\n", agent.Name, agent.ID)
 	}
 	m.mu.Unlock()
 
@@ -256,20 +337,31 @@ func (m *Manager) List() []*Agent {
 func (m *Manager) Kill(id string) error {
 	m.mu.Lock()
 	agent, ok := m.agents[id]
-	m.mu.Unlock()
-
 	if !ok {
+		m.mu.Unlock()
 		return fmt.Errorf("agent not found: %s", id)
 	}
 
-	if agent.cmd.Process == nil {
-		return fmt.Errorf("agent process not running")
+	// If already stopped, just remove from map
+	if agent.Status == StatusStopped || agent.Status == StatusError {
+		delete(m.agents, id)
+		m.mu.Unlock()
+		m.emitEvent("agent_removed", id, nil)
+		return nil
+	}
+	m.mu.Unlock()
+
+	// Try to kill the process
+	if agent.cmd != nil && agent.cmd.Process != nil {
+		_ = agent.cmd.Process.Kill() // Ignore error - process may already be dead
 	}
 
-	if err := agent.cmd.Process.Kill(); err != nil {
-		return fmt.Errorf("failed to kill agent: %w", err)
-	}
+	// Remove from map
+	m.mu.Lock()
+	delete(m.agents, id)
+	m.mu.Unlock()
 
+	m.emitEvent("agent_removed", id, nil)
 	return nil
 }
 
@@ -289,4 +381,166 @@ func (m *Manager) SendMessage(id string, message string) error {
 
 	_, err := fmt.Fprintln(agent.stdin, message)
 	return err
+}
+
+// SendKingMessage sends a message to the King orchestrator
+// The King is a special Claude Code agent that manages other agents
+func (m *Manager) SendKingMessage(message string) error {
+	m.mu.RLock()
+	// Look for an agent named "king" or with persona "king"
+	var kingAgent *Agent
+	for _, agent := range m.agents {
+		if agent.Name == "King" || agent.Persona == "king" {
+			kingAgent = agent
+			break
+		}
+	}
+	m.mu.RUnlock()
+
+	// If no king agent exists, spawn one
+	if kingAgent == nil {
+		req := SpawnRequest{
+			Type:    AgentTypeClaudeCode,
+			Name:    "King",
+			Task:    message,
+			Persona: "king",
+			Zone:    "default",
+		}
+		agent, err := m.Spawn(req)
+		if err != nil {
+			return fmt.Errorf("failed to spawn king agent: %w", err)
+		}
+
+		// Emit king response event (the agent will send responses via WebSocket)
+		m.emitEvent("king_response", agent.ID, map[string]interface{}{
+			"message": map[string]interface{}{
+				"role":      "assistant",
+				"content":   "I'm analyzing your request and will coordinate the team to accomplish this goal...",
+				"timestamp": time.Now().UnixMilli(),
+			},
+		})
+		return nil
+	}
+
+	// Send message to existing king agent
+	if kingAgent.stdin == nil {
+		return fmt.Errorf("king agent stdin not available")
+	}
+
+	_, err := fmt.Fprintln(kingAgent.stdin, message)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Zone management methods
+
+// CreateZone creates a new zone
+func (m *Manager) CreateZone(zone *Zone) (*Zone, error) {
+	if zone.ID == "" {
+		zone.ID = uuid.New().String()[:8]
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, exists := m.zones[zone.ID]; exists {
+		return nil, fmt.Errorf("zone already exists: %s", zone.ID)
+	}
+
+	m.zones[zone.ID] = zone
+	m.emitEvent("zone_created", "", zone)
+	return zone, nil
+}
+
+// GetZone returns a zone by ID
+func (m *Manager) GetZone(id string) (*Zone, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	zone, ok := m.zones[id]
+	return zone, ok
+}
+
+// ListZones returns all zones
+func (m *Manager) ListZones() []*Zone {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	zones := make([]*Zone, 0, len(m.zones))
+	for _, zone := range m.zones {
+		zones = append(zones, zone)
+	}
+	return zones
+}
+
+// UpdateZone updates a zone
+func (m *Manager) UpdateZone(id string, updates *Zone) (*Zone, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	zone, ok := m.zones[id]
+	if !ok {
+		return nil, fmt.Errorf("zone not found: %s", id)
+	}
+
+	if updates.Name != "" {
+		zone.Name = updates.Name
+	}
+	if updates.Color != "" {
+		zone.Color = updates.Color
+	}
+	if updates.WorkingDir != "" {
+		zone.WorkingDir = updates.WorkingDir
+	}
+
+	m.emitEvent("zone_updated", "", zone)
+	return zone, nil
+}
+
+// DeleteZone deletes a zone
+func (m *Manager) DeleteZone(id string) error {
+	if id == "default" {
+		return fmt.Errorf("cannot delete default zone")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.zones[id]; !ok {
+		return fmt.Errorf("zone not found: %s", id)
+	}
+
+	// Check if any agents are in this zone
+	for _, agent := range m.agents {
+		if agent.Zone == id {
+			return fmt.Errorf("cannot delete zone with active agents")
+		}
+	}
+
+	delete(m.zones, id)
+	m.emitEvent("zone_deleted", "", map[string]string{"zoneId": id})
+	return nil
+}
+
+// MoveAgent moves an agent to a different zone
+func (m *Manager) MoveAgent(agentID, zoneID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	agent, ok := m.agents[agentID]
+	if !ok {
+		return fmt.Errorf("agent not found: %s", agentID)
+	}
+
+	if _, ok := m.zones[zoneID]; !ok {
+		return fmt.Errorf("zone not found: %s", zoneID)
+	}
+
+	agent.Zone = zoneID
+	m.emitEvent("agent_status", agentID, map[string]interface{}{
+		"zone": zoneID,
+	})
+	return nil
 }

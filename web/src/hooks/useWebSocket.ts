@@ -1,20 +1,35 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { useAgentStore } from '../stores/agentStore'
-import type { Event, Agent } from '../types'
-
-type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
+import { useEffect, useRef, useCallback } from 'react'
+import { useStore } from '../stores/useStore'
+import type { Agent, Zone, ConversationMessage, ToolCall } from '../types'
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
-  const [status, setStatus] = useState<ConnectionStatus>('disconnected')
   const reconnectTimeoutRef = useRef<number | null>(null)
+  const reconnectAttempts = useRef(0)
+  const maxReconnectDelay = 30000
 
-  const { setAgents, addAgent, updateAgent, removeAgent, addEvent } = useAgentStore()
+  const {
+    setAgents,
+    addAgent,
+    updateAgent,
+    removeAgent,
+    setZones,
+    addZone,
+    updateZone,
+    removeZone,
+    addMessage,
+    updateToolCall,
+    setAgentAttention,
+    addKingMessage,
+    setConnectionStatus
+  } = useStore()
+
+  const connectionStatus = useStore((s) => s.connectionStatus)
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-    setStatus('connecting')
+    setConnectionStatus('connecting')
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/ws`
@@ -23,23 +38,29 @@ export function useWebSocket() {
     wsRef.current = ws
 
     ws.onopen = () => {
-      setStatus('connected')
+      setConnectionStatus('connected')
+      reconnectAttempts.current = 0
       console.log('WebSocket connected')
     }
 
     ws.onclose = () => {
-      setStatus('disconnected')
+      setConnectionStatus('disconnected')
       console.log('WebSocket disconnected')
 
-      // Reconnect after 3 seconds
+      // Exponential backoff for reconnection
+      const delay = Math.min(
+        1000 * Math.pow(2, reconnectAttempts.current),
+        maxReconnectDelay
+      )
+      reconnectAttempts.current++
+
       reconnectTimeoutRef.current = window.setTimeout(() => {
         connect()
-      }, 3000)
+      }, delay)
     }
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error)
-      setStatus('error')
     }
 
     ws.onmessage = (event) => {
@@ -50,45 +71,223 @@ export function useWebSocket() {
         console.error('Failed to parse WebSocket message:', e)
       }
     }
-  }, [setAgents, addAgent, updateAgent, removeAgent, addEvent])
+  }, [setConnectionStatus, setAgents, addAgent, updateAgent, removeAgent, setZones, addZone, updateZone, removeZone, addMessage, updateToolCall, setAgentAttention, addKingMessage])
 
-  const handleMessage = (data: Event & { type: string; agents?: Agent[]; agent?: Agent }) => {
+  const handleMessage = useCallback((data: WebSocketMessage) => {
     switch (data.type) {
+      // Agent list (initial sync)
       case 'agent_list':
         if (data.agents) {
-          setAgents(data.agents)
+          setAgents(data.agents.map(normalizeAgent))
         }
         break
 
+      // Agent spawned
       case 'agent_spawned':
         if (data.agent) {
-          addAgent(data.agent)
+          addAgent(normalizeAgent(data.agent))
         }
         break
 
-      case 'agent_stopped':
-        if (data.agent_id) {
-          updateAgent(data.agent_id, {
-            status: data.status as Agent['status'],
-            error: data.error
+      // Agent status changed
+      case 'agent_status':
+        if (data.agent_id || data.agentId) {
+          const agentId = data.agent_id || data.agentId
+          updateAgent(agentId!, {
+            status: normalizeStatus(data.status)
           })
         }
         break
 
+      // Agent stopped
+      case 'agent_stopped':
+        if (data.agent_id || data.agentId) {
+          const agentId = data.agent_id || data.agentId
+          const stoppedData = typeof data.data === 'object' ? data.data as Record<string, unknown> : {}
+          updateAgent(agentId!, {
+            status: normalizeStatus(stoppedData.status as string || data.status || 'stopped'),
+            error: (stoppedData.error as string) || data.error
+          })
+        }
+        break
+
+      // Agent killed
+      case 'agent_killed':
+      case 'agent_removed':
+        if (data.agent_id || data.agentId) {
+          removeAgent(data.agent_id || data.agentId!)
+        }
+        break
+
+      // Tool call
+      case 'tool_call':
+        if (data.agent_id || data.agentId) {
+          const agentId = data.agent_id || data.agentId
+          const toolCall: ToolCall = {
+            id: data.toolCallId || `tc-${Date.now()}`,
+            tool: data.tool || 'unknown',
+            args: data.args || {},
+            collapsed: true
+          }
+          const message: ConversationMessage = {
+            role: 'assistant',
+            content: '',
+            toolCalls: [toolCall],
+            timestamp: Date.now()
+          }
+          addMessage(agentId!, message)
+        }
+        break
+
+      // Tool result
+      case 'tool_result':
+        if ((data.agent_id || data.agentId) && data.toolCallId) {
+          updateToolCall(data.agent_id || data.agentId!, data.toolCallId, data.result || '')
+        }
+        break
+
+      // Message (conversation)
+      case 'message':
+        if (data.agent_id || data.agentId) {
+          const agentId = data.agent_id || data.agentId
+          const msg: ConversationMessage = {
+            role: data.role || 'assistant',
+            content: data.content || '',
+            isQuestion: data.isQuestion,
+            isPermission: data.isPermission,
+            timestamp: data.timestamp || Date.now()
+          }
+          addMessage(agentId!, msg)
+        }
+        break
+
+      // Attention request
+      case 'attention':
+        if (data.agent_id || data.agentId) {
+          const agentId = data.agent_id || data.agentId
+          setAgentAttention(agentId!, data.attention || null)
+        }
+        break
+
+      // Tokens updated
+      case 'tokens_updated':
+        if (data.agent_id || data.agentId) {
+          const agentId = data.agent_id || data.agentId
+          updateAgent(agentId!, {
+            tokens: data.tokens || 0,
+            cost: data.cost || 0
+          })
+        }
+        break
+
+      // Zone events
+      case 'zone_created':
+        if (data.zone) {
+          addZone(data.zone)
+        }
+        break
+
+      case 'zone_updated':
+        if (data.zone) {
+          updateZone(data.zone.id, data.zone)
+        }
+        break
+
+      case 'zone_deleted':
+        if (data.zoneId) {
+          removeZone(data.zoneId)
+        }
+        break
+
+      // Zone list (sync)
+      case 'zone_list':
+        if (data.zones) {
+          setZones(data.zones)
+        }
+        break
+
+      // King response
+      case 'king_response':
+        if (data.message) {
+          addKingMessage(data.message)
+        }
+        break
+
+      // Full sync
+      case 'sync':
+        if (data.agents) {
+          setAgents(data.agents.map(normalizeAgent))
+        }
+        if (data.zones) {
+          setZones(data.zones)
+        }
+        break
+
+      // Legacy agent output (backward compatibility)
       case 'agent_output':
       case 'agent_error':
-      case 'tool_call':
-      case 'tool_result':
+        if (data.agent_id || data.agentId) {
+          const agentId = data.agent_id || data.agentId
+          const outputData = typeof data.data === 'object' ? data.data as Record<string, unknown> : { text: String(data.data) }
+
+          // Check if it's a structured event
+          if (outputData.type === 'tool_call') {
+            const toolCall: ToolCall = {
+              id: (outputData.id as string) || `tc-${Date.now()}`,
+              tool: (outputData.tool as string) || 'unknown',
+              args: (outputData.args as Record<string, unknown>) || {},
+              collapsed: true
+            }
+            const message: ConversationMessage = {
+              role: 'assistant',
+              content: '',
+              toolCalls: [toolCall],
+              timestamp: Date.now()
+            }
+            addMessage(agentId!, message)
+          } else if (outputData.type === 'output' || outputData.text) {
+            const content = (outputData.content as string) || (outputData.text as string) || ''
+            if (content) {
+              const message: ConversationMessage = {
+                role: data.type === 'agent_error' ? 'error' : 'assistant',
+                content,
+                timestamp: Date.now()
+              }
+              addMessage(agentId!, message)
+            }
+          }
+        }
+        break
+
+      // Legacy turn event
       case 'turn':
+        // Turn markers can be ignored for now
+        break
+
+      // Legacy thinking event
       case 'thinking':
+        // Could be added to conversation if needed
+        break
+
+      // Legacy output event
       case 'output':
-        addEvent(data)
+        if (data.agent_id || data.agentId) {
+          const agentId = data.agent_id || data.agentId
+          if (data.content) {
+            const message: ConversationMessage = {
+              role: 'assistant',
+              content: data.content,
+              timestamp: Date.now()
+            }
+            addMessage(agentId!, message)
+          }
+        }
         break
 
       default:
-        console.log('Unknown event type:', data.type, data)
+        console.log('Unknown WebSocket event type:', data.type, data)
     }
-  }
+  }, [setAgents, addAgent, updateAgent, removeAgent, setZones, addZone, updateZone, removeZone, addMessage, updateToolCall, setAgentAttention, addKingMessage])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -96,8 +295,8 @@ export function useWebSocket() {
     }
     wsRef.current?.close()
     wsRef.current = null
-    setStatus('disconnected')
-  }, [])
+    setConnectionStatus('disconnected')
+  }, [setConnectionStatus])
 
   const send = useCallback((data: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -105,10 +304,86 @@ export function useWebSocket() {
     }
   }, [])
 
+  // Force reconnect
+  const forceReconnect = useCallback(() => {
+    disconnect()
+    reconnectAttempts.current = 0
+    connect()
+  }, [disconnect, connect])
+
   useEffect(() => {
     connect()
     return () => disconnect()
   }, [connect, disconnect])
 
-  return { status, send, connect, disconnect }
+  return { status: connectionStatus, send, connect, disconnect, forceReconnect }
+}
+
+// Type for WebSocket messages
+interface WebSocketMessage {
+  type: string
+  agent_id?: string
+  agentId?: string
+  agents?: Record<string, unknown>[]
+  agent?: Record<string, unknown>
+  zones?: Zone[]
+  zone?: Zone
+  zoneId?: string
+  status?: string
+  error?: string
+  tool?: string
+  args?: Record<string, unknown>
+  result?: string
+  toolCallId?: string
+  content?: string
+  role?: 'user' | 'assistant' | 'error'
+  isQuestion?: boolean
+  isPermission?: boolean
+  timestamp?: number
+  tokens?: number
+  cost?: number
+  attention?: Agent['attention']
+  message?: import('../types').KingMessage
+  data?: unknown
+}
+
+// Helper to normalize agent from backend
+function normalizeAgent(backendAgent: Record<string, unknown>): Agent {
+  return {
+    id: backendAgent.id as string,
+    name: (backendAgent.name as string) || (backendAgent.id as string),
+    type: normalizeType(backendAgent.type as string),
+    persona: (backendAgent.persona as string) || null,
+    status: normalizeStatus(backendAgent.status as string),
+    tokens: (backendAgent.tokens as number) || 0,
+    cost: (backendAgent.cost as number) || 0,
+    task: (backendAgent.task as string) || '',
+    zone: (backendAgent.zone as string) || 'default',
+    workingDir: (backendAgent.workingDir as string) || (backendAgent.workdir as string) || '',
+    attention: null,
+    findings: [],
+    conversation: [],
+    created_at: (backendAgent.created_at as string) || new Date().toISOString(),
+    error: backendAgent.error as string | undefined,
+    pid: backendAgent.pid as number | undefined
+  }
+}
+
+function normalizeType(type: string): Agent['type'] {
+  if (type === 'claude' || type === 'claude-code') return 'claude-code'
+  return 'python'
+}
+
+function normalizeStatus(status: string | undefined): Agent['status'] {
+  if (!status) return 'idle'
+  const statusMap: Record<string, Agent['status']> = {
+    'starting': 'starting',
+    'running': 'working',
+    'working': 'working',
+    'idle': 'idle',
+    'error': 'error',
+    'waiting': 'waiting',
+    'stopped': 'stopped'
+  }
+  return statusMap[status] || 'idle'
 }
