@@ -17,9 +17,17 @@ import { MergeZoneDialog } from './components/MergeZoneDialog'
 import { KingPanel } from './components/KingPanel'
 import { ToastContainer } from './components/Toast'
 import { toast } from './stores/useToast'
+import { PhaseView } from './domains/workflow/PhaseView'
+import { TokenUsage } from './domains/knowledge/TokenUsage'
+import { GateApproval } from './domains/strategy/GateApproval'
 import type { Zone, Agent } from './types'
 
+type ViewMode = 'agents' | 'workflow' | 'tokens' | 'gates'
+
 function App() {
+  // View mode for v4 panels
+  const [viewMode, setViewMode] = useState<ViewMode>('agents')
+
   // Dialog state
   const [spawnOpen, setSpawnOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -185,29 +193,65 @@ function App() {
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        <Sidebar
-          onZoneEdit={handleZoneEdit}
-          onZoneDuplicate={handleZoneDuplicate}
-          onZoneSplit={handleZoneSplit}
-          onZoneMerge={handleZoneMerge}
-          onNewZone={handleNewZone}
-          onAgentMove={handleAgentMove}
-          onAgentShare={handleAgentShare}
-        />
-
-        {/* Main panel */}
-        {kingMode ? (
-          <KingPanel
-            onExit={() => setKingMode(false)}
-            onAgentClick={(agentId) => {
-              setKingMode(false)
-              selectAgent(agentId)
-            }}
+        {/* Sidebar - only show in agents mode */}
+        {viewMode === 'agents' && (
+          <Sidebar
+            onZoneEdit={handleZoneEdit}
+            onZoneDuplicate={handleZoneDuplicate}
+            onZoneSplit={handleZoneSplit}
+            onZoneMerge={handleZoneMerge}
+            onNewZone={handleNewZone}
+            onAgentMove={handleAgentMove}
+            onAgentShare={handleAgentShare}
           />
-        ) : (
-          <AgentPanel />
         )}
+
+        {/* Main panel area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* View mode tabs */}
+          <div className="flex items-center gap-1 px-3 py-2 bg-gray-900 border-b border-gray-800">
+            {(['agents', 'workflow', 'tokens', 'gates'] as ViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`
+                  px-3 py-1.5 text-xs font-medium rounded transition-colors
+                  ${viewMode === mode
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800'
+                  }
+                `}
+              >
+                {mode === 'agents' && '🤖 Agents'}
+                {mode === 'workflow' && '📋 Workflow'}
+                {mode === 'tokens' && '🪙 Tokens'}
+                {mode === 'gates' && '🚦 Gates'}
+              </button>
+            ))}
+          </div>
+
+          {/* Panel content */}
+          <div className="flex-1 overflow-hidden">
+            {kingMode ? (
+              <KingPanel
+                onExit={() => setKingMode(false)}
+                onAgentClick={(agentId) => {
+                  setKingMode(false)
+                  selectAgent(agentId)
+                  setViewMode('agents')
+                }}
+              />
+            ) : viewMode === 'agents' ? (
+              <AgentPanel />
+            ) : viewMode === 'workflow' ? (
+              <PhaseView />
+            ) : viewMode === 'tokens' ? (
+              <TokenUsage />
+            ) : viewMode === 'gates' ? (
+              <GateApproval />
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {/* Dialogs */}
