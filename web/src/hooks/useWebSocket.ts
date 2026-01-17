@@ -1,6 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../stores/useStore'
+import { useWorkflowStore } from '../stores/useWorkflowStore'
+import { useKnowledgeStore } from '../stores/useKnowledgeStore'
 import type { Agent, Zone, ConversationMessage, ToolCall } from '../types'
+import type { V4Event } from '../types/v4'
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
@@ -223,6 +226,75 @@ export function useWebSocket() {
         }
         break
 
+      // ============================================================
+      // V4 Events
+      // ============================================================
+
+      // V4 initial state sync
+      case 'v4_state':
+        useWorkflowStore.getState().handleEvent(data as V4Event)
+        break
+
+      // V4 Workflow events
+      case 'phase_changed':
+        useWorkflowStore.getState().handleEvent(data as V4Event)
+        break
+
+      case 'task_created':
+        useWorkflowStore.getState().handleEvent(data as V4Event)
+        break
+
+      case 'task_updated':
+        useWorkflowStore.getState().handleEvent(data as V4Event)
+        break
+
+      case 'gate_status':
+        useWorkflowStore.getState().handleEvent(data as V4Event)
+        break
+
+      // V4 Knowledge events
+      case 'token_warning':
+      case 'token_critical':
+        useKnowledgeStore.getState().handleEvent(data as V4Event)
+        break
+
+      case 'checkpoint_created':
+        useWorkflowStore.getState().handleEvent(data as V4Event)
+        useKnowledgeStore.getState().handleEvent(data as V4Event)
+        break
+
+      case 'handoff_received':
+        useKnowledgeStore.getState().handleEvent(data as V4Event)
+        break
+
+      case 'handoff_validated':
+        // Could trigger UI notification
+        console.log('Handoff validated:', data)
+        break
+
+      // V4 Runtime events
+      case 'agent_health':
+        // Update agent health status
+        if (data.agent_id) {
+          updateAgent(data.agent_id, {
+            status: data.health === 'dead' ? 'stopped' :
+                    data.health === 'stuck' ? 'error' :
+                    data.health === 'idle' ? 'idle' : 'working'
+          })
+        }
+        break
+
+      case 'agent_stuck':
+        // Mark agent as needing attention
+        if (data.agent_id) {
+          setAgentAttention(data.agent_id, {
+            type: 'error',
+            message: `Agent stuck for ${Math.floor((data.since_ms || 0) / 1000)}s`,
+            since: Date.now() - (data.since_ms || 0)
+          })
+        }
+        break
+
       // Legacy agent output (backward compatibility)
       case 'agent_output':
       case 'agent_error':
@@ -345,6 +417,28 @@ interface WebSocketMessage {
   attention?: Agent['attention']
   message?: import('../types').KingMessage
   data?: unknown
+
+  // V4 fields
+  state?: {
+    current_phase: string
+    phases: Array<{ phase: string; status: string }>
+    tasks: unknown[]
+    checkpoints: unknown[]
+  }
+  phase?: string
+  previous?: string
+  task?: unknown
+  task_id?: string
+  worker_id?: string
+  criteria?: Array<{ description: string; satisfied: boolean }>
+  usage?: number
+  budget?: number
+  remaining?: number
+  checkpoint_id?: string
+  valid?: boolean
+  errors?: string[]
+  health?: string
+  since_ms?: number
 }
 
 // Helper to normalize agent from backend

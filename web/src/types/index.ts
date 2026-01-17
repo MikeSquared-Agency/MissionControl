@@ -1,3 +1,6 @@
+// Re-export v4 types
+export * from './v4'
+
 // Agent types
 export type AgentType = 'python' | 'claude-code'
 

@@ -31,6 +31,9 @@ type Hub struct {
 	unregister chan *Client
 	manager    *manager.Manager
 	mu         sync.RWMutex
+
+	// v4StateProvider provides v4 state for initial sync
+	v4StateProvider func() interface{}
 }
 
 // NewHub creates a new Hub
@@ -115,6 +118,34 @@ func (h *Hub) sendInitialState(client *Client) {
 	}
 	zoneData, _ := json.Marshal(zoneEvent)
 	client.send <- zoneData
+
+	// Send v4 state if provider is set
+	if h.v4StateProvider != nil {
+		v4State := h.v4StateProvider()
+		if v4State != nil {
+			v4Event := map[string]interface{}{
+				"type":  "v4_state",
+				"state": v4State,
+			}
+			v4Data, _ := json.Marshal(v4Event)
+			client.send <- v4Data
+		}
+	}
+}
+
+// Notify broadcasts an event to all connected clients (implements v4.EventNotifier)
+func (h *Hub) Notify(event interface{}) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("Error marshaling v4 event: %v", err)
+		return
+	}
+	h.broadcast <- data
+}
+
+// SetV4StateProvider sets the function to get v4 state for initial sync
+func (h *Hub) SetV4StateProvider(provider func() interface{}) {
+	h.v4StateProvider = provider
 }
 
 // HandleWebSocket handles WebSocket connections
