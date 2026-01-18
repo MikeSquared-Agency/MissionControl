@@ -2,829 +2,393 @@
 
 ## Overview
 
-MissionControl is a multi-agent orchestration system built on a **layers × domains** architecture. Four vertical domains handle distinct responsibilities, while three horizontal layers handle presentation, API, and core logic.
+MissionControl is a visual multi-agent orchestration system. The key insight: **don't reinvent Claude Code**. King IS a Claude Code session with a good system prompt. Go is just a bridge to the UI.
 
 ---
 
-## Architecture Model
+## Architecture
 
 ```
-                         LAYERS
-                           │
-     ┌─────────────────────┼─────────────────────┐
-     │                     │                     │
-     ▼                     ▼                     ▼
-┌─────────┐          ┌──────────┐          ┌──────────┐
-│   UI    │   ────►  │   API    │   ────►  │   CORE   │
-│ (React) │          │   (Go)   │          │(Rust/LLM)│
-└─────────┘          └──────────┘          └──────────┘
-                           │
-          ┌────────────────┼────────────────┬────────────────┐
-          ▼                ▼                ▼                ▼
-     ┌─────────┐     ┌──────────┐    ┌───────────┐    ┌─────────┐
-     │STRATEGY │     │ WORKFLOW │    │ KNOWLEDGE │    │ RUNTIME │
-     └─────────┘     └──────────┘    └───────────┘    └─────────┘
-     
-                         DOMAINS
+┌─────────────────────────────────────────────────────────────┐
+│  React UI                                                   │
+│  - Visualize agents, phases, findings                       │
+│  - Chat with King                                           │
+│  - Approve gates                                            │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ WebSocket
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Go Bridge (NOT an orchestrator)                            │
+│  - Spawns King (Claude Code + CLAUDE.md)                    │
+│  - Spawns Workers (Claude Code + worker prompt)             │
+│  - Relays stdout/events to UI                               │
+│  - Serves REST API for UI actions                           │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ spawns processes
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  mc CLI (State Management)                                  │
+│  - spawn, kill, status, workers                             │
+│  - handoff, gate, phase, task                               │
+│  - Wraps Rust core for validation                           │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+        ┌───────────────┼───────────────┐
+        ▼               ▼               ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│  King        │ │  Worker 1    │ │  Worker 2    │
+│ (Claude Code)│ │ (Claude Code)│ │ (Claude Code)│
+│              │ │              │ │              │
+│ Orchestrates │ │ Executes     │ │ Executes     │
+│ via mc CLI   │ │ outputs JSON │ │ outputs JSON │
+└──────────────┘ └──────────────┘ └──────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  .mission/ (File-based State)                               │
+│  - CLAUDE.md (King system prompt)                           │
+│  - state/ (phase, tasks, workers, gates)                    │
+│  - specs/, findings/, handoffs/, checkpoints/               │
+│  - prompts/ (worker system prompts)                         │
+└─────────────────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Rust Core (Deterministic Logic)                            │
+│  - Workflow engine (phases, gates, tasks)                   │
+│  - Knowledge manager (tokens, validation)                   │
+│  - Health monitor (stuck detection)                         │
+│  - Called by mc CLI, not FFI                                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Key Insight
+
+Inspired by [Gastown](https://github.com/steveyegge/gastown) and [Claude-Flow](https://github.com/ruvnet/claude-flow):
+
+| What We Thought | What We Learned |
+|-----------------|-----------------|
+| Build custom orchestration loop in Go | Claude Code IS the orchestration loop |
+| Go calls Anthropic API for King | King IS a Claude Code session |
+| Message queues between agents | File-based state (.mission/) |
+| Complex context compilation | Claude Code manages its own context |
+| ~2000 lines of orchestration code | ~500 lines of bridge + CLI |
+
+**Gastown's pattern:** `gt` CLI manages state. Claude Code sessions orchestrate themselves by reading state and calling CLI commands.
+
+**Our pattern:** `mc` CLI manages state. King (Claude Code) orchestrates by reading .mission/ files and calling `mc` commands.
+
+---
+
+## Components
+
+### 1. React UI (web/)
+
+**Tech:** React 18, TypeScript, Tailwind, Zustand, Three.js (future)
+
+**Responsibilities:**
+- Display agents, phases, tasks, findings
+- King chat interface
+- Gate approval dialogs
+- Real-time updates via WebSocket
+
+**Does NOT:**
+- Make LLM API calls
+- Manage agent processes
+- Store persistent state
+
+### 2. Go Bridge (orchestrator/)
+
+**Tech:** Go, gorilla/mux, gorilla/websocket
+
+**Responsibilities:**
+- Spawn King process (Claude Code with .mission/CLAUDE.md)
+- Spawn worker processes (Claude Code with persona prompts)
+- Relay stdout from agents to WebSocket
+- Watch .mission/state/ for changes → emit WebSocket events
+- Serve REST API for UI actions (gate approval, etc.)
+
+**Does NOT:**
+- Call Anthropic API directly
+- Make orchestration decisions
+- Compile briefings or context
+
+**Key change from v3:** The "orchestrator" is now just a process manager and event relay. All intelligence is in Claude Code sessions.
+
+### 3. mc CLI (cmd/mc/)
+
+**Tech:** Go, cobra, calls Rust core
+
+**Commands:**
+```
+mc init                              # Create .mission/ scaffold
+mc spawn <persona> <task> --zone <z> # Spawn worker
+mc kill <worker-id>                  # Kill worker
+mc status                            # JSON dump of state
+mc workers                           # List active workers
+mc handoff <file>                    # Validate and store handoff
+mc gate check <phase>                # Check gate criteria
+mc gate approve <phase>              # Approve gate
+mc phase                             # Get current phase
+mc phase next                        # Transition to next phase
+mc task create <n> --phase <p>       # Create task
+mc task list                         # List tasks
+mc task update <id> --status <s>     # Update task status
+mc serve                             # Start Go bridge + UI
+```
+
+**Who uses it:**
+
+| User | When | Commands |
+|------|------|----------|
+| You (human) | King mode OFF, manual control | All of them |
+| King (Claude Code) | King mode ON | spawn, task, gate, status |
+| Workers (Claude Code) | Always | handoff |
+| Go Bridge | Always | spawn (to start King/workers) |
+
+### 4. King (Claude Code)
+
+**Tech:** Claude Code with .mission/CLAUDE.md
+
+**Responsibilities:**
+- Talk to user, understand intent
+- Create tasks via `mc task create`
+- Spawn workers via `mc spawn`
+- Read findings from .mission/findings/
+- Synthesize and decide next steps
+- Recommend gate approvals
+
+**Constraints:**
+- Never writes code directly
+- Never implements features
+- Delegates all work to workers
+- Uses `mc` CLI for state management
+
+**System prompt:** Lives in `.mission/CLAUDE.md`, created by `mc init`.
+
+### 5. Workers (Claude Code)
+
+**Tech:** Claude Code with persona-specific prompts
+
+**Responsibilities:**
+- Execute assigned task
+- Stay within assigned zone
+- Output structured JSON handoff when done
+- Run `mc handoff` to validate and store
+
+**11 Personas:**
+
+| Persona | Phase | Model | Focus |
+|---------|-------|-------|-------|
+| Researcher | Idea | Sonnet | Feasibility research |
+| Designer | Design | Sonnet | UI mockups |
+| Architect | Design | Sonnet | System design |
+| Developer | Implement | Sonnet | Build features |
+| Debugger | Implement | Sonnet | Fix issues |
+| Reviewer | Verify | Haiku | Code review |
+| Security | Verify | Sonnet | Security audit |
+| Tester | Verify | Haiku | Write tests |
+| QA | Verify | Haiku | E2E testing |
+| Docs | Document | Haiku | Documentation |
+| DevOps | Release | Haiku | Deployment |
+
+### 6. Rust Core (core/)
+
+**Tech:** Rust
+
+**Responsibilities:**
+- Workflow engine (phase state machine, gate logic)
+- Knowledge manager (token counting, handoff validation)
+- Health monitor (stuck detection thresholds)
+
+**Exposed as:** CLI commands called by `mc`, not FFI.
+
+```bash
+# mc handoff internally calls:
+mc-core validate-handoff findings.json
+
+# mc gate check internally calls:
+mc-core check-gate design
+```
+
+### 7. .mission/ Directory
+
+**Created by:** `mc init`
+
+**Structure:**
+```
+.mission/
+├── CLAUDE.md                 # King system prompt
+├── config.json               # Project settings
+│
+├── state/
+│   ├── phase.json           # Current phase
+│   ├── tasks.json           # All tasks
+│   ├── workers.json         # Active workers
+│   └── gates.json           # Gate status
+│
+├── specs/
+│   └── SPEC-{name}.md       # Feature specs
+│
+├── findings/
+│   └── {task-id}.json       # Compressed findings per task
+│
+├── handoffs/
+│   └── {worker-id}-{ts}.json # Raw handoff records
+│
+├── checkpoints/
+│   └── checkpoint-{ts}.json  # Periodic full state
+│
+└── prompts/
+    ├── researcher.md         # Persona prompts
+    ├── designer.md
+    ├── developer.md
+    └── ...
 ```
 
 ---
 
 ## Domains
 
-### 1. Strategy
+The four-domain model still applies, but implementation is simpler:
 
-**Responsibility:** High-level decisions requiring judgment.
-
-| Aspect | Detail |
-|--------|--------|
-| Questions answered | Is this spec ready? Should we split this task? How to handle a stuck worker? |
-| Intelligence | LLM-driven (Opus) |
-| Owner | King |
-| State | Decisions, approvals, conversation history |
-
-**What belongs here:**
-- User conversation
-- Phase gate approvals
-- Conflict resolution
-- Judgment calls on ambiguous situations
-- Finding synthesis when workers disagree
-
-**What doesn't belong here:**
-- Task routing (Workflow)
-- Briefing compilation (Knowledge)
-- Process management (Runtime)
+| Domain | What | Who Handles It |
+|--------|------|----------------|
+| **Strategy** | What to build, phase decisions | King (Claude Code) |
+| **Workflow** | Phase state, gates, tasks | Rust core + mc CLI |
+| **Knowledge** | Specs, findings, token budgets | Files + Rust validation |
+| **Runtime** | Process management, health | Go bridge + mc CLI |
 
 ---
 
-### 2. Workflow
+## Data Flow
 
-**Responsibility:** Where we are in the process.
-
-| Aspect | Detail |
-|--------|--------|
-| Questions answered | What phase are we in? Is this gate satisfied? What's the next task? |
-| Intelligence | Deterministic state machine |
-| Owner | Workflow Engine |
-| State | Phase, gate status, task dependencies, progress |
-
-**What belongs here:**
-- Phase transitions (Idea → Design → Implement → ...)
-- Gate status computation
-- Task state management (pending/in_progress/done)
-- Dependency graph between tasks
-- Progress aggregation from TODOs
-
-**What doesn't belong here:**
-- Deciding if work is good enough (Strategy)
-- What context to pass (Knowledge)
-- Spawning processes (Runtime)
-
----
-
-### 3. Knowledge
-
-**Responsibility:** What we know and how to share it.
-
-| Aspect | Detail |
-|--------|--------|
-| Questions answered | What does this worker need to know? What changed since last checkpoint? Are we over token budget? |
-| Intelligence | Rust (storage, counting, validation) + LLM (distillation) |
-| Owner | Knowledge Manager |
-| State | Specs, findings, checkpoints, deltas, token budgets |
-
-**What belongs here:**
-- Spec storage and retrieval
-- Findings accumulation
-- Briefing compilation (spec → task-specific context)
-- Handoff content management
-- Checkpoint/delta versioning
-- Token counting and budget enforcement
-- Context pruning (stale, duplicate, expired)
-
-**What doesn't belong here:**
-- Deciding what to build (Strategy)
-- Tracking task completion (Workflow)
-- Spawning workers (Runtime)
-
----
-
-### 4. Runtime
-
-**Responsibility:** How agents execute.
-
-| Aspect | Detail |
-|--------|--------|
-| Questions answered | Is this worker healthy? How do I spawn a Developer in the Backend zone? |
-| Intelligence | Deterministic process management |
-| Owner | Orchestrator |
-| State | Processes, connections, resource allocation |
-
-**What belongs here:**
-- Process spawning and killing
-- Worker health monitoring
-- Message routing between agents
-- WebSocket connections
-- Zone assignment
-- Resource allocation
-
-**What doesn't belong here:**
-- Deciding when to spawn (Strategy/Workflow)
-- What to tell the worker (Knowledge)
-- Whether the task is done (Workflow)
-
----
-
-## Layers
-
-### UI Layer (React)
-
-**Tech:** React 18, TypeScript, Tailwind, Zustand, Three.js
-
-**Responsibilities per domain:**
-
-| Domain | UI Components |
-|--------|---------------|
-| Strategy | King chat panel, approval dialogs, decision prompts |
-| Workflow | Phase progress view, gate status indicators, TODO display |
-| Knowledge | Spec viewer, findings browser, token usage display, briefing preview |
-| Runtime | Agent cards, org view, 3D visualization, spawn dialog, zone manager |
-
-**Key screens:**
-- Dashboard (overview of all domains)
-- King conversation (Strategy focus)
-- Project view (Workflow focus)
-- Agent detail (Runtime + Knowledge)
-- Settings (personas, MCPs, preferences)
-
----
-
-### API Layer (Go)
-
-**Tech:** Go, gorilla/mux, gorilla/websocket
-
-**Responsibilities per domain:**
-
-| Domain | Endpoints |
-|--------|-----------|
-| Strategy | `POST /api/king/message`, `POST /api/gates/:id/approve` |
-| Workflow | `GET /api/phases`, `GET /api/tasks`, `PUT /api/tasks/:id/status` |
-| Knowledge | `GET /api/specs/:id`, `GET /api/briefings/:worker`, `POST /api/handoffs` |
-| Runtime | `POST /api/agents`, `DELETE /api/agents/:id`, `GET /api/agents`, WebSocket `/ws` |
-
-**WebSocket events:**
-
-```typescript
-// Strategy
-{ type: "king_message", content: string, role: "user" | "assistant" }
-{ type: "approval_requested", gate_id: string, message: string }
-
-// Workflow  
-{ type: "phase_changed", phase: Phase }
-{ type: "task_updated", task_id: string, status: TaskStatus }
-{ type: "gate_status", gate_id: string, ready: boolean }
-
-// Knowledge
-{ type: "token_warning", worker_id: string, usage: number, budget: number }
-{ type: "checkpoint_created", checkpoint_id: string }
-{ type: "findings_updated", task_id: string }
-
-// Runtime
-{ type: "agent_spawned", agent: Agent }
-{ type: "agent_status", agent_id: string, status: AgentStatus }
-{ type: "agent_health", agent_id: string, health: HealthStatus }
-{ type: "tool_call", agent_id: string, tool: string, args: object }
-```
-
----
-
-### Core Layer (Rust + LLM)
-
-**Tech:** Rust (deterministic logic), Claude API (LLM calls)
-
-**Responsibilities per domain:**
-
-| Domain | Core Components | Tech |
-|--------|-----------------|------|
-| Strategy | King agent | LLM (Opus) |
-| Workflow | State machine, phase transitions, dependency resolver | Rust |
-| Knowledge | Token counter, checkpoint manager, delta engine, pruner, briefing compiler | Rust + LLM (Sonnet) |
-| Runtime | Health monitor, stream parser | Rust (+ Go for process mgmt) |
-
----
-
-## Domain Interactions
-
-### Flow: User requests a feature
+### User requests a feature (King mode ON)
 
 ```
-┌─────┐
-│ YOU │ "Build a login page"
-└──┬──┘
-   │
-   ▼
-┌──────────┐
-│ STRATEGY │ King: "Let me understand requirements..."
-│  (King)  │ Conversation until spec is clear
-└────┬─────┘
-     │ "Spec ready, proceed to Design"
-     ▼
-┌──────────┐
-│ WORKFLOW │ Transition: Idea → Design
-│ (Engine) │ Create tasks: [design-ui, design-api]
-└────┬─────┘
-     │ Task: design-ui ready
-     ▼
-┌───────────┐
-│ KNOWLEDGE │ Compile briefing for Designer
-│ (Manager) │ Spec → 300 token briefing
-└─────┬─────┘
-      │ Briefing ready
-      ▼
-┌─────────┐
-│ RUNTIME │ Spawn Designer worker
-│ (Orch)  │ Assign to Frontend zone
-└────┬────┘
-     │
-     ▼
-┌──────────┐
-│ DESIGNER │ Creates mockups
-│ (Worker) │ Outputs findings
-└────┬─────┘
-     │ Findings (structured JSON)
-     ▼
-┌───────────┐
-│ KNOWLEDGE │ Validate handoff, compute delta
-│ (Manager) │ Store findings, update checkpoint
-└─────┬─────┘
-      │ Findings stored
-      ▼
-┌──────────┐
-│ WORKFLOW │ Mark design-ui complete
-│ (Engine) │ Check gate: Design phase done?
-└────┬─────┘
-     │ Gate status
-     ▼
-┌──────────┐
-│ STRATEGY │ King: "Design complete. Ready for Implement?"
-│  (King)  │ Await user approval
-└──────────┘
-```
-
-### Flow: Worker context bloating
-
-```
-┌───────────┐
-│ KNOWLEDGE │ Token counter: Worker at 75% budget
-│ (Manager) │ Emit warning
-└─────┬─────┘
-      │ token_warning event
-      ▼
-┌──────────┐
-│ STRATEGY │ King decides: force handoff
-│  (King)  │ (or auto-rule triggers)
-└────┬─────┘
-     │ handoff decision
-     ▼
-┌─────────┐
-│ RUNTIME │ Signal worker to wrap up
-│ (Orch)  │
-└────┬────┘
-     │
-     ▼
-┌──────────┐
-│ WORKER   │ Outputs findings, dies
-└────┬─────┘
-     │ findings
-     ▼
-┌───────────┐
-│ KNOWLEDGE │ Validate, compute delta
-│ (Manager) │ Compile fresh briefing
-└─────┬─────┘
-      │ briefing
-      ▼
-┌─────────┐
-│ RUNTIME │ Spawn fresh worker with briefing
-│ (Orch)  │
-└─────────┘
-```
-
----
-
-## Tech Stack by Layer × Domain
-
-|  | Strategy | Workflow | Knowledge | Runtime |
-|--|----------|----------|-----------|---------|
-| **UI** | React | React | React | React + Three.js |
-| **API** | Go | Go | Go | Go |
-| **Core** | LLM (Opus) | Rust | Rust + LLM (Sonnet) | Go + Rust |
-
----
-
-## Rust Core Components
-
-### Workflow Engine
-
-```rust
-pub struct WorkflowEngine {
-    phases: Vec<Phase>,
-    current_phase: PhaseId,
-    tasks: HashMap<TaskId, Task>,
-    gates: HashMap<GateId, Gate>,
-}
-
-impl WorkflowEngine {
-    // Phase management
-    fn current_phase(&self) -> &Phase;
-    fn can_transition(&self, to: PhaseId) -> bool;
-    fn transition(&mut self, to: PhaseId) -> Result<(), WorkflowError>;
-    
-    // Task management
-    fn create_task(&mut self, task: Task) -> TaskId;
-    fn update_task_status(&mut self, id: TaskId, status: TaskStatus);
-    fn get_ready_tasks(&self) -> Vec<&Task>;
-    fn resolve_dependencies(&self, task_id: TaskId) -> Vec<TaskId>;
-    
-    // Gate management
-    fn check_gate(&self, gate_id: GateId) -> GateStatus;
-    fn compute_gate_status(&self, gate_id: GateId) -> bool;
-}
-
-pub enum Phase {
-    Idea,
-    Design,
-    Implement,
-    Verify,
-    Document,
-    Release,
-}
-
-pub enum TaskStatus {
-    Pending,
-    Ready,        // Dependencies met
-    InProgress,
-    Blocked(String),
-    Done,
-}
-
-pub enum GateStatus {
-    Open,         // Can proceed
-    Closed,       // Requirements not met
-    AwaitingApproval, // Ready but needs user OK
-}
-```
-
-### Knowledge Manager
-
-```rust
-pub struct KnowledgeManager {
-    specs: SpecStore,
-    findings: FindingsStore,
-    checkpoints: CheckpointStore,
-    token_budgets: HashMap<WorkerId, TokenBudget>,
-}
-
-impl KnowledgeManager {
-    // Token management
-    fn count_tokens(&self, text: &str) -> usize;
-    fn get_budget(&self, worker_id: &WorkerId) -> &TokenBudget;
-    fn check_budget(&self, worker_id: &WorkerId) -> BudgetStatus;
-    fn record_usage(&mut self, worker_id: &WorkerId, tokens: usize);
-    
-    // Handoff management
-    fn validate_handoff(&self, handoff: &Handoff) -> Result<(), ValidationError>;
-    fn compute_delta(&self, findings: &Findings, checkpoint_id: &CheckpointId) -> Delta;
-    fn store_findings(&mut self, task_id: &TaskId, findings: Findings);
-    
-    // Checkpoint management
-    fn create_checkpoint(&mut self, state: &ProjectState) -> CheckpointId;
-    fn restore_checkpoint(&self, id: &CheckpointId) -> ProjectState;
-    fn get_deltas_since(&self, checkpoint_id: &CheckpointId) -> Vec<Delta>;
-    
-    // Briefing compilation (returns inputs for LLM)
-    fn compile_briefing_inputs(
-        &self,
-        task: &Task,
-        checkpoint: &Checkpoint,
-        deltas: &[Delta],
-    ) -> BriefingInputs;
-    
-    // Pruning
-    fn prune_stale(&mut self, context: &mut Context, max_age: Duration);
-    fn prune_duplicates(&mut self, context: &mut Context);
-    fn prune_superseded(&mut self, context: &mut Context, decisions: &[Decision]);
-}
-
-pub enum BudgetStatus {
-    Healthy,                    // < 50%
-    Warning { remaining: usize }, // 50-75%
-    Critical { remaining: usize }, // > 75%
-    Exceeded,                   // Over budget
-}
-
-pub struct Handoff {
-    task_id: TaskId,
-    status: HandoffStatus,
-    findings: Vec<Finding>,
-    artifacts: Vec<PathBuf>,
-    open_questions: Vec<String>,
-    context_for_successor: Option<SuccessorContext>,
-}
-
-pub struct Finding {
-    finding_type: FindingType,
-    summary: String,           // 1-2 sentences
-    details_path: Option<PathBuf>,
-}
-
-pub enum FindingType {
-    Discovery,
-    Blocker,
-    Decision,
-    Concern,
-}
-```
-
-### Health Monitor
-
-```rust
-pub struct HealthMonitor {
-    workers: HashMap<WorkerId, WorkerHealth>,
-    check_interval: Duration,
-}
-
-impl HealthMonitor {
-    fn check_worker(&self, worker_id: &WorkerId) -> HealthStatus;
-    fn detect_stuck(&self, worker_id: &WorkerId, timeout: Duration) -> bool;
-    fn get_last_activity(&self, worker_id: &WorkerId) -> Option<Instant>;
-    fn mark_activity(&mut self, worker_id: &WorkerId);
-}
-
-pub enum HealthStatus {
-    Healthy,
-    Idle { since: Instant },
-    Stuck { since: Instant },
-    Unresponsive,
-    Dead,
-}
-```
-
----
-
-## Go API Components
-
-### Strategy Routes
-
-```go
-// POST /api/king/message
-type KingMessageRequest struct {
-    Content string `json:"content"`
-}
-
-type KingMessageResponse struct {
-    Content  string `json:"content"`
-    Actions  []KingAction `json:"actions,omitempty"`
-}
-
-// POST /api/gates/:id/approve
-type GateApprovalRequest struct {
-    Approved bool   `json:"approved"`
-    Comment  string `json:"comment,omitempty"`
-}
-```
-
-### Workflow Routes
-
-```go
-// GET /api/phases
-type PhasesResponse struct {
-    Current Phase   `json:"current"`
-    Phases  []Phase `json:"phases"`
-}
-
-// GET /api/tasks
-type TasksResponse struct {
-    Tasks []Task `json:"tasks"`
-}
-
-// PUT /api/tasks/:id/status
-type TaskStatusUpdate struct {
-    Status TaskStatus `json:"status"`
-}
-```
-
-### Knowledge Routes
-
-```go
-// GET /api/specs/:id
-type SpecResponse struct {
-    ID      string `json:"id"`
-    Content string `json:"content"`
-    Version int    `json:"version"`
-}
-
-// GET /api/briefings/:worker_id
-type BriefingResponse struct {
-    WorkerID string `json:"worker_id"`
-    TaskID   string `json:"task_id"`
-    Content  string `json:"content"`
-    Tokens   int    `json:"tokens"`
-}
-
-// POST /api/handoffs
-type HandoffRequest struct {
-    WorkerID      string    `json:"worker_id"`
-    TaskID        string    `json:"task_id"`
-    Status        string    `json:"status"`
-    Findings      []Finding `json:"findings"`
-    Artifacts     []string  `json:"artifacts"`
-    OpenQuestions []string  `json:"open_questions,omitempty"`
-}
-```
-
-### Runtime Routes
-
-```go
-// POST /api/agents
-type SpawnRequest struct {
-    Persona   string `json:"persona"`
-    Task      string `json:"task"`
-    Zone      string `json:"zone"`
-    WorkDir   string `json:"workdir,omitempty"`
-}
-
-// GET /api/agents
-type AgentsResponse struct {
-    Agents []Agent `json:"agents"`
-}
-
-// DELETE /api/agents/:id
-// No body, returns 204
-
-// WebSocket /ws
-// Bidirectional event stream
-```
-
----
-
-## File Structure
-
-```
-mission-control/
-├── SPEC.md
-├── ARCHITECTURE.md          # This file
-│
-├── ui/                      # Presentation Layer
-│   └── web/
-│       ├── package.json
-│       ├── src/
-│       │   ├── App.tsx
-│       │   │
-│       │   ├── domains/
-│       │   │   ├── strategy/
-│       │   │   │   ├── KingChat.tsx
-│       │   │   │   ├── ApprovalDialog.tsx
-│       │   │   │   └── hooks/useKing.ts
-│       │   │   │
-│       │   │   ├── workflow/
-│       │   │   │   ├── PhaseView.tsx
-│       │   │   │   ├── TaskList.tsx
-│       │   │   │   ├── GateStatus.tsx
-│       │   │   │   └── hooks/useWorkflow.ts
-│       │   │   │
-│       │   │   ├── knowledge/
-│       │   │   │   ├── SpecViewer.tsx
-│       │   │   │   ├── FindingsBrowser.tsx
-│       │   │   │   ├── TokenUsage.tsx
-│       │   │   │   └── hooks/useKnowledge.ts
-│       │   │   │
-│       │   │   └── runtime/
-│       │   │       ├── AgentCard.tsx
-│       │   │       ├── OrgView.tsx
-│       │   │       ├── Scene3D.tsx
-│       │   │       ├── SpawnDialog.tsx
-│       │   │       └── hooks/useRuntime.ts
-│       │   │
-│       │   ├── components/      # Shared components
-│       │   ├── stores/          # Zustand stores
-│       │   └── types/           # TypeScript types
-│       │
-│       └── public/
-│
-├── api/                     # API Layer
-│   └── orchestrator/
-│       ├── go.mod
-│       ├── main.go
-│       │
-│       ├── strategy/
-│       │   ├── routes.go
-│       │   └── king.go
-│       │
-│       ├── workflow/
-│       │   └── routes.go
-│       │
-│       ├── knowledge/
-│       │   └── routes.go
-│       │
-│       ├── runtime/
-│       │   ├── routes.go
-│       │   ├── manager.go
-│       │   └── ws/
-│       │       └── hub.go
-│       │
-│       └── middleware/
-│
-├── core/                    # Core Layer
-│   ├── workflow/            # Rust
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── engine.rs
-│   │       ├── phase.rs
-│   │       ├── task.rs
-│   │       └── gate.rs
-│   │
-│   ├── knowledge/           # Rust
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── manager.rs
-│   │       ├── tokens.rs
-│   │       ├── checkpoint.rs
-│   │       ├── delta.rs
-│   │       ├── handoff.rs
-│   │       ├── pruning.rs
-│   │       └── briefing.rs
-│   │
-│   ├── runtime/             # Rust (monitoring only)
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── health.rs
-│   │       └── stream.rs    # Existing stream parser
-│   │
-│   └── ffi/                 # FFI bindings for Go
-│       ├── Cargo.toml
-│       └── src/
-│           └── lib.rs
-│
-├── agents/                  # Python agents
-│   ├── v0_minimal.py
-│   ├── v1_basic.py
-│   ├── v2_todo.py
-│   └── v3_subagent.py
-│
-└── .mission/                # Project state (per-project)
-    ├── config.md
-    ├── ideas/
-    ├── specs/
-    ├── mockups/
-    ├── progress/
-    ├── reviews/
-    ├── checkpoints/
-    ├── handoffs/
-    └── releases/
-```
-
----
-
-## Token Efficiency Strategy
-
-### Principle: Files are truth, briefings are context
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  SOURCE OF TRUTH (files in .mission/)                       │
-│  Complete specs, full history, git-tracked                  │
-│  Tokens: 2000+                                              │
-└─────────────────────────────────────────────────────────────┘
-                      │
-                      ▼ Knowledge Manager compiles
-┌─────────────────────────────────────────────────────────────┐
-│  BRIEFING (what worker receives)                            │
-│  - Task description                                         │
-│  - Key requirements (3-5 bullets)                           │
-│  - Relevant decisions                                       │
-│  - File paths for deep-dive                                 │
-│  Tokens: ~300                                               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Token Budget Enforcement
-
-| Threshold | Status | Action |
-|-----------|--------|--------|
-| < 50% | Healthy | Continue |
-| 50-75% | Warning | Alert, consider handoff |
-| > 75% | Critical | Prepare handoff |
-| > 90% | Exceeded | Force handoff |
-
-### Handoff Flow
-
-```
-Worker nearing budget
+User: "Build a login page"
         │
         ▼
-Worker outputs structured findings (JSON)
+React UI → WebSocket → Go Bridge → King stdin
         │
         ▼
-Rust validates against schema
-        │
-        ├── Invalid → Reject, worker retries
-        │
-        ▼ Valid
-Rust computes delta from checkpoint
-        │
-        ▼
-Delta + findings stored in .mission/handoffs/
+King (Claude Code):
+  1. Asks clarifying questions
+  2. Writes spec to .mission/specs/
+  3. Runs: mc task create "Design login UI" --phase design
+  4. Runs: mc spawn designer "Design login UI" --zone frontend
         │
         ▼
-Worker dies
+Go Bridge spawns Designer (Claude Code with designer prompt)
         │
         ▼
-New worker spawns
+Designer:
+  1. Creates mockups
+  2. Outputs JSON handoff
+  3. Runs: mc handoff findings.json
         │
         ▼
-Rust compiles: checkpoint + deltas → briefing inputs
+mc validates (via Rust), stores in .mission/findings/
         │
         ▼
-LLM (Sonnet) generates briefing
+Go file watcher sees change → WebSocket event
         │
         ▼
-New worker receives lean briefing
+King reads findings, synthesizes, continues...
 ```
 
-### Pruning Rules (Rust)
+### Manual control (King mode OFF)
 
-| Rule | Trigger | Action |
-|------|---------|--------|
-| Stale | Tool output > N turns old | Remove from context |
-| Duplicate | Same file read twice | Keep latest only |
-| Superseded | Decision changed | Remove old reasoning |
-| Completed | Subtask done | Collapse to summary |
-
----
-
-## Model Allocation
-
-| Role | Model | Rationale |
-|------|-------|-----------|
-| King | Claude Opus | Strategic judgment, synthesis |
-| Briefing generation | Claude Sonnet | Distillation, structured output |
-| Designer | Claude Sonnet | Creative, iterative |
-| Architect | Claude Sonnet | System design |
-| Developer | Claude Sonnet | Implementation |
-| Reviewer | Claude Haiku | Pattern matching, checklists |
-| Security | Claude Sonnet | Vulnerability analysis |
-| Tester | Claude Haiku | Test generation |
-| QA | Claude Haiku | E2E validation |
-| Docs | Claude Haiku | Templated writing |
-| DevOps | Claude Haiku | Config generation |
+```
+You: mc status
+You: mc task create "Fix bug" --phase implement
+You: mc spawn developer "Fix bug" --zone backend
+You: # ... worker completes ...
+You: mc gate check implement
+You: mc gate approve implement
+```
 
 ---
 
-## Implementation Phases
+## Distribution
 
-### Phase 1: Foundation
-- [ ] Rust workflow engine (state machine, tasks, gates)
-- [ ] Rust knowledge manager (tokens, checkpoints, validation)
-- [ ] Go API routes for all four domains
-- [ ] React domain structure scaffolding
+**Install via Brew:**
+```bash
+brew install mission-control
+```
 
-### Phase 2: Core Loop
-- [ ] King integration (Opus)
-- [ ] Briefing compilation (Rust + Sonnet)
-- [ ] Worker spawning with briefings
-- [ ] Handoff validation and storage
+**This installs:**
+- `mc` CLI (Go binary)
+- `mc-core` (Rust binary, called by mc)
+- `mission-control` (alias for `mc serve`)
 
-### Phase 3: UI
-- [ ] King chat panel
-- [ ] Phase/workflow view
-- [ ] Agent cards and org view
-- [ ] Token usage display
+**Setup flow:**
+```bash
+# In your project
+mc init                    # Creates .mission/
 
-### Phase 4: Efficiency
-- [ ] Token budget enforcement
-- [ ] Auto-handoff triggers
-- [ ] Pruning engine
-- [ ] Delta computation
+# Start everything
+mc serve                   # Starts Go bridge + opens UI
 
-### Phase 5: Polish
-- [ ] 3D visualization
-- [ ] Settings/persona management
-- [ ] Error handling and recovery
-- [ ] Documentation
+# Or manual
+mc serve --no-ui           # Just the bridge
+cd web && npm run dev      # UI separately
+```
 
 ---
 
-## Summary
+## Tech Stack Summary
 
-| Aspect | Decision |
-|--------|----------|
-| Architecture | Layers (UI/API/Core) × Domains (Strategy/Workflow/Knowledge/Runtime) |
-| UI | React + TypeScript + Tailwind + Three.js |
-| API | Go |
-| Core | Rust (deterministic) + LLM (judgment) |
-| Token strategy | Files = truth, briefings = context, aggressive pruning |
-| Handoffs | Structured JSON schemas, validated by Rust |
-| Model allocation | Opus for strategy, Sonnet for complex work, Haiku for simple work |
+| Component | Tech | Lines (est) |
+|-----------|------|-------------|
+| React UI | React, TypeScript, Tailwind, Zustand | ~3000 (done in v3) |
+| Go Bridge | Go, gorilla/websocket | ~500 |
+| mc CLI | Go, cobra | ~400 |
+| Rust Core | Rust | ~800 (done in v4) |
+| King CLAUDE.md | Markdown | ~100 |
+| Worker prompts | Markdown | ~50 each × 11 |
+
+**Total new code for v5:** ~900 lines of Go + markdown prompts.
+
+---
+
+## What We're NOT Building
+
+| Thing | Why Not |
+|-------|---------|
+| Custom LLM API calls in Go | Claude Code does this |
+| Message queues between agents | File-based state works |
+| Context compilation service | Claude Code manages context |
+| Steward/Quartermaster agent | Just CLI tools |
+| FFI bindings | CLI is simpler |
+
+---
+
+## Success Criteria
+
+MissionControl works when:
+
+1. `mc init` creates .mission/ with King prompt and worker prompts
+2. `mc serve` starts Go bridge and connects UI
+3. King (Claude Code) can spawn workers via `mc spawn`
+4. Workers output structured handoffs, validated by `mc handoff`
+5. King reads findings and continues orchestrating
+6. Gates can be checked and approved via `mc gate`
+7. Full workflow: Idea → Design → Implement → Verify → Document → Release
+8. UI shows real-time updates via WebSocket
+
+---
+
+## Version History
+
+| Version | Focus | Status |
+|---------|-------|--------|
+| v1 | Agent fundamentals (Python) | ✅ Done |
+| v2 | Go orchestrator + Rust parser | ✅ Done |
+| v3 | React UI (2D dashboard) | ✅ Done |
+| v4 | Rust core (workflow, knowledge, health) | ✅ Done |
+| v5 | King + mc CLI + integration | 🔄 Current |
+| v6 | 3D visualization | Future |
+| v7 | Persistence, multi-model | Future |
