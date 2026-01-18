@@ -54,10 +54,10 @@ Zones organize the codebase (Frontend, Backend, Database, Infra, Shared). Worker
 | v2 | ✅ Done | Go orchestrator + Rust parser |
 | v3 | ✅ Done | Full 2D dashboard (81 tests) |
 | v4 | ✅ Done | Rust core (workflow, knowledge, health) |
-| v5 | 🔄 Current | King orchestration + mc CLI |
+| v5 | ✅ Done | King orchestration + mc CLI (64 tests) |
 | v6 | 📋 Planned | 3D visualization + polish |
 
-## v5 Features (Current)
+## v5 Features
 
 - **mc CLI** — Command-line tool for MissionControl orchestration
   - `mc init` — Create `.mission/` scaffold with King + worker prompts
@@ -66,14 +66,24 @@ Zones organize the codebase (Frontend, Backend, Database, Infra, Shared). Worker
   - `mc task` — Create, list, update tasks
   - `mc spawn` — Spawn Claude Code worker process
   - `mc kill` — Kill worker process
-  - `mc handoff` — Validate and store worker handoff
+  - `mc handoff` — Validate and store worker handoff (supports `--rust` flag)
   - `mc gate` — Check/approve phase gates
   - `mc workers` — List active workers with health check
+- **mc-core** — Rust CLI for validation and token counting
+  - `mc-core validate-handoff <file>` — Schema + semantic validation
+  - `mc-core check-gate <phase>` — Gate criteria evaluation
+  - `mc-core count-tokens <file>` — Fast token counting with tiktoken
 - **Go Bridge** — WebSocket events for real-time state sync
   - File watcher on `.mission/state/`
   - King process management (start, stop, message)
   - Automatic event broadcast on state changes
+- **React UI Updates**
+  - King status indicator with start/stop controls
+  - Workers panel showing active/completed/errored workers
+  - Findings viewer with type filtering
+  - v5 WebSocket event handlers
 - **King as Claude Code** — King IS a Claude Code session with CLAUDE.md prompt
+- **64 Tests** — 8 Go CLI + 56 Rust core tests
 
 ## v3 Features
 
@@ -90,11 +100,35 @@ Zones organize the codebase (Frontend, Backend, Database, Infra, Shared). Worker
 | Component | Language | Purpose |
 |-----------|----------|---------|
 | **Agents** | Python | Custom agents, educational |
-| **API** | Go | Process management, REST, WebSocket |
-| **Core** | Rust | Workflow engine, token counting (v4) |
+| **mc CLI** | Go | MissionControl CLI commands |
+| **Orchestrator** | Go | Process management, REST, WebSocket |
+| **mc-core** | Rust | Validation, token counting, gate checking |
+| **Core** | Rust | Workflow engine, knowledge manager (v4) |
 | **Strategy** | Claude Opus | King agent (v5) |
 | **Workers** | Claude Sonnet/Haiku | Task execution |
-| **UI** | React + Three.js | Dashboard + 3D visualization |
+| **UI** | React | Dashboard with Zustand state |
+
+## Installation
+
+### From Source (Recommended)
+
+```bash
+git clone https://github.com/DarlingtonDeveloper/MissionControl.git
+cd MissionControl
+
+# Build all components
+make build
+
+# Install to /usr/local/bin (macOS)
+make install
+```
+
+### Homebrew (Coming Soon)
+
+```bash
+brew tap DarlingtonDeveloper/tap
+brew install mission-control
+```
 
 ## Quick Start
 
@@ -190,13 +224,36 @@ npm run dev
 ### Running Tests
 
 ```bash
-# Go backend tests (29 tests)
-cd orchestrator
-go test ./...
+# All tests via Makefile
+make test
+
+# Go mc CLI tests (8 tests)
+cd cmd/mc && go test -v ./...
+
+# Go orchestrator tests
+cd orchestrator && go test ./...
+
+# Rust core tests (56 tests)
+cd core && cargo test
 
 # React frontend tests (52 tests)
-cd web
-npm test
+cd web && npm test
+```
+
+### Building Releases
+
+```bash
+# Build all components
+make build
+
+# Build for specific platform
+make release-darwin-arm64
+
+# Create release tarballs
+make release
+
+# Install locally (macOS)
+make install
 ```
 
 ## Requirements
