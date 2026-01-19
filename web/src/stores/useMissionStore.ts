@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { KingQuestion } from '../types'
 
 export interface MissionWorker {
   id: string
@@ -48,6 +49,7 @@ export interface MissionState {
   findings: Finding[]
   kingRunning: boolean
   kingConnected: boolean
+  kingQuestion: KingQuestion | null
 
   // Actions
   setInitialized: (initialized: boolean) => void
@@ -64,6 +66,7 @@ export interface MissionState {
   setFindings: (findings: Finding[]) => void
   setKingRunning: (running: boolean) => void
   setKingConnected: (connected: boolean) => void
+  setKingQuestion: (question: KingQuestion | null) => void
 
   // Handle WebSocket events
   handleEvent: (event: V5Event) => void
@@ -80,7 +83,9 @@ export type V5Event =
   | { type: 'gate_ready'; phase: string }
   | { type: 'gate_approved'; phase: string }
   | { type: 'king_output'; data: unknown }
+  | { type: 'king_message'; data: { role: string; content: string; timestamp: number } }
   | { type: 'king_status'; is_running: boolean }
+  | { type: 'king_question'; data: KingQuestion }
 
 export const useMissionStore = create<MissionState>()((set, get) => ({
   // Initial state
@@ -92,6 +97,7 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
   findings: [],
   kingRunning: false,
   kingConnected: false,
+  kingQuestion: null,
 
   // Actions
   setInitialized: (initialized) => set({ initialized }),
@@ -137,6 +143,7 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
 
   setKingRunning: (running) => set({ kingRunning: running }),
   setKingConnected: (connected) => set({ kingConnected: connected }),
+  setKingQuestion: (question) => set({ kingQuestion: question }),
 
   // Handle WebSocket events
   handleEvent: (event) => {
@@ -211,6 +218,11 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
         // King output is handled by the main store's king conversation
         break
 
+      case 'king_question':
+        // Claude is asking a question - show question UI
+        set({ kingQuestion: event.data })
+        break
+
       case 'findings_ready':
         // Trigger findings refresh
         console.log('Findings ready for task:', event.task_id)
@@ -227,6 +239,7 @@ export const useMissionGates = () => useMissionStore((s) => s.gates)
 export const useFindings = () => useMissionStore((s) => s.findings)
 export const useKingRunning = () => useMissionStore((s) => s.kingRunning)
 export const useKingConnected = () => useMissionStore((s) => s.kingConnected)
+export const useKingQuestion = () => useMissionStore((s) => s.kingQuestion)
 export const useMissionInitialized = () => useMissionStore((s) => s.initialized)
 
 // API functions
@@ -242,28 +255,41 @@ export async function fetchMissionState(): Promise<void> {
 }
 
 export async function startKing(): Promise<void> {
-  const res = await fetch(`${API_BASE}/mission/king/start`, { method: 'POST' })
+  const res = await fetch(`${API_BASE}/king/start`, { method: 'POST' })
   if (!res.ok) {
     throw new Error(await res.text())
   }
 }
 
 export async function stopKing(): Promise<void> {
-  const res = await fetch(`${API_BASE}/mission/king/stop`, { method: 'POST' })
+  const res = await fetch(`${API_BASE}/king/stop`, { method: 'POST' })
   if (!res.ok) {
     throw new Error(await res.text())
   }
 }
 
 export async function sendKingMessage(message: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/mission/king/message`, {
+  const res = await fetch(`${API_BASE}/king/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message })
+    body: JSON.stringify({ content: message })
   })
   if (!res.ok) {
     throw new Error(await res.text())
   }
+}
+
+export async function answerKingQuestion(optionIndex: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/king/answer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ option_index: optionIndex })
+  })
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  // Clear the question from state after answering
+  useMissionStore.getState().setKingQuestion(null)
 }
 
 export async function approveGate(phase: string): Promise<void> {

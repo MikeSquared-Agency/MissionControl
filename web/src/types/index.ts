@@ -89,6 +89,12 @@ export interface KingAction {
   content?: string
 }
 
+export interface KingQuestion {
+  question: string
+  options: string[]
+  selected: number
+}
+
 // API types
 export interface SpawnRequest {
   type: AgentType

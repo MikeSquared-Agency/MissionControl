@@ -1,12 +1,12 @@
 import { useRef, useEffect, useState } from 'react'
 import { useStore } from '../stores/useStore'
-import { useMissionStore, startKing, stopKing, sendKingMessage as sendMissionKingMessage } from '../stores/useMissionStore'
+import { useMissionStore, startKing, stopKing, sendKingMessage as sendMissionKingMessage, answerKingQuestion } from '../stores/useMissionStore'
 import { KingHeader } from './KingHeader'
 import { TeamOverview } from './TeamOverview'
 import { KingInput } from './KingInput'
 import { KingAction } from './KingAction'
 import { WorkersPanel } from './WorkersPanel'
-import type { KingMessage } from '../types'
+import type { KingMessage, KingQuestion } from '../types'
 
 interface KingPanelProps {
   onExit: () => void
@@ -17,9 +17,11 @@ export function KingPanel({ onExit, onAgentClick }: KingPanelProps) {
   const kingConversation = useStore((s) => s.kingConversation)
   const addKingMessage = useStore((s) => s.addKingMessage)
   const kingRunning = useMissionStore((s) => s.kingRunning)
+  const kingQuestion = useMissionStore((s) => s.kingQuestion)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [startingKing, setStartingKing] = useState(false)
   const [showWorkers, setShowWorkers] = useState(false)
+  const [answeringQuestion, setAnsweringQuestion] = useState(false)
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -78,8 +80,32 @@ export function KingPanel({ onExit, onAgentClick }: KingPanelProps) {
     }
   }
 
+  const handleAnswerQuestion = async (optionIndex: number) => {
+    if (!kingQuestion) return
+
+    setAnsweringQuestion(true)
+    try {
+      // Add user's selection to conversation
+      addKingMessage({
+        role: 'user',
+        content: `Selected: ${kingQuestion.options[optionIndex]}`,
+        timestamp: Date.now()
+      })
+      await answerKingQuestion(optionIndex)
+    } catch (err) {
+      console.error('Failed to answer question:', err)
+      addKingMessage({
+        role: 'assistant',
+        content: `Error: ${err instanceof Error ? err.message : 'Failed to answer'}`,
+        timestamp: Date.now()
+      })
+    } finally {
+      setAnsweringQuestion(false)
+    }
+  }
+
   return (
-    <div className="flex-1 flex flex-col bg-gray-950">
+    <div className="flex-1 flex flex-col bg-gray-950 overflow-hidden">
       {/* Header with status */}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
         <div className="flex items-center gap-3">
@@ -158,8 +184,82 @@ export function KingPanel({ onExit, onAgentClick }: KingPanelProps) {
         )}
       </div>
 
-      {/* Input */}
-      <KingInput onSend={handleSend} />
+      {/* Question Panel or Input */}
+      {kingQuestion ? (
+        <KingQuestionPanel
+          question={kingQuestion}
+          onAnswer={handleAnswerQuestion}
+          disabled={answeringQuestion}
+        />
+      ) : (
+        <KingInput onSend={handleSend} />
+      )}
+    </div>
+  )
+}
+
+// Question Panel Component
+interface KingQuestionPanelProps {
+  question: KingQuestion
+  onAnswer: (optionIndex: number) => void
+  disabled?: boolean
+}
+
+function KingQuestionPanel({ question, onAnswer, disabled }: KingQuestionPanelProps) {
+  const [selectedIndex, setSelectedIndex] = useState(question.selected)
+
+  return (
+    <div className="border-t border-gray-800 bg-gray-900/50 p-4">
+      <div className="max-w-2xl mx-auto">
+        {/* Question */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-amber-400">?</span>
+            <span className="text-sm font-medium text-gray-200">Claude is asking:</span>
+          </div>
+          <p className="text-sm text-gray-300 ml-5">{question.question}</p>
+        </div>
+
+        {/* Options */}
+        <div className="space-y-2 mb-4">
+          {question.options.map((option, index) => (
+            <button
+              key={index}
+              onClick={() => setSelectedIndex(index)}
+              disabled={disabled}
+              className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
+                selectedIndex === index
+                  ? 'border-amber-500/50 bg-amber-500/10 text-amber-100'
+                  : 'border-gray-700 bg-gray-800/50 text-gray-300 hover:border-gray-600 hover:bg-gray-800'
+              } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                  selectedIndex === index ? 'border-amber-400' : 'border-gray-500'
+                }`}>
+                  {selectedIndex === index && (
+                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                  )}
+                </div>
+                <span className="text-sm">{option}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Submit Button */}
+        <button
+          onClick={() => onAnswer(selectedIndex)}
+          disabled={disabled}
+          className={`w-full py-2 px-4 rounded-lg font-medium text-sm transition-all ${
+            disabled
+              ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+              : 'bg-amber-500 text-gray-900 hover:bg-amber-400'
+          }`}
+        >
+          {disabled ? 'Sending...' : 'Confirm Selection'}
+        </button>
+      </div>
     </div>
   )
 }

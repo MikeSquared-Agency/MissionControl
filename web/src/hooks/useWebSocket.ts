@@ -386,15 +386,19 @@ export function useWebSocket() {
         break
 
       case 'king_output':
+        // Raw Claude output events - useful for debugging
         useMissionStore.getState().handleEvent(data as V5Event)
-        // Also add to king conversation
+        break
+
+      case 'king_message':
+        // Processed King response with content
         if (data.data && typeof data.data === 'object') {
           const kingData = data.data as Record<string, unknown>
           if (kingData.content) {
             addKingMessage({
               role: 'assistant',
               content: kingData.content as string,
-              timestamp: Date.now(),
+              timestamp: (kingData.timestamp as number) || Date.now(),
               thinking: kingData.thinking as string | undefined,
               actions: kingData.actions as import('../types').KingAction[] | undefined
             })
@@ -404,6 +408,16 @@ export function useWebSocket() {
 
       case 'king_status':
         useMissionStore.getState().handleEvent(data as V5Event)
+        break
+
+      case 'king_question':
+        // Claude is asking a question - forward to mission store
+        if (data.data && typeof data.data === 'object') {
+          useMissionStore.getState().handleEvent({
+            type: 'king_question',
+            data: data.data as import('../types').KingQuestion
+          })
+        }
         break
 
       default:

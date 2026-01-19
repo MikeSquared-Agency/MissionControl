@@ -14,6 +14,7 @@ type KingStarter interface {
 	Stop() error
 	IsRunning() bool
 	SendMessage(message string) error
+	AnswerQuestion(optionIndex int) error
 }
 
 // V5Handler handles v5 API endpoints
@@ -53,6 +54,7 @@ func (h *V5Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/king/stop", h.handleKingStop)
 	mux.HandleFunc("/api/king/status", h.handleKingStatus)
 	mux.HandleFunc("/api/king/message", h.handleKingMessage)
+	mux.HandleFunc("/api/king/answer", h.handleKingAnswer)
 	mux.HandleFunc("/api/mission/gates/", h.handleGates)
 }
 
@@ -157,6 +159,42 @@ func (h *V5Handler) handleKingMessage(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "sent",
+	})
+}
+
+// handleKingAnswer responds to a question from Claude
+func (h *V5Handler) handleKingAnswer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !h.king.IsRunning() {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error": "King is not running",
+		})
+		return
+	}
+
+	var req struct {
+		OptionIndex int `json:"option_index"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid request body",
+		})
+		return
+	}
+
+	if err := h.king.AnswerQuestion(req.OptionIndex); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "answered",
 	})
 }
 
