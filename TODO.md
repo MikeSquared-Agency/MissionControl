@@ -21,24 +21,24 @@ For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.m
 ### 2. Repository Cleanup
 
 **File Renames:**
-- [ ] `orchestrator/api/v5.go` → `orchestrator/api/king.go`
-- [ ] `orchestrator/api/v4.go` → `orchestrator/api/mission.go`
-- [ ] Any other `v4`/`v5` prefixed code files → sensible names
+- [x] `orchestrator/api/v5.go` → `orchestrator/api/king.go`
+- [x] `orchestrator/api/v4.go` → removed (not needed)
+- [x] Any other `v4`/`v5` prefixed code files → sensible names
 
 **Other Cleanup:**
 - [ ] Audit for dead code / unused files
-- [ ] Ensure `.gitignore` covers: `dist/`, `target/`, `node_modules/`, `.mission/`
+- [x] Ensure `.gitignore` covers: `dist/`, `target/`, `node_modules/`, `.mission/`
 - [ ] Remove any accidentally committed build artifacts
 - [ ] Add `CODEOWNERS` for GitHub (optional)
 
 ### 3. Testing Improvements
 
 **Rust Tests:**
-- [ ] `core/workflow/` — state machine transitions
-- [ ] `core/knowledge/` — token counting accuracy
-- [ ] Handoff JSON validation
-- [ ] Gate criteria checking
-- [ ] `cargo test` passes all
+- [x] `core/workflow/` — state machine transitions (14 tests)
+- [x] `core/knowledge/` — token counting accuracy (23 tests)
+- [x] Handoff JSON validation
+- [x] Gate criteria checking
+- [x] `cargo test` passes all (56 tests)
 
 **Go Integration Tests:**
 - [ ] King tmux session lifecycle (start → message → response → stop)
@@ -47,26 +47,26 @@ For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.m
 - [ ] Rust core subprocess calls (`mc-core tokens`, `mc-core validate`)
 
 **React Tests (additions):**
-- [ ] Project wizard component
-- [ ] Multi-project switching
-- [ ] Matrix toggle interactions
+- [x] Project wizard component (13 tests)
+- [x] Multi-project switching (Sidebar tests)
+- [x] Matrix toggle interactions (11 tests)
 
 **E2E Tests (Playwright):**
-- [ ] Project wizard flow end-to-end
-- [ ] King Mode: send message, receive response
-- [ ] Agent spawning + count updates
-- [ ] Zone management CRUD
+- [x] Project wizard flow end-to-end (test written, needs backend)
+- [x] King Mode: send message, receive response (test written, needs backend)
+- [x] Agent spawning + count updates (test written, needs backend)
+- [x] Zone management CRUD (test written, needs backend)
 - [ ] Token usage displays correctly
-- [ ] WebSocket reconnection
+- [x] WebSocket reconnection (test written, needs backend)
 
 **Test Infrastructure:**
-- [ ] `make test` — runs Go + React + Rust
-- [ ] `make test-rust` — Rust only (`cargo test`)
-- [ ] `make test-go` — Go only (`go test ./...`)
-- [ ] `make test-web` — React only (`npm test`)
-- [ ] `make test-integration` — Go integration tests
-- [ ] `make test-e2e` — Playwright
-- [ ] GitHub Actions CI workflow for PRs
+- [x] `make test` — runs Go + React + Rust
+- [x] `make test-rust` — Rust only (`cargo test`)
+- [x] `make test-go` — Go only (`go test ./...`)
+- [x] `make test-web` — React only (`npm test`)
+- [x] `make test-integration` — Go integration tests
+- [x] `make test-e2e` — Playwright
+- [x] GitHub Actions CI workflow for PRs
 
 ### 4. Startup Simplification
 
@@ -74,9 +74,9 @@ For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.m
 - [ ] `make dev` — starts vite + orchestrator together (single command)
 - [ ] `make dev-ui` — vite only
 - [ ] `make dev-api` — orchestrator only
-- [ ] `make build` — production build (Go + Rust + React)
-- [ ] `make install` — install binaries to `/usr/local/bin`
-- [ ] `make clean` — remove build artifacts
+- [x] `make build` — production build (Go + Rust + React)
+- [x] `make install` — install binaries to `/usr/local/bin`
+- [x] `make clean` — remove build artifacts
 
 **Single Binary Distribution:**
 - [ ] `mc serve` command — starts orchestrator + serves built React UI
@@ -101,11 +101,11 @@ For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.m
 - [x] Wizard passes matrix config as JSON file to `mc init`
 
 ### 6. Configuration & Storage
-- [ ] Create `~/.mission-control/` on first run
-- [ ] `mc` CLI reads/writes config
-- [ ] Orchestrator reads/writes config
-- [ ] Add project to list when created via wizard
-- [ ] Update `lastOpened` when project opened
+- [x] Create `~/.mission-control/` on first run
+- [x] `mc` CLI reads/writes config
+- [x] Orchestrator reads/writes config
+- [x] Add project to list when created via wizard
+- [x] Update `lastOpened` when project opened
 - [ ] Sort sidebar by `lastOpened` descending
 
 ### 7. Bug Fix: Rust Core Not Integrated
@@ -154,8 +154,8 @@ Rust `core/` built but never called. Go does its own parsing.
 ### 11. Developer Experience
 
 **Makefile Additions:**
-- [ ] `make lint` — Go (`golangci-lint`) + Rust (`clippy`) + TypeScript (`eslint`)
-- [ ] `make fmt` — format all code (`go fmt`, `cargo fmt`, `prettier`)
+- [x] `make lint` — Go (`golangci-lint`) + Rust (`clippy`) + TypeScript (`eslint`)
+- [x] `make fmt` — format all code (`go fmt`, `cargo fmt`, `prettier`)
 
 **Editor Setup:**
 - [ ] `.vscode/settings.json` — format on save, recommended settings
@@ -185,18 +185,18 @@ Rust `core/` built but never called. Go does its own parsing.
 | # | Criteria | Status |
 |---|----------|--------|
 | 1 | `make dev` starts everything with one command | |
-| 2 | `make test` passes Go + React + Rust tests | |
-| 3 | `make test-e2e` passes Playwright tests | |
+| 2 | `make test` passes Go + React + Rust tests | Done |
+| 3 | `make test-e2e` passes Playwright tests | Needs backend |
 | 4 | README gets new user running in <5 minutes | |
 | 5 | ≤5 markdown files in root | Done |
-| 6 | No version-prefixed filenames (v4, v5) | |
+| 6 | No version-prefixed filenames (v4, v5) | Done |
 | 7 | Project wizard creates working `.mission/` | Done |
 | 8 | Token usage displays correctly | |
 | 9 | Agent count updates in real-time | |
 | 10 | Rust core called for token counting + validation | |
 | 11 | Multi-project switching works | |
 | 12 | `brew install mission-control` works | |
-| 13 | Global config at `~/.mission-control/config.json` | |
+| 13 | Global config at `~/.mission-control/config.json` | Done |
 
 ---
 
