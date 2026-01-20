@@ -332,26 +332,10 @@ king_error         # King process error
 
 ## Docs
 
-- [SPEC.md](SPEC.md) — Full specification
-- [TODO.md](TODO.md) — Progress tracker
-- [ARCHITECTURE.md](MISSIONCONTROL-ARCHITECTURE-SPEC.md) — Technical architecture
-
-## Architecture Insights
-
-**Why King + Workers?**
-- King maintains continuity with user
-- Workers are disposable, context stays lean
-- Handoffs are cheap: spawn fresh vs accumulate
-
-**Why Rust Core (v4)?**
-- Deterministic logic shouldn't use LLM tokens
-- Token counting needs to be fast and accurate
-- Validation should be strict (JSON schemas)
-
-**Why 6 Phases?**
-- Prevents rushing to implementation
-- Gates force quality checks
-- Each phase has clear entry/exit criteria
+- [ARCHITECTURE.md](ARCHITECTURE.md) — How it works
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Development guide
+- [CHANGELOG.md](CHANGELOG.md) — Version history
+- [TODO.md](TODO.md) — Active tasks
 
 ## Future Ideas
 

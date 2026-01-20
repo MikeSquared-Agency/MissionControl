@@ -7,212 +7,89 @@
 3. Start the UI: `cd web && npm run dev`
 4. Open http://localhost:3000 — wizard will guide you through setup
 
-For v5.1 spec details, see `V5.1-SPEC.md`.
-
-## Completed
-
-### v1: Agent Fundamentals ✅
-- [x] v0_minimal.py (~50 lines, bash only)
-- [x] v1_basic.py (~200 lines, full tools)
-- [x] v2_todo.py (~300 lines, explicit planning)
-- [x] v3_subagent.py (~450 lines, child agents)
-
-### v2: Orchestrator ✅
-- [x] Go process manager (spawn/kill agents)
-- [x] REST API endpoints
-- [x] WebSocket event hub
-- [x] Rust stream parser
-
-### v3: 2D Dashboard ✅
-- [x] Zustand state + persistence
-- [x] Header, Sidebar, AgentCard, AgentPanel
-- [x] Zone System (CRUD, split/merge)
-- [x] Persona System (defaults + custom)
-- [x] King Mode UI (KingPanel, KingHeader)
-- [x] Attention System (notifications)
-- [x] Settings Panel + keyboard shortcuts
-- [x] 81 unit tests
-
-### v4: Rust Core ✅
-- [x] Workflow engine (phases, gates, tasks)
-- [x] Knowledge manager (tokens, checkpoints, validation)
-- [x] Health monitor (stuck detection)
-- [x] Struct definitions and logic
-
----
-
-## Completed: v5 — King + mc CLI ✅
-
-The brain of MissionControl. Make King actually orchestrate.
-
-### Phase 1: mc CLI Foundation ✅
-
-```
-mc
-├── init       # Create .mission/ scaffold
-├── spawn      # Spawn worker process
-├── kill       # Kill worker process
-├── status     # JSON dump of state
-├── workers    # List active workers
-├── handoff    # Validate and store handoff
-├── gate       # Check/approve gates
-├── phase      # Get/set phase
-├── task       # CRUD for tasks
-└── serve      # Start Go bridge + UI
-```
-
-**DONE:**
-- [x] Create cmd/mc/ with cobra
-- [x] `mc init` - Create .mission/ directory structure
-- [x] `mc status` - Read and dump .mission/state/*.json
-- [x] `mc phase` - Get current phase
-- [x] `mc phase next` - Transition phase
-- [x] `mc task create <name> --phase <p> --zone <z> --persona <p>`
-- [x] `mc task list [--phase <p>]`
-- [x] `mc task update <id> --status <s>`
-- [x] `mc workers` - List active workers from state
-- [x] `mc spawn <persona> <task> --zone <zone>` - Spawn Claude Code process
-- [x] `mc kill <worker-id>` - Kill worker process
-- [x] `mc handoff <file>` - Validate JSON, store in .mission/
-- [x] `mc gate check <phase>` - Check gate criteria
-- [x] `mc gate approve <phase>` - Approve and transition
-- [ ] `mc serve` - Start Go bridge (WebSocket + file watcher)
-
-### Phase 2: .mission/ Structure ✅
-
-**DONE:**
-- [x] Define JSON schemas for state files
-- [x] Template for CLAUDE.md (King prompt)
-- [x] Templates for worker prompts (11 personas)
-- [x] `mc init` creates full structure
-
-**.mission/ layout:**
-```
-.mission/
-├── CLAUDE.md              # King system prompt
-├── config.json            # Project settings
-├── state/
-│   ├── phase.json
-│   ├── tasks.json
-│   ├── workers.json
-│   └── gates.json
-├── specs/
-├── findings/
-├── handoffs/
-├── checkpoints/
-└── prompts/
-    ├── researcher.md
-    ├── designer.md
-    ├── developer.md
-    └── ... (11 total)
-```
-
-### Phase 3: King CLAUDE.md ✅
-
-**DONE:**
-- [x] Write King system prompt (~100 lines)
-- [x] Document available mc commands
-- [x] Explain workflow (phases, gates, tasks)
-- [x] Define constraints (never code, always delegate)
-- [ ] Test King spawning workers via mc
-
-**Key sections:**
-- Role and responsibilities
-- Available commands (mc spawn, mc task, etc.)
-- Workflow explanation
-- Constraints (no coding, only coordinating)
-- How to read findings and synthesize
-
-### Phase 4: Worker Prompts ✅
-
-**DONE:**
-- [x] Researcher prompt (Idea phase)
-- [x] Designer prompt (Design phase)
-- [x] Architect prompt (Design phase)
-- [x] Developer prompt (Implement phase)
-- [x] Debugger prompt (Implement phase)
-- [x] Reviewer prompt (Verify phase)
-- [x] Security prompt (Verify phase)
-- [x] Tester prompt (Verify phase)
-- [x] QA prompt (Verify phase)
-- [x] Docs prompt (Document phase)
-- [x] DevOps prompt (Release phase)
-
-**Each prompt includes:**
-- Role and focus
-- Zone constraint
-- Handoff JSON format
-- `mc handoff` instruction
-
-### Phase 5: Go Bridge Updates ✅
-
-**DONE:**
-- [x] Spawn King as Claude Code process
-- [x] Route UI chat to King stdin
-- [x] Spawn workers as Claude Code processes
-- [x] Relay agent stdout to WebSocket
-- [x] File watcher on .mission/state/ → WebSocket events
-- [x] REST endpoint: POST /api/mission/gates/:phase/approve
-
-**WebSocket events (implemented):**
-```
-{ type: "phase_changed", phase: "design" }
-{ type: "task_created", task: Task }
-{ type: "task_updated", task_id: string, status: string }
-{ type: "worker_spawned", worker_id: string, persona: string }
-{ type: "worker_completed", worker_id: string }
-{ type: "findings_ready", task_id: string }
-{ type: "gate_ready", phase: string }
-{ type: "gate_approved", phase: string }
-{ type: "king_output", data: object }
-{ type: "king_status", is_running: boolean }
-{ type: "mission_state", state: object }
-```
-
-### Phase 6: Rust Integration ✅
-
-**DONE:**
-- [x] Create mc-core binary (core/mc-core/)
-- [x] `mc-core validate-handoff <file>` - Schema + semantic validation
-- [x] `mc-core check-gate <phase>` - Gate criteria evaluation
-- [x] `mc-core count-tokens <file>` - Token counting
-- [x] mc CLI calls mc-core for validation (`mc handoff --rust`)
-
-### Phase 7: React UI Updates ✅
-
-**DONE:**
-- [x] Connect King chat to actual King process (useMissionStore)
-- [x] Display phase from WebSocket events
-- [x] Display tasks from WebSocket events
-- [x] Display active workers (WorkersPanel)
-- [x] Gate approval dialog (existing GateApproval)
-- [x] Findings viewer (FindingsViewer)
-
-### Phase 8: Integration Testing ✅
-
-**DONE:**
-- [x] Test: `mc init` creates valid .mission/ (8 Go tests)
-- [x] Test: Phase transitions work correctly
-- [x] Test: Handoff validation accepts/rejects correctly
-- [x] Test: Gate check and approval flow
-- [x] Test: Full phase sequence Idea → Release
-- [x] Rust tests: 56 tests passing
-
-### Phase 9: Distribution ✅
-
-**DONE:**
-- [x] Homebrew formula (homebrew/mission-control.rb)
-- [x] Makefile for building releases
-- [x] Multi-platform build targets
-- [x] README install instructions (pending)
+For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.md`.
 
 ---
 
 ## Current: v5.1 — Quality of Life
 
-See `V5.1-SPEC.md` for full specification.
+### 1. Documentation Cleanup
+- [x] Consolidate specs into 5 root files (README, ARCHITECTURE, CONTRIBUTING, CHANGELOG, TODO)
+- [x] Move historical specs to `docs/archive/`
+- [ ] Remove `web/README.md` Vite boilerplate (or replace with real content)
 
-### Project Wizard ✅
+### 2. Repository Cleanup
+
+**File Renames:**
+- [ ] `orchestrator/api/v5.go` → `orchestrator/api/king.go`
+- [ ] `orchestrator/api/v4.go` → `orchestrator/api/mission.go`
+- [ ] Any other `v4`/`v5` prefixed code files → sensible names
+
+**Other Cleanup:**
+- [ ] Audit for dead code / unused files
+- [ ] Ensure `.gitignore` covers: `dist/`, `target/`, `node_modules/`, `.mission/`
+- [ ] Remove any accidentally committed build artifacts
+- [ ] Add `CODEOWNERS` for GitHub (optional)
+
+### 3. Testing Improvements
+
+**Rust Tests:**
+- [ ] `core/workflow/` — state machine transitions
+- [ ] `core/knowledge/` — token counting accuracy
+- [ ] Handoff JSON validation
+- [ ] Gate criteria checking
+- [ ] `cargo test` passes all
+
+**Go Integration Tests:**
+- [ ] King tmux session lifecycle (start → message → response → stop)
+- [ ] WebSocket connection + event flow
+- [ ] API endpoints with mocked Claude
+- [ ] Rust core subprocess calls (`mc-core tokens`, `mc-core validate`)
+
+**React Tests (additions):**
+- [ ] Project wizard component
+- [ ] Multi-project switching
+- [ ] Matrix toggle interactions
+
+**E2E Tests (Playwright):**
+- [ ] Project wizard flow end-to-end
+- [ ] King Mode: send message, receive response
+- [ ] Agent spawning + count updates
+- [ ] Zone management CRUD
+- [ ] Token usage displays correctly
+- [ ] WebSocket reconnection
+
+**Test Infrastructure:**
+- [ ] `make test` — runs Go + React + Rust
+- [ ] `make test-rust` — Rust only (`cargo test`)
+- [ ] `make test-go` — Go only (`go test ./...`)
+- [ ] `make test-web` — React only (`npm test`)
+- [ ] `make test-integration` — Go integration tests
+- [ ] `make test-e2e` — Playwright
+- [ ] GitHub Actions CI workflow for PRs
+
+### 4. Startup Simplification
+
+**Makefile Commands:**
+- [ ] `make dev` — starts vite + orchestrator together (single command)
+- [ ] `make dev-ui` — vite only
+- [ ] `make dev-api` — orchestrator only
+- [ ] `make build` — production build (Go + Rust + React)
+- [ ] `make install` — install binaries to `/usr/local/bin`
+- [ ] `make clean` — remove build artifacts
+
+**Single Binary Distribution:**
+- [ ] `mc serve` command — starts orchestrator + serves built React UI
+- [ ] Embed built `web/dist/` in Go binary using `embed` package
+- [ ] Single binary contains everything
+
+**Homebrew:**
+- [ ] Create `homebrew-tap` repo (`DarlingtonDeveloper/homebrew-tap`)
+- [ ] Formula downloads release binary
+- [ ] `brew tap DarlingtonDeveloper/tap && brew install mission-control` works
+- [ ] Document in README
+
+### 5. Project Wizard
 - [x] `ProjectWizard` component with step state machine
 - [x] `WorkflowMatrix` component with toggle logic
 - [x] Typing indicator component (300ms delay)
@@ -223,32 +100,103 @@ See `V5.1-SPEC.md` for full specification.
 - [x] `mc init` accepts `--path`, `--git`, `--king`, `--config` flags
 - [x] Wizard passes matrix config as JSON file to `mc init`
 
-### Personas Management
+### 6. Configuration & Storage
+- [ ] Create `~/.mission-control/` on first run
+- [ ] `mc` CLI reads/writes config
+- [ ] Orchestrator reads/writes config
+- [ ] Add project to list when created via wizard
+- [ ] Update `lastOpened` when project opened
+- [ ] Sort sidebar by `lastOpened` descending
 
-**11 Personas:** Researcher, Designer, Architect, Developer, Debugger, Reviewer, Security, Tester, QA, Docs, DevOps
+### 7. Bug Fix: Rust Core Not Integrated
 
+Rust `core/` built but never called. Go does its own parsing.
+
+- [ ] Verify `mc-core` binary builds with `make build`
+- [ ] Implement CLI commands in Rust (if not already)
+- [ ] Create `orchestrator/core/client.go` wrapper
+- [ ] Replace inline Go parsing with `core.CountTokens()` etc.
+- [ ] Update `make install` to install both `mc` and `mc-core`
+- [ ] Update `make build` to compile Rust before Go
+
+### 8. Bug Fix: Token Usage Display
+- [ ] After King response, pipe text through `mc-core tokens`
+- [ ] Emit `token_usage` WebSocket event
+- [ ] UI: update store from event
+- [ ] UI: display in header/status bar
+
+### 9. Bug Fix: Agent Count
+- [ ] Verify `agent_spawned` event emits on spawn
+- [ ] Verify `agent_stopped` event emits on kill
+- [ ] UI: listen to events, update `agents` array in store
+- [ ] Playwright test: spawn agent → verify count increments
+
+### 10. UI Polish
+
+**Loading/Error/Empty States:**
+- [ ] Loading spinner while waiting for King response
+- [ ] Error state with retry button (WebSocket disconnect, API error)
+- [ ] Empty state: no project selected → show wizard
+- [ ] Empty state: no agents → "Spawn your first agent" prompt
+
+**UX Improvements:**
+- [ ] WebSocket connection indicator (green/red dot in header)
+- [ ] King conversation persists in localStorage
+- [ ] Clear conversation button
+- [ ] Copy response to clipboard button
+- [ ] Keyboard shortcut hints (tooltips on hover)
+
+**Visual Polish:**
+- [ ] Consistent color palette
+- [ ] Agent status indicators (idle/working/error)
+- [ ] Typing indicator in King chat
+
+### 11. Developer Experience
+
+**Makefile Additions:**
+- [ ] `make lint` — Go (`golangci-lint`) + Rust (`clippy`) + TypeScript (`eslint`)
+- [ ] `make fmt` — format all code (`go fmt`, `cargo fmt`, `prettier`)
+
+**Editor Setup:**
+- [ ] `.vscode/settings.json` — format on save, recommended settings
+- [ ] `.vscode/extensions.json` — recommended extensions list
+
+**Optional:**
+- [ ] Pre-commit hooks via lefthook or husky
+
+### 12. Personas Management
 - [ ] Settings panel: enable/disable all 11 personas individually
 - [ ] Per-project persona configuration (stored in `.mission/config.json`)
 - [ ] Persona descriptions visible in Settings
 - [ ] Persona prompt preview/edit capability
 - [ ] Sync persona settings with workflow matrix
 
-### Dynamic Project Switching
+### 13. Dynamic Project Switching
 - [ ] Orchestrator API: `POST /api/projects/select` to switch active project
 - [ ] Orchestrator reloads `.mission/state/` watcher on project switch
 - [ ] WebSocket broadcasts project change event
 - [ ] UI reloads state when project switches (no page refresh needed)
 - [ ] Remove need to restart orchestrator with `--workdir` flag
 
-### Other v5.1 Items (from spec)
-- [ ] Documentation cleanup (consolidate to 5 root files)
-- [ ] Repository cleanup (rename v4.go → mission.go, v5.go → king.go)
-- [ ] Testing improvements (Rust tests, integration tests, Playwright E2E)
-- [ ] Startup simplification (`make dev` single command)
-- [ ] Rust core integration (fix token counting)
-- [ ] Token usage display fix
-- [ ] Agent count updates fix
-- [ ] UI polish (loading states, error handling, WebSocket indicator)
+---
+
+## Success Criteria
+
+| # | Criteria | Status |
+|---|----------|--------|
+| 1 | `make dev` starts everything with one command | |
+| 2 | `make test` passes Go + React + Rust tests | |
+| 3 | `make test-e2e` passes Playwright tests | |
+| 4 | README gets new user running in <5 minutes | |
+| 5 | ≤5 markdown files in root | Done |
+| 6 | No version-prefixed filenames (v4, v5) | |
+| 7 | Project wizard creates working `.mission/` | Done |
+| 8 | Token usage displays correctly | |
+| 9 | Agent count updates in real-time | |
+| 10 | Rust core called for token counting + validation | |
+| 11 | Multi-project switching works | |
+| 12 | `brew install mission-control` works | |
+| 13 | Global config at `~/.mission-control/config.json` | |
 
 ---
 
@@ -278,62 +226,13 @@ See `V5.1-SPEC.md` for full specification.
 
 | Version | Focus | Status |
 |---------|-------|--------|
-| v1 | Agent fundamentals | ✅ Done |
-| v2 | Go orchestrator | ✅ Done |
-| v3 | React UI | ✅ Done |
-| v4 | Rust core | ✅ Done |
-| v5 | King + mc CLI | ✅ Done |
-| v5.1 | Quality of life | 🔄 Current |
+| v1 | Agent fundamentals | Done |
+| v2 | Go orchestrator | Done |
+| v3 | React UI | Done |
+| v4 | Rust core | Done |
+| v5 | King + mc CLI | Done |
+| v5.1 | Quality of life | Current |
 | v6 | 3D visualization | Future |
 | v7+ | Polish & scale | Future |
 
----
-
-## Files to Create (v5)
-
-```
-cmd/
-└── mc/
-    ├── main.go
-    ├── init.go
-    ├── spawn.go
-    ├── kill.go
-    ├── status.go
-    ├── workers.go
-    ├── handoff.go
-    ├── gate.go
-    ├── phase.go
-    ├── task.go
-    └── serve.go
-
-templates/
-├── CLAUDE.md              # King prompt template
-├── config.json            # Default config
-└── prompts/
-    ├── researcher.md
-    ├── designer.md
-    ├── developer.md
-    ├── debugger.md
-    ├── reviewer.md
-    ├── security.md
-    ├── tester.md
-    ├── qa.md
-    ├── docs.md
-    └── devops.md
-```
-
----
-
-## Notes
-
-**Key insight from Gastown/Claude-Flow:** Don't reinvent Claude Code. The CLI manages state, Claude Code sessions do the orchestration.
-
-**What mc CLI does:**
-- State management (CRUD on .mission/ files)
-- Process management (spawn/kill Claude Code)
-- Validation (calls Rust core)
-
-**What mc CLI does NOT do:**
-- LLM API calls
-- Orchestration decisions
-- Context management
+See [CHANGELOG.md](CHANGELOG.md) for completed version details.
