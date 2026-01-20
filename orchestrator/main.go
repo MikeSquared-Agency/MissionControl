@@ -122,8 +122,14 @@ func main() {
 	// Create King API handler
 	kingHandler := api.NewKingHandler(king, absWorkDir)
 
+	// Create Projects API handler
+	projectsHandler := api.NewProjectsHandler()
+
 	// Set up routes
 	mux := http.NewServeMux()
+
+	// Projects API routes (must be before generic /api/ handler)
+	projectsHandler.RegisterRoutes(mux)
 
 	// King API routes (King and gates)
 	kingHandler.RegisterRoutes(mux)

@@ -4,14 +4,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 )
 
+// CLI flags for init command
+var (
+	initPath   string
+	initGit    bool
+	initKing   bool
+	initConfig string
+)
+
 func init() {
 	rootCmd.AddCommand(initCmd)
+
+	initCmd.Flags().StringVar(&initPath, "path", "", "Project path (default: current directory)")
+	initCmd.Flags().BoolVar(&initGit, "git", false, "Initialize git repository")
+	initCmd.Flags().BoolVar(&initKing, "king", true, "Enable King mode")
+	initCmd.Flags().StringVar(&initConfig, "config", "", "Path to JSON config file with workflow matrix")
 }
 
 var initCmd = &cobra.Command{
@@ -22,12 +37,28 @@ var initCmd = &cobra.Command{
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get working directory: %w", err)
+	// Determine working directory
+	workDir := initPath
+	if workDir == "" {
+		var err error
+		workDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get working directory: %w", err)
+		}
 	}
 
-	missionDir := filepath.Join(cwd, ".mission")
+	// Expand ~ to home directory
+	if strings.HasPrefix(workDir, "~") {
+		home, _ := os.UserHomeDir()
+		workDir = filepath.Join(home, workDir[1:])
+	}
+
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	missionDir := filepath.Join(workDir, ".mission")
 
 	// Check if already exists
 	if _, err := os.Stat(missionDir); err == nil {
@@ -84,12 +115,32 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create config.json
-	if err := writeJSON(filepath.Join(missionDir, "config.json"), Config{
+	// Load matrix config if provided
+	var matrixConfig map[string]interface{}
+	if initConfig != "" {
+		data, err := os.ReadFile(initConfig)
+		if err != nil {
+			return fmt.Errorf("failed to read config file: %w", err)
+		}
+		if err := json.Unmarshal(data, &matrixConfig); err != nil {
+			return fmt.Errorf("failed to parse config file: %w", err)
+		}
+	}
+
+	// Create config.json with optional matrix
+	config := Config{
 		Version:  "1.0.0",
 		Audience: "personal",
 		Zones:    []string{"frontend", "backend", "database", "infra", "shared"},
-	}); err != nil {
+		King:     initKing,
+	}
+
+	// If matrix provided, include it in config
+	if matrix, ok := matrixConfig["matrix"]; ok {
+		config.Matrix = matrix
+	}
+
+	if err := writeJSON(filepath.Join(missionDir, "config.json"), config); err != nil {
 		return err
 	}
 
@@ -120,7 +171,21 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println("Initialized .mission/ directory")
+	// Initialize git if requested
+	if initGit {
+		gitDir := filepath.Join(workDir, ".git")
+		if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+			gitCmd := exec.Command("git", "init")
+			gitCmd.Dir = workDir
+			if output, err := gitCmd.CombinedOutput(); err != nil {
+				fmt.Printf("Warning: git init failed: %v\n%s\n", err, output)
+			} else {
+				fmt.Println("Initialized git repository")
+			}
+		}
+	}
+
+	fmt.Printf("Initialized .mission/ directory at %s\n", workDir)
 	fmt.Println("")
 	fmt.Println("Created:")
 	fmt.Println("  .mission/CLAUDE.md           # King system prompt")
@@ -132,7 +197,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("  .mission/checkpoints/        # State checkpoints")
 	fmt.Println("  .mission/prompts/            # Worker system prompts")
 	fmt.Println("")
-	fmt.Println("Next: Run 'claude' in this directory to start King")
+	if initKing {
+		fmt.Println("Next: Run 'claude' in this directory to start King")
+	} else {
+		fmt.Println("King mode disabled. Run individual agents with 'mc spawn'")
+	}
 
 	return nil
 }
@@ -197,7 +266,9 @@ type GatesState struct {
 }
 
 type Config struct {
-	Version  string   `json:"version"`
-	Audience string   `json:"audience"` // personal, external
-	Zones    []string `json:"zones"`
+	Version  string      `json:"version"`
+	Audience string      `json:"audience"` // personal, external
+	Zones    []string    `json:"zones"`
+	King     bool        `json:"king"`
+	Matrix   interface{} `json:"matrix,omitempty"`
 }

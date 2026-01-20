@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useStore, fetchAgents, fetchZones, killAgent, respondToAttention } from './stores/useStore'
+import { useProjectStore, useCurrentProject, fetchProjects } from './stores/useProjectStore'
 import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
 import { AgentPanel } from './components/AgentPanel'
@@ -15,6 +16,7 @@ import { ContextShareDialog } from './components/ContextShareDialog'
 import { SplitZoneDialog } from './components/SplitZoneDialog'
 import { MergeZoneDialog } from './components/MergeZoneDialog'
 import { KingPanel } from './components/KingPanel'
+import { ProjectWizard } from './components/ProjectWizard'
 import { ToastContainer } from './components/Toast'
 import { toast } from './stores/useToast'
 import { PhaseView } from './domains/workflow/PhaseView'
@@ -65,6 +67,11 @@ function App() {
   const selectedAgentId = useStore((s) => s.selectedAgentId)
   const agents = useStore((s) => s.agents)
 
+  // Project state
+  const currentProject = useCurrentProject()
+  const setProjects = useProjectStore((s) => s.setProjects)
+  const openWizard = useProjectStore((s) => s.openWizard)
+
   // Fetch initial data on mount
   useEffect(() => {
     fetchAgents()
@@ -74,7 +81,18 @@ function App() {
     fetchZones()
       .then(setZones)
       .catch((err) => console.error('Failed to fetch zones:', err))
-  }, [setAgents, setZones])
+
+    fetchProjects()
+      .then(setProjects)
+      .catch((err) => console.error('Failed to fetch projects:', err))
+  }, [setAgents, setZones, setProjects])
+
+  // Auto-open wizard if no project selected
+  useEffect(() => {
+    if (currentProject === null) {
+      openWizard()
+    }
+  }, [currentProject, openWizard])
 
   // Close any open modal
   const closeAllModals = useCallback(() => {
@@ -308,6 +326,9 @@ function App() {
         danger={confirmProps.danger}
         confirmText="Confirm"
       />
+
+      {/* Project wizard */}
+      <ProjectWizard />
 
       {/* Toast notifications */}
       <ToastContainer />
