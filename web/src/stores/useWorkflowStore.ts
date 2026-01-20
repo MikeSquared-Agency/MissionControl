@@ -9,8 +9,8 @@ import type {
   PhasesResponse,
   TasksResponse,
   GateApprovalResponse,
-  V4Event
-} from '../types/v4'
+  WorkflowEvent
+} from '../types/workflow'
 
 interface WorkflowState {
   // State
@@ -34,7 +34,7 @@ interface WorkflowState {
   setError: (error: string | null) => void
 
   // Handle WebSocket events
-  handleEvent: (event: V4Event) => void
+  handleEvent: (event: WorkflowEvent) => void
 }
 
 export const useWorkflowStore = create<WorkflowState>()((set, get) => ({

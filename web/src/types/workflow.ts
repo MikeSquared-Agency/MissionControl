@@ -1,4 +1,4 @@
-// v4 Types for MissionControl
+// Workflow Types for MissionControl
 // Matches Go types in orchestrator/v4/types.go and Rust types in core/
 
 // ============================================================================
@@ -253,7 +253,7 @@ export interface AgentStuckEvent {
 }
 
 // Initial state event
-export interface V4StateEvent {
+export interface WorkflowStateEvent {
   type: 'v4_state'
   state: {
     current_phase: Phase
@@ -263,8 +263,8 @@ export interface V4StateEvent {
   }
 }
 
-// Union type for all v4 events
-export type V4Event =
+// Union type for all workflow events
+export type WorkflowEvent =
   | PhaseChangedEvent
   | TaskCreatedEvent
   | TaskUpdatedEvent
@@ -275,7 +275,7 @@ export type V4Event =
   | HandoffValidatedEvent
   | AgentHealthEvent
   | AgentStuckEvent
-  | V4StateEvent
+  | WorkflowStateEvent
 
 // ============================================================================
 // Helper Functions

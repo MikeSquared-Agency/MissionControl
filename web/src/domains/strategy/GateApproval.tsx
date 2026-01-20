@@ -6,13 +6,13 @@ import {
   fetchGate,
   approveGate
 } from '../../stores/useWorkflowStore'
-import type { Phase, Gate, GateCriterion } from '../../types/v4'
+import type { Phase, Gate, GateCriterion } from '../../types/workflow'
 import {
   ALL_PHASES,
   getPhaseLabel,
   getGateStatusColor,
   getNextPhase
-} from '../../types/v4'
+} from '../../types/workflow'
 
 export function GateApproval() {
   const currentPhase = useCurrentPhase()

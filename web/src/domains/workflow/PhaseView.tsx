@@ -11,13 +11,13 @@ import {
   approveGate,
   updateTaskStatus
 } from '../../stores/useWorkflowStore'
-import type { Phase, Task, Gate, TaskStatus } from '../../types/v4'
+import type { Phase, Task, Gate, TaskStatus } from '../../types/workflow'
 import {
   ALL_PHASES,
   getPhaseLabel,
   getTaskStatusColor,
   getGateStatusColor
-} from '../../types/v4'
+} from '../../types/workflow'
 
 export function PhaseView() {
   const currentPhase = useCurrentPhase()

@@ -119,14 +119,14 @@ func main() {
 	// Create API handler
 	apiHandler := api.NewHandler(mgr)
 
-	// Create v5 API handler
-	v5Handler := api.NewV5Handler(king, absWorkDir)
+	// Create King API handler
+	kingHandler := api.NewKingHandler(king, absWorkDir)
 
 	// Set up routes
 	mux := http.NewServeMux()
 
-	// v5 API routes (King and gates)
-	v5Handler.RegisterRoutes(mux)
+	// King API routes (King and gates)
+	kingHandler.RegisterRoutes(mux)
 
 	// v4 API routes (register first for specificity)
 	v4Handler.RegisterRoutes(mux)

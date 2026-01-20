@@ -4,7 +4,7 @@ import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useKnowledgeStore } from '../stores/useKnowledgeStore'
 import { useMissionStore, type V5Event } from '../stores/useMissionStore'
 import type { Agent, Zone, ConversationMessage, ToolCall } from '../types'
-import type { V4Event } from '../types/v4'
+import type { WorkflowEvent } from '../types/workflow'
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
@@ -238,39 +238,39 @@ export function useWebSocket() {
 
       // V4 initial state sync
       case 'v4_state':
-        useWorkflowStore.getState().handleEvent(data as V4Event)
+        useWorkflowStore.getState().handleEvent(data as WorkflowEvent)
         break
 
       // V4 Workflow events
       case 'phase_changed':
-        useWorkflowStore.getState().handleEvent(data as V4Event)
+        useWorkflowStore.getState().handleEvent(data as WorkflowEvent)
         break
 
       case 'task_created':
-        useWorkflowStore.getState().handleEvent(data as V4Event)
+        useWorkflowStore.getState().handleEvent(data as WorkflowEvent)
         break
 
       case 'task_updated':
-        useWorkflowStore.getState().handleEvent(data as V4Event)
+        useWorkflowStore.getState().handleEvent(data as WorkflowEvent)
         break
 
       case 'gate_status':
-        useWorkflowStore.getState().handleEvent(data as V4Event)
+        useWorkflowStore.getState().handleEvent(data as WorkflowEvent)
         break
 
       // V4 Knowledge events
       case 'token_warning':
       case 'token_critical':
-        useKnowledgeStore.getState().handleEvent(data as V4Event)
+        useKnowledgeStore.getState().handleEvent(data as WorkflowEvent)
         break
 
       case 'checkpoint_created':
-        useWorkflowStore.getState().handleEvent(data as V4Event)
-        useKnowledgeStore.getState().handleEvent(data as V4Event)
+        useWorkflowStore.getState().handleEvent(data as WorkflowEvent)
+        useKnowledgeStore.getState().handleEvent(data as WorkflowEvent)
         break
 
       case 'handoff_received':
-        useKnowledgeStore.getState().handleEvent(data as V4Event)
+        useKnowledgeStore.getState().handleEvent(data as WorkflowEvent)
         break
 
       case 'handoff_validated':

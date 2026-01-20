@@ -17,16 +17,16 @@ type KingStarter interface {
 	AnswerQuestion(optionIndex int) error
 }
 
-// V5Handler handles v5 API endpoints
-type V5Handler struct {
+// KingHandler handles King API endpoints
+type KingHandler struct {
 	king       KingStarter
 	missionDir string
 	mcPath     string
 }
 
-// NewV5Handler creates a new V5 handler
+// NewKingHandler creates a new King handler
 // workDir is the project root directory containing .mission/
-func NewV5Handler(king KingStarter, workDir string) *V5Handler {
+func NewKingHandler(king KingStarter, workDir string) *KingHandler {
 	// Try to find mc in common locations
 	mcPath := "mc"
 	commonPaths := []string{
@@ -41,15 +41,15 @@ func NewV5Handler(king KingStarter, workDir string) *V5Handler {
 		}
 	}
 
-	return &V5Handler{
+	return &KingHandler{
 		king:       king,
 		missionDir: workDir,
 		mcPath:     mcPath,
 	}
 }
 
-// RegisterRoutes registers v5 API routes
-func (h *V5Handler) RegisterRoutes(mux *http.ServeMux) {
+// RegisterRoutes registers King API routes
+func (h *KingHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/king/start", h.handleKingStart)
 	mux.HandleFunc("/api/king/stop", h.handleKingStop)
 	mux.HandleFunc("/api/king/status", h.handleKingStatus)
@@ -59,7 +59,7 @@ func (h *V5Handler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // handleKingStart starts the King process
-func (h *V5Handler) handleKingStart(w http.ResponseWriter, r *http.Request) {
+func (h *KingHandler) handleKingStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -87,7 +87,7 @@ func (h *V5Handler) handleKingStart(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleKingStop stops the King process
-func (h *V5Handler) handleKingStop(w http.ResponseWriter, r *http.Request) {
+func (h *KingHandler) handleKingStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -115,7 +115,7 @@ func (h *V5Handler) handleKingStop(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleKingStatus returns the King status
-func (h *V5Handler) handleKingStatus(w http.ResponseWriter, r *http.Request) {
+func (h *KingHandler) handleKingStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -127,7 +127,7 @@ func (h *V5Handler) handleKingStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleKingMessage sends a message to King
-func (h *V5Handler) handleKingMessage(w http.ResponseWriter, r *http.Request) {
+func (h *KingHandler) handleKingMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -163,7 +163,7 @@ func (h *V5Handler) handleKingMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleKingAnswer responds to a question from Claude
-func (h *V5Handler) handleKingAnswer(w http.ResponseWriter, r *http.Request) {
+func (h *KingHandler) handleKingAnswer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -199,7 +199,7 @@ func (h *V5Handler) handleKingAnswer(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGates handles gate operations
-func (h *V5Handler) handleGates(w http.ResponseWriter, r *http.Request) {
+func (h *KingHandler) handleGates(w http.ResponseWriter, r *http.Request) {
 	// Extract phase from path: /api/mission/gates/{phase}/approve
 	path := strings.TrimPrefix(r.URL.Path, "/api/mission/gates/")
 	parts := strings.Split(path, "/")
@@ -222,7 +222,7 @@ func (h *V5Handler) handleGates(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGateCheck checks the gate status for a phase
-func (h *V5Handler) handleGateCheck(w http.ResponseWriter, r *http.Request, phase string) {
+func (h *KingHandler) handleGateCheck(w http.ResponseWriter, r *http.Request, phase string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -252,7 +252,7 @@ func (h *V5Handler) handleGateCheck(w http.ResponseWriter, r *http.Request, phas
 }
 
 // handleGateApprove approves a gate
-func (h *V5Handler) handleGateApprove(w http.ResponseWriter, r *http.Request, phase string) {
+func (h *KingHandler) handleGateApprove(w http.ResponseWriter, r *http.Request, phase string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

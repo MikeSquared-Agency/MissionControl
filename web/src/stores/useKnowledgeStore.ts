@@ -6,8 +6,8 @@ import type {
   Finding,
   Handoff,
   HandoffResponse,
-  V4Event
-} from '../types/v4'
+  WorkflowEvent
+} from '../types/workflow'
 
 interface KnowledgeState {
   // State
@@ -29,7 +29,7 @@ interface KnowledgeState {
   setError: (error: string | null) => void
 
   // Handle WebSocket events
-  handleEvent: (event: V4Event) => void
+  handleEvent: (event: WorkflowEvent) => void
 }
 
 export const useKnowledgeStore = create<KnowledgeState>()((set, get) => ({

@@ -9,8 +9,8 @@ import {
   createBudget,
   createCheckpoint
 } from '../../stores/useKnowledgeStore'
-import type { TokenBudget, BudgetStatus, CheckpointSummary, Handoff } from '../../types/v4'
-import { getBudgetStatusColor } from '../../types/v4'
+import type { TokenBudget, BudgetStatus, CheckpointSummary, Handoff } from '../../types/workflow'
+import { getBudgetStatusColor } from '../../types/workflow'
 
 export function TokenUsage() {
   const budgets = useBudgets()

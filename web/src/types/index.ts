@@ -1,5 +1,5 @@
-// Re-export v4 types
-export * from './v4'
+// Re-export workflow types
+export * from './workflow'
 
 // Agent types
 export type AgentType = 'python' | 'claude-code'

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useKnowledgeStore } from './useKnowledgeStore'
-import type { TokenBudget, Finding, Handoff, V4Event } from '../types/v4'
+import type { TokenBudget, Finding, Handoff, WorkflowEvent } from '../types/workflow'
 
 describe('useKnowledgeStore', () => {
   beforeEach(() => {
@@ -134,7 +134,7 @@ describe('useKnowledgeStore', () => {
 
   describe('Event handling', () => {
     it('should handle token_warning event', () => {
-      const event: V4Event = {
+      const event: WorkflowEvent = {
         type: 'token_warning',
         worker_id: 'worker-1',
         usage: 12000,
@@ -152,7 +152,7 @@ describe('useKnowledgeStore', () => {
     })
 
     it('should handle token_critical event', () => {
-      const event: V4Event = {
+      const event: WorkflowEvent = {
         type: 'token_critical',
         worker_id: 'worker-2',
         usage: 18000,
@@ -169,7 +169,7 @@ describe('useKnowledgeStore', () => {
     })
 
     it('should handle checkpoint_created event', () => {
-      const event: V4Event = {
+      const event: WorkflowEvent = {
         type: 'checkpoint_created',
         checkpoint_id: 'cp-new',
         phase: 'design'
@@ -181,7 +181,7 @@ describe('useKnowledgeStore', () => {
     })
 
     it('should handle handoff_received event', () => {
-      const event: V4Event = {
+      const event: WorkflowEvent = {
         type: 'handoff_received',
         task_id: 'task-1',
         worker_id: 'worker-1',

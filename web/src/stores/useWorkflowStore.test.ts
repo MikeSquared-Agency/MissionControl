@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useWorkflowStore } from './useWorkflowStore'
-import type { Task, Phase, V4Event } from '../types/v4'
+import type { Task, Phase, WorkflowEvent } from '../types/workflow'
 
 describe('useWorkflowStore', () => {
   beforeEach(() => {
@@ -99,7 +99,7 @@ describe('useWorkflowStore', () => {
 
   describe('Event handling', () => {
     it('should handle v4_state event', () => {
-      const event: V4Event = {
+      const event: WorkflowEvent = {
         type: 'v4_state',
         state: {
           current_phase: 'design',
@@ -134,7 +134,7 @@ describe('useWorkflowStore', () => {
         { phase: 'design', status: 'pending' }
       ])
 
-      const event: V4Event = {
+      const event: WorkflowEvent = {
         type: 'phase_changed',
         phase: 'design',
         previous: 'idea'
@@ -146,7 +146,7 @@ describe('useWorkflowStore', () => {
     })
 
     it('should handle task_created event', () => {
-      const event: V4Event = {
+      const event: WorkflowEvent = {
         type: 'task_created',
         task: {
           id: 'task-new',
@@ -180,7 +180,7 @@ describe('useWorkflowStore', () => {
         updated_at: Date.now()
       })
 
-      const event: V4Event = {
+      const event: WorkflowEvent = {
         type: 'task_updated',
         task_id: 'task-1',
         status: 'done',
@@ -193,7 +193,7 @@ describe('useWorkflowStore', () => {
     })
 
     it('should handle checkpoint_created event', () => {
-      const event: V4Event = {
+      const event: WorkflowEvent = {
         type: 'checkpoint_created',
         checkpoint_id: 'cp-new',
         phase: 'idea'

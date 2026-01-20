@@ -42,6 +42,10 @@ export function KingHeader({ onExit }: KingHeaderProps) {
             <p className="text-lg font-mono text-gray-400">${stats.cost.toFixed(2)}</p>
             <p className="text-gray-500">Total Cost</p>
           </div>
+          <div className="text-center">
+            <p className="text-lg font-mono text-cyan-400">{stats.tokens.toLocaleString()}</p>
+            <p className="text-gray-500">Tokens</p>
+          </div>
         </div>
 
         {/* Right: Actions */}
