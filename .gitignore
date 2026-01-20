@@ -17,6 +17,7 @@ web/dist/
 
 # Build artifacts
 dist/
+cmd/mc/dist/
 *.tar.gz
 
 # Runtime

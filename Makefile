@@ -10,9 +10,12 @@ all: build
 # Build all components
 build: build-mc build-mc-core build-orchestrator build-web
 
-# Build mc CLI (Go)
-build-mc:
+# Build mc CLI (Go) - copies web dist for embedding
+build-mc: build-web
 	@echo "Building mc CLI..."
+	@echo "Copying web UI for embedding..."
+	rm -rf cmd/mc/dist
+	cp -r web/dist cmd/mc/dist
 	cd cmd/mc && go build -ldflags "-s -w -X main.version=$(VERSION)" -o ../../$(DIST_DIR)/mc .
 
 # Build mc-core (Rust)
@@ -134,7 +137,21 @@ install: build
 	cp $(DIST_DIR)/mc-orchestrator /usr/local/bin/
 	@echo "Installed successfully!"
 
-# Development: watch and rebuild
+# Development: start both vite and orchestrator
 dev:
-	@echo "Starting development mode..."
-	@echo "Run 'make build' in another terminal after changes"
+	@echo "Starting development mode (vite + orchestrator)..."
+	@echo "Press Ctrl+C to stop both services"
+	@trap 'kill 0' INT; \
+		(cd web && npm run dev) & \
+		(cd orchestrator && go run . --workdir $(PWD)) & \
+		wait
+
+# Development: UI only (vite)
+dev-ui:
+	@echo "Starting Vite dev server..."
+	cd web && npm run dev
+
+# Development: API only (orchestrator)
+dev-api:
+	@echo "Starting orchestrator..."
+	cd orchestrator && go run . --workdir $(PWD)

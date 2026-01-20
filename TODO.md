@@ -16,7 +16,7 @@ For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.m
 ### 1. Documentation Cleanup
 - [x] Consolidate specs into 5 root files (README, ARCHITECTURE, CONTRIBUTING, CHANGELOG, TODO)
 - [x] Move historical specs to `docs/archive/`
-- [ ] Remove `web/README.md` Vite boilerplate (or replace with real content)
+- [x] Remove `web/README.md` Vite boilerplate (or replace with real content)
 
 ### 2. Repository Cleanup
 
@@ -28,7 +28,7 @@ For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.m
 **Other Cleanup:**
 - [ ] Audit for dead code / unused files
 - [x] Ensure `.gitignore` covers: `dist/`, `target/`, `node_modules/`, `.mission/`
-- [ ] Remove any accidentally committed build artifacts
+- [x] Remove any accidentally committed build artifacts
 - [ ] Add `CODEOWNERS` for GitHub (optional)
 
 ### 3. Testing Improvements
@@ -41,10 +41,10 @@ For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.m
 - [x] `cargo test` passes all (56 tests)
 
 **Go Integration Tests:**
-- [ ] King tmux session lifecycle (start → message → response → stop)
-- [ ] WebSocket connection + event flow
-- [ ] API endpoints with mocked Claude
-- [ ] Rust core subprocess calls (`mc-core tokens`, `mc-core validate`)
+- [x] King tmux session lifecycle (start → message → response → stop)
+- [x] WebSocket connection + event flow
+- [x] API endpoints with mocked Claude
+- [x] Rust core subprocess calls (`mc-core tokens`, `mc-core validate`)
 
 **React Tests (additions):**
 - [x] Project wizard component (13 tests)
@@ -71,21 +71,21 @@ For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.m
 ### 4. Startup Simplification
 
 **Makefile Commands:**
-- [ ] `make dev` — starts vite + orchestrator together (single command)
-- [ ] `make dev-ui` — vite only
-- [ ] `make dev-api` — orchestrator only
+- [x] `make dev` — starts vite + orchestrator together (single command)
+- [x] `make dev-ui` — vite only
+- [x] `make dev-api` — orchestrator only
 - [x] `make build` — production build (Go + Rust + React)
 - [x] `make install` — install binaries to `/usr/local/bin`
 - [x] `make clean` — remove build artifacts
 
 **Single Binary Distribution:**
-- [ ] `mc serve` command — starts orchestrator + serves built React UI
-- [ ] Embed built `web/dist/` in Go binary using `embed` package
-- [ ] Single binary contains everything
+- [x] `mc serve` command — starts orchestrator + serves built React UI
+- [x] Embed built `web/dist/` in Go binary using `embed` package
+- [x] Single binary contains everything
 
 **Homebrew:**
 - [ ] Create `homebrew-tap` repo (`DarlingtonDeveloper/homebrew-tap`)
-- [ ] Formula downloads release binary
+- [x] Formula downloads release binary (see homebrew/mission-control.rb)
 - [ ] `brew tap DarlingtonDeveloper/tap && brew install mission-control` works
 - [ ] Document in README
 
@@ -112,24 +112,24 @@ For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.m
 
 Rust `core/` built but never called. Go does its own parsing.
 
-- [ ] Verify `mc-core` binary builds with `make build`
-- [ ] Implement CLI commands in Rust (if not already)
-- [ ] Create `orchestrator/core/client.go` wrapper
-- [ ] Replace inline Go parsing with `core.CountTokens()` etc.
-- [ ] Update `make install` to install both `mc` and `mc-core`
-- [ ] Update `make build` to compile Rust before Go
+- [x] Verify `mc-core` binary builds with `make build`
+- [x] Implement CLI commands in Rust (if not already)
+- [x] Create `orchestrator/core/client.go` wrapper
+- [x] Replace inline Go parsing with `core.CountTokens()` etc.
+- [x] Update `make install` to install both `mc` and `mc-core`
+- [x] Update `make build` to compile Rust before Go
 
 ### 8. Bug Fix: Token Usage Display
-- [ ] After King response, pipe text through `mc-core tokens`
-- [ ] Emit `token_usage` WebSocket event
-- [ ] UI: update store from event
-- [ ] UI: display in header/status bar
+- [x] After King response, pipe text through `mc-core tokens`
+- [x] Emit `token_usage` WebSocket event
+- [x] UI: update store from event
+- [x] UI: display in header/status bar
 
 ### 9. Bug Fix: Agent Count
-- [ ] Verify `agent_spawned` event emits on spawn
-- [ ] Verify `agent_stopped` event emits on kill
-- [ ] UI: listen to events, update `agents` array in store
-- [ ] Playwright test: spawn agent → verify count increments
+- [x] Verify `agent_spawned` event emits on spawn
+- [x] Verify `agent_stopped` event emits on kill
+- [x] UI: listen to events, update `agents` array in store
+- [x] Playwright test: spawn agent → verify count increments
 
 ### 10. UI Polish
 
@@ -184,16 +184,16 @@ Rust `core/` built but never called. Go does its own parsing.
 
 | # | Criteria | Status |
 |---|----------|--------|
-| 1 | `make dev` starts everything with one command | |
+| 1 | `make dev` starts everything with one command | Done |
 | 2 | `make test` passes Go + React + Rust tests | Done |
 | 3 | `make test-e2e` passes Playwright tests | Needs backend |
 | 4 | README gets new user running in <5 minutes | |
 | 5 | ≤5 markdown files in root | Done |
 | 6 | No version-prefixed filenames (v4, v5) | Done |
 | 7 | Project wizard creates working `.mission/` | Done |
-| 8 | Token usage displays correctly | |
-| 9 | Agent count updates in real-time | |
-| 10 | Rust core called for token counting + validation | |
+| 8 | Token usage displays correctly | Done |
+| 9 | Agent count updates in real-time | Done |
+| 10 | Rust core called for token counting + validation | Done |
 | 11 | Multi-project switching works | |
 | 12 | `brew install mission-control` works | |
 | 13 | Global config at `~/.mission-control/config.json` | Done |
