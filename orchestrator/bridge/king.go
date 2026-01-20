@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mike/mission-control/core"
 )
 
 // KingStatus represents the King's current status
@@ -81,6 +83,9 @@ func findClaude() string {
 	return "claude"
 }
 
+// KingAgentID is the fixed agent ID for King in the agents list
+const KingAgentID = "king"
+
 // King manages the King Claude Code process via tmux
 type King struct {
 	missionDir  string
@@ -91,6 +96,8 @@ type King struct {
 	mu          sync.RWMutex
 	stopChan    chan struct{}
 	lastPane    string // Last captured pane state for diff detection
+	totalTokens int    // Cumulative token count
+	totalCost   float64 // Cumulative cost (estimated)
 }
 
 // NewKing creates a new King manager
@@ -219,11 +226,31 @@ func (k *King) Start() error {
 
 	k.status = KingStatusRunning
 	k.stopChan = make(chan struct{})
+	k.totalTokens = 0
+	k.totalCost = 0
 	log.Printf("King started in tmux session '%s'", k.tmuxSession)
 
 	// Emit started event
 	k.emitEvent("king_started", map[string]interface{}{
 		"started_at": time.Now().UTC().Format(time.RFC3339),
+	})
+
+	// Emit King as an agent so it appears in the agents list
+	// Frontend expects agent data nested under "agent" key
+	k.emitEvent("agent_spawned", map[string]interface{}{
+		"agent": map[string]interface{}{
+			"id":         KingAgentID,
+			"name":       "King",
+			"type":       "king",
+			"persona":    "orchestrator",
+			"zone":       "default",
+			"workingDir": k.workDir,
+			"status":     "running",
+			"tokens":     0,
+			"cost":       0,
+			"created_at": time.Now().UTC().Format(time.RFC3339),
+			"task":       "Mission orchestration",
+		},
 	})
 
 	return nil
@@ -258,6 +285,12 @@ func (k *King) Stop() error {
 	log.Printf("King stopped")
 
 	k.emitEvent("king_stopped", nil)
+
+	// Emit agent stopped so King is removed from agents list
+	k.emitEvent("agent_stopped", map[string]interface{}{
+		"agent_id": KingAgentID,
+	})
+
 	return nil
 }
 
@@ -507,6 +540,47 @@ func (k *King) waitForResponse(userMessage string) {
 					"content":   response,
 					"timestamp": time.Now().UnixMilli(),
 				})
+
+				// Count tokens in the response using mc-core
+				if outputTokens, err := core.CountTokens(response); err == nil {
+					// Count input tokens (user message) as well
+					inputTokens := 0
+					if userMessage != "" {
+						if count, err := core.CountTokens(userMessage); err == nil {
+							inputTokens = count
+						}
+					}
+
+					// Update cumulative totals
+					totalNewTokens := inputTokens + outputTokens
+					// Approximate cost: $0.003/1K input, $0.015/1K output for Claude
+					newCost := (float64(inputTokens) * 0.003 / 1000) + (float64(outputTokens) * 0.015 / 1000)
+
+					k.mu.Lock()
+					k.totalTokens += totalNewTokens
+					k.totalCost += newCost
+					currentTokens := k.totalTokens
+					currentCost := k.totalCost
+					k.mu.Unlock()
+
+					log.Printf("King: token usage - input: %d, output: %d, total: %d, cost: $%.4f", inputTokens, outputTokens, currentTokens, currentCost)
+
+					// Emit token_usage for detailed tracking
+					k.emitEvent("token_usage", map[string]interface{}{
+						"input_tokens":  inputTokens,
+						"output_tokens": outputTokens,
+						"timestamp":     time.Now().UnixMilli(),
+					})
+
+					// Emit tokens_updated so King appears with tokens in agent list
+					k.emitEvent("tokens_updated", map[string]interface{}{
+						"agent_id": KingAgentID,
+						"tokens":   currentTokens,
+						"cost":     currentCost,
+					})
+				} else {
+					log.Printf("King: failed to count tokens: %v", err)
+				}
 			}
 
 			k.mu.Lock()

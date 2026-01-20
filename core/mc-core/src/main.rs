@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use knowledge::{Handoff, HandoffStatus, TokenCounter};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::{self, Read};
 use std::path::PathBuf;
 use workflow::{Gate, GateStatus, Phase};
 
@@ -29,10 +30,11 @@ enum Commands {
         #[arg(long, default_value = ".mission")]
         mission_dir: PathBuf,
     },
-    /// Count tokens in a file
+    /// Count tokens in text (from file or stdin)
     CountTokens {
-        /// Path to the file to count tokens in
-        file: PathBuf,
+        /// Path to file, or "-" for stdin (default: stdin)
+        #[arg(default_value = "-")]
+        source: String,
     },
 }
 
@@ -59,7 +61,6 @@ struct CriterionResult {
 
 #[derive(Debug, Serialize)]
 struct TokenCountResult {
-    file: String,
     tokens: usize,
 }
 
@@ -78,9 +79,9 @@ fn main() -> Result<()> {
             let result = check_gate(&phase, &mission_dir)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        Commands::CountTokens { file } => {
-            let result = count_tokens(&file)?;
-            println!("{}", serde_json::to_string_pretty(&result)?);
+        Commands::CountTokens { source } => {
+            let result = count_tokens(&source)?;
+            println!("{}", serde_json::to_string(&result)?);
         }
     }
 
@@ -225,17 +226,24 @@ fn check_gate(phase_str: &str, mission_dir: &PathBuf) -> Result<GateCheckResult>
     })
 }
 
-fn count_tokens(file: &PathBuf) -> Result<TokenCountResult> {
-    let content = fs::read_to_string(file)
-        .with_context(|| format!("Failed to read file: {}", file.display()))?;
+fn count_tokens(source: &str) -> Result<TokenCountResult> {
+    let content = if source == "-" {
+        // Read from stdin
+        let mut buffer = String::new();
+        io::stdin()
+            .read_to_string(&mut buffer)
+            .context("Failed to read from stdin")?;
+        buffer
+    } else {
+        // Read from file
+        fs::read_to_string(source)
+            .with_context(|| format!("Failed to read file: {}", source))?
+    };
 
     let counter = TokenCounter::new();
     let tokens = counter.count(&content);
 
-    Ok(TokenCountResult {
-        file: file.display().to_string(),
-        tokens,
-    })
+    Ok(TokenCountResult { tokens })
 }
 
 #[cfg(test)]
@@ -296,7 +304,7 @@ mod tests {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(content.as_bytes()).unwrap();
 
-        let result = count_tokens(&file.path().to_path_buf()).unwrap();
+        let result = count_tokens(file.path().to_str().unwrap()).unwrap();
         assert!(result.tokens > 0);
     }
 }

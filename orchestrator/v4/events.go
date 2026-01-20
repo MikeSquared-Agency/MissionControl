@@ -12,6 +12,7 @@ const (
 
 // KnowledgeEvent types
 const (
+	EventTokenUsage        = "token_usage"
 	EventTokenWarning      = "token_warning"
 	EventTokenCritical     = "token_critical"
 	EventCheckpointCreated = "checkpoint_created"
@@ -52,6 +53,14 @@ type GateStatusEvent struct {
 	Phase    Phase           `json:"phase"`
 	Status   GateStatus      `json:"status"`
 	Criteria []GateCriterion `json:"criteria,omitempty"`
+}
+
+// TokenUsageEvent is sent when tokens are counted for a message
+type TokenUsageEvent struct {
+	Type         string `json:"type"`
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	Timestamp    int64  `json:"timestamp"`
 }
 
 // TokenWarningEvent is sent when token usage reaches warning threshold

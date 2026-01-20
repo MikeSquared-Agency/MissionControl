@@ -88,8 +88,10 @@ export function useWebSocket() {
 
       // Agent spawned
       case 'agent_spawned':
-        if (data.agent) {
-          addAgent(normalizeAgent(data.agent))
+        // Handle both formats: {agent: {...}} and {data: {agent: {...}}} (KingEvent format)
+        const spawnedAgentData = data.agent || (data.data as Record<string, unknown> | undefined)?.agent
+        if (spawnedAgentData) {
+          addAgent(normalizeAgent(spawnedAgentData as Record<string, unknown>))
         }
         break
 
@@ -105,10 +107,11 @@ export function useWebSocket() {
 
       // Agent stopped
       case 'agent_stopped':
-        if (data.agent_id || data.agentId) {
-          const agentId = data.agent_id || data.agentId
-          const stoppedData = typeof data.data === 'object' ? data.data as Record<string, unknown> : {}
-          updateAgent(agentId!, {
+        // Handle both formats: direct and {data: {...}} (KingEvent format)
+        const stoppedData = typeof data.data === 'object' ? data.data as Record<string, unknown> : {}
+        const stoppedAgentId = data.agent_id || data.agentId || stoppedData.agent_id || stoppedData.agentId
+        if (stoppedAgentId) {
+          updateAgent(stoppedAgentId as string, {
             status: normalizeStatus(stoppedData.status as string || data.status || 'stopped'),
             error: (stoppedData.error as string) || data.error
           })
@@ -175,11 +178,13 @@ export function useWebSocket() {
 
       // Tokens updated
       case 'tokens_updated':
-        if (data.agent_id || data.agentId) {
-          const agentId = data.agent_id || data.agentId
-          updateAgent(agentId!, {
-            tokens: data.tokens || 0,
-            cost: data.cost || 0
+        // Handle both formats: direct and {data: {...}} (KingEvent format)
+        const tokenData = (data.data as Record<string, unknown>) || data
+        const tokenAgentId = tokenData.agent_id || tokenData.agentId || data.agent_id || data.agentId
+        if (tokenAgentId) {
+          updateAgent(tokenAgentId as string, {
+            tokens: (tokenData.tokens as number) || (data.tokens as number) || 0,
+            cost: (tokenData.cost as number) || (data.cost as number) || 0
           })
         }
         break
