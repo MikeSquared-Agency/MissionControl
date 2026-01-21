@@ -2,9 +2,61 @@
 
 All notable changes to MissionControl are documented in this file.
 
-## v5.1 - Quality of Life (In Progress)
+## v5.1 - Quality of Life
 
-Improved developer experience and workflow management.
+Improved developer experience, workflow management, and infrastructure.
+
+### Documentation Cleanup
+- Consolidated specs into 5 root files (README, ARCHITECTURE, CONTRIBUTING, CHANGELOG, TODO)
+- Moved historical specs to `docs/archive/`
+- Removed `web/README.md` Vite boilerplate
+
+### Repository Cleanup
+- Renamed `orchestrator/api/v5.go` → `king.go`
+- Removed `orchestrator/api/v4.go`
+- Updated `.gitignore` to cover dist/, target/, node_modules/, .mission/
+- Removed accidentally committed build artifacts
+
+### Testing Improvements
+- 56 Rust tests (workflow state machine, token counting, handoff validation, gate criteria)
+- Go integration tests (King lifecycle, WebSocket flow, API endpoints, Rust core subprocess)
+- React tests: Project wizard (13), Multi-project switching, Matrix toggle (11)
+- E2E Playwright tests (wizard flow, King Mode, agent spawning, zone CRUD, WebSocket reconnection)
+- Test infrastructure: `make test`, `make test-rust`, `make test-go`, `make test-web`, `make test-integration`, `make test-e2e`
+- GitHub Actions CI workflow for PRs
+
+### Startup Simplification
+- `make dev` starts vite + orchestrator with single command
+- `make dev-ui` and `make dev-api` for individual services
+- `make build` production build (Go + Rust + React)
+- `make install` installs binaries to `/usr/local/bin`
+- `make clean` removes build artifacts
+- `mc serve` single binary with embedded React UI via Go `embed` package
+- Homebrew formula created
+
+### Project Wizard
+- `ProjectWizard` component with step state machine
+- `WorkflowMatrix` component with toggle logic
+- Typing indicator component (300ms delay)
+- API endpoints: `POST/GET/DELETE /api/projects`
+- Sidebar project list with switch capability
+- `mc init` accepts `--path`, `--git`, `--king`, `--config` flags
+- Wizard passes matrix config as JSON file to `mc init`
+
+### Configuration & Storage
+- `~/.mission-control/` directory created on first run
+- `mc` CLI and Orchestrator read/write config
+- Project added to list when created via wizard
+- `lastOpened` timestamp updated when project opened
+
+### Bug Fixes
+- **Rust Core Integration**: `mc-core` binary builds, CLI commands implemented, `orchestrator/core/client.go` wrapper created, inline Go parsing replaced with `core.CountTokens()`
+- **Token Usage Display**: Piped through `mc-core tokens`, `token_usage` WebSocket event, UI header/status bar display
+- **Agent Count**: `agent_spawned`/`agent_stopped` events emit correctly, UI listens and updates `agents` array, Playwright test verifies count increments
+
+### Developer Experience
+- `make lint` runs Go (golangci-lint) + Rust (clippy) + TypeScript (eslint)
+- `make fmt` formats all code (go fmt, cargo fmt, prettier)
 
 ### Personas Management
 - 11 workflow personas (researcher, designer, architect, developer, debugger, reviewer, security, tester, qa, docs, devops)
@@ -14,9 +66,10 @@ Improved developer experience and workflow management.
 - WorkflowMatrix respects disabled personas
 - Tools and skills defined for each persona
 
-### Testing
+### Testing Summary
 - 130 web tests (React + types)
-- 12 new persona-related tests
+- 56 Rust core tests
+- 12 persona-related tests
 
 ---
 

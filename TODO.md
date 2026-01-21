@@ -1,137 +1,23 @@
 # MissionControl — TODO
 
-## Getting Started
+## Current: v5.1 — Quality of Life (Remaining)
 
-1. Run `mc init` in your project directory to create `.mission/` structure
-2. Start the orchestrator: `cd orchestrator && go run . --workdir /path/to/project`
-3. Start the UI: `cd web && npm run dev`
-4. Open http://localhost:3000 — wizard will guide you through setup
-
-For detailed specs, UI mockups, and decisions log, see `docs/archive/V5.1-SPEC.md`.
-
----
-
-## Current: v5.1 — Quality of Life
-
-### 1. Documentation Cleanup
-- [x] Consolidate specs into 5 root files (README, ARCHITECTURE, CONTRIBUTING, CHANGELOG, TODO)
-- [x] Move historical specs to `docs/archive/`
-- [x] Remove `web/README.md` Vite boilerplate (or replace with real content)
-
-### 2. Repository Cleanup
-
-**File Renames:**
-- [x] `orchestrator/api/v5.go` → `orchestrator/api/king.go`
-- [x] `orchestrator/api/v4.go` → removed (not needed)
-- [x] Any other `v4`/`v5` prefixed code files → sensible names
-
-**Other Cleanup:**
+### Repository Cleanup
 - [ ] Audit for dead code / unused files
-- [x] Ensure `.gitignore` covers: `dist/`, `target/`, `node_modules/`, `.mission/`
-- [x] Remove any accidentally committed build artifacts
 - [ ] Add `CODEOWNERS` for GitHub (optional)
 
-### 3. Testing Improvements
+### Testing
+- [ ] E2E: Token usage displays correctly
 
-**Rust Tests:**
-- [x] `core/workflow/` — state machine transitions (14 tests)
-- [x] `core/knowledge/` — token counting accuracy (23 tests)
-- [x] Handoff JSON validation
-- [x] Gate criteria checking
-- [x] `cargo test` passes all (56 tests)
-
-**Go Integration Tests:**
-- [x] King tmux session lifecycle (start → message → response → stop)
-- [x] WebSocket connection + event flow
-- [x] API endpoints with mocked Claude
-- [x] Rust core subprocess calls (`mc-core tokens`, `mc-core validate`)
-
-**React Tests (additions):**
-- [x] Project wizard component (13 tests)
-- [x] Multi-project switching (Sidebar tests)
-- [x] Matrix toggle interactions (11 tests)
-
-**E2E Tests (Playwright):**
-- [x] Project wizard flow end-to-end (test written, needs backend)
-- [x] King Mode: send message, receive response (test written, needs backend)
-- [x] Agent spawning + count updates (test written, needs backend)
-- [x] Zone management CRUD (test written, needs backend)
-- [ ] Token usage displays correctly
-- [x] WebSocket reconnection (test written, needs backend)
-
-**Test Infrastructure:**
-- [x] `make test` — runs Go + React + Rust
-- [x] `make test-rust` — Rust only (`cargo test`)
-- [x] `make test-go` — Go only (`go test ./...`)
-- [x] `make test-web` — React only (`npm test`)
-- [x] `make test-integration` — Go integration tests
-- [x] `make test-e2e` — Playwright
-- [x] GitHub Actions CI workflow for PRs
-
-### 4. Startup Simplification
-
-**Makefile Commands:**
-- [x] `make dev` — starts vite + orchestrator together (single command)
-- [x] `make dev-ui` — vite only
-- [x] `make dev-api` — orchestrator only
-- [x] `make build` — production build (Go + Rust + React)
-- [x] `make install` — install binaries to `/usr/local/bin`
-- [x] `make clean` — remove build artifacts
-
-**Single Binary Distribution:**
-- [x] `mc serve` command — starts orchestrator + serves built React UI
-- [x] Embed built `web/dist/` in Go binary using `embed` package
-- [x] Single binary contains everything
-
-**Homebrew:**
+### Homebrew Distribution
 - [ ] Create `homebrew-tap` repo (`DarlingtonDeveloper/homebrew-tap`)
-- [x] Formula downloads release binary (see homebrew/mission-control.rb)
 - [ ] `brew tap DarlingtonDeveloper/tap && brew install mission-control` works
 - [ ] Document in README
 
-### 5. Project Wizard
-- [x] `ProjectWizard` component with step state machine
-- [x] `WorkflowMatrix` component with toggle logic
-- [x] Typing indicator component (300ms delay)
-- [x] `POST /api/projects` — calls `mc init` subprocess
-- [x] `GET /api/projects` — reads from `~/.mission-control/config.json`
-- [x] `DELETE /api/projects/:id` — removes from list (not disk)
-- [x] Sidebar project list with switch capability
-- [x] `mc init` accepts `--path`, `--git`, `--king`, `--config` flags
-- [x] Wizard passes matrix config as JSON file to `mc init`
-
-### 6. Configuration & Storage
-- [x] Create `~/.mission-control/` on first run
-- [x] `mc` CLI reads/writes config
-- [x] Orchestrator reads/writes config
-- [x] Add project to list when created via wizard
-- [x] Update `lastOpened` when project opened
+### Configuration & Storage
 - [ ] Sort sidebar by `lastOpened` descending
 
-### 7. Bug Fix: Rust Core Not Integrated
-
-Rust `core/` built but never called. Go does its own parsing.
-
-- [x] Verify `mc-core` binary builds with `make build`
-- [x] Implement CLI commands in Rust (if not already)
-- [x] Create `orchestrator/core/client.go` wrapper
-- [x] Replace inline Go parsing with `core.CountTokens()` etc.
-- [x] Update `make install` to install both `mc` and `mc-core`
-- [x] Update `make build` to compile Rust before Go
-
-### 8. Bug Fix: Token Usage Display
-- [x] After King response, pipe text through `mc-core tokens`
-- [x] Emit `token_usage` WebSocket event
-- [x] UI: update store from event
-- [x] UI: display in header/status bar
-
-### 9. Bug Fix: Agent Count
-- [x] Verify `agent_spawned` event emits on spawn
-- [x] Verify `agent_stopped` event emits on kill
-- [x] UI: listen to events, update `agents` array in store
-- [x] Playwright test: spawn agent → verify count increments
-
-### 10. UI Polish
+### UI Polish
 
 **Loading/Error/Empty States:**
 - [ ] Loading spinner while waiting for King response
@@ -151,27 +37,12 @@ Rust `core/` built but never called. Go does its own parsing.
 - [ ] Agent status indicators (idle/working/error)
 - [ ] Typing indicator in King chat
 
-### 11. Developer Experience
-
-**Makefile Additions:**
-- [x] `make lint` — Go (`golangci-lint`) + Rust (`clippy`) + TypeScript (`eslint`)
-- [x] `make fmt` — format all code (`go fmt`, `cargo fmt`, `prettier`)
-
-**Editor Setup:**
+### Developer Experience
 - [ ] `.vscode/settings.json` — format on save, recommended settings
 - [ ] `.vscode/extensions.json` — recommended extensions list
+- [ ] Pre-commit hooks via lefthook or husky (optional)
 
-**Optional:**
-- [ ] Pre-commit hooks via lefthook or husky
-
-### 12. Personas Management
-- [x] Settings panel: enable/disable all 11 personas individually
-- [x] Per-project persona configuration (stored in `.mission/config.json`)
-- [x] Persona descriptions visible in Settings
-- [x] Persona prompt preview/edit capability
-- [x] Sync persona settings with workflow matrix
-
-### 13. Dynamic Project Switching
+### Dynamic Project Switching
 - [ ] Orchestrator API: `POST /api/projects/select` to switch active project
 - [ ] Orchestrator reloads `.mission/state/` watcher on project switch
 - [ ] WebSocket broadcasts project change event
@@ -180,27 +51,328 @@ Rust `core/` built but never called. Go does its own parsing.
 
 ---
 
-## Success Criteria
+## v6 — State Management
 
-| # | Criteria | Status |
-|---|----------|--------|
-| 1 | `make dev` starts everything with one command | Done |
-| 2 | `make test` passes Go + React + Rust tests | Done |
-| 3 | `make test-e2e` passes Playwright tests | Needs backend |
-| 4 | README gets new user running in <5 minutes | |
-| 5 | ≤5 markdown files in root | Done |
-| 6 | No version-prefixed filenames (v4, v5) | Done |
-| 7 | Project wizard creates working `.mission/` | Done |
-| 8 | Token usage displays correctly | Done |
-| 9 | Agent count updates in real-time | Done |
-| 10 | Rust core called for token counting + validation | Done |
-| 11 | Multi-project switching works | |
-| 12 | `brew install mission-control` works | |
-| 13 | Global config at `~/.mission-control/config.json` | Done |
+Foundation for multi-agent coordination and intelligent work distribution.
+
+### 6.1 JSONL Migration
+**What:** Convert `tasks.json` to `tasks.jsonl` (one JSON object per line)
+
+- [ ] One-time migration script
+- [ ] Update all read/write functions in `mc` CLI
+- [ ] Update file watcher in Go bridge
+
+**Benefit:** Git merges line-by-line, enables concurrent writes
 
 ---
 
-## Future: v6 — 3D Visualization
+### 6.2 Hash-Based Task IDs
+**What:** Replace sequential/random IDs with content-hash IDs (`mc-a7x2k`)
+
+- [ ] SHA256(title + timestamp) truncated to 5 chars
+- [ ] Update ID generation in `mc task create`
+- [ ] Migration for existing tasks
+
+**Benefit:** Prevents ID collisions, deterministic retries
+
+---
+
+### 6.3 Audit Trail
+**What:** Append-only `audit/interactions.jsonl` logging all state mutations
+
+- [ ] Create audit log format (actor, action, target, timestamp)
+- [ ] Hook into all `mc` commands that mutate state
+- [ ] Add `mc audit` command to query history
+
+**Benefit:** Full history, debug replay, compliance support
+
+---
+
+### 6.4 Task Dependencies
+**What:** Add `blocks`/`blockedBy` fields to tasks
+
+- [ ] Schema changes to task format
+- [ ] `mc task create --blocks <id>` flag
+- [ ] `mc dep add/remove` commands
+- [ ] Dependency validation (no cycles)
+- [ ] Auto-update blocked tasks when blockers close
+
+**Benefit:** King distributes work intelligently, workers get actionable tasks
+
+---
+
+### 6.5 Ready Queue Command
+**What:** `mc ready` shows tasks with no open blockers
+
+- [ ] Query tasks where all `blockedBy` are closed
+- [ ] Filter by stage, assignee, labels
+- [ ] JSON output for King to consume
+
+**Benefit:** Workers ask "what can I do?" and get real answers
+
+---
+
+### 6.6 Dependency Visualization
+**What:** `mc dep tree <id>` shows dependency graph
+
+- [ ] Tree view of what blocks what
+- [ ] Show status of each node
+- [ ] `mc blocked` shows all blocked tasks and why
+
+---
+
+### 6.7 Git Commit Hooks
+**What:** Auto-commit state changes to git
+
+- [ ] Post-mutation hook in `mc` commands
+- [ ] Commit with message: `mc: {action} {target}`
+- [ ] Optional: push to remote
+
+**Benefit:** Automatic version history, disaster recovery
+
+---
+
+### 6.8 10-Stage Workflow
+**What:** Expand from 6 phases to 10 stages
+
+- [ ] Rename phase.json → stage.json
+- [ ] Add DISCOVERY, GOAL, REQUIREMENTS, PLANNING, VALIDATION stages
+- [ ] Update gates.json with new stage gates
+- [ ] Update UI phase display
+
+---
+
+## v7 — Requirements & Traceability
+
+Full traceability from business needs to implementation.
+
+### 7.1 Requirements Directory Structure
+**What:** Create `requirements/` with application, entities, capabilities levels
+
+- [ ] Create directory structure
+- [ ] Define JSONL schemas for each level
+- [ ] `mc req create` command
+
+---
+
+### 7.2 Requirement CRUD Commands
+**What:** `mc req create/list/show/update` commands
+
+- [ ] Create requirements at each level
+- [ ] List with filters (level, entity, capability, status)
+- [ ] Show with full details
+- [ ] Update status, acceptance criteria
+
+---
+
+### 7.3 Requirement Hierarchy (derivedFrom)
+**What:** Link requirements to parent requirements via `derivedFrom` field
+
+- [ ] Add derivedFrom field to requirement schema
+- [ ] Validate parent exists
+- [ ] Build hierarchy index for fast traversal
+
+---
+
+### 7.4 Task-to-Requirement Refs
+**What:** Add `refs.requirements` field to tasks
+
+- [ ] Schema change to tasks
+- [ ] `mc task create --req REQ-CAP-001` flag
+- [ ] Display refs in task show
+
+---
+
+### 7.5 Task-to-Spec Refs
+**What:** Add `refs.spec` and `refs.specSections` to tasks
+
+- [ ] Schema change to tasks
+- [ ] `mc task create --spec SPEC-auth.md --section FR-1` flags
+- [ ] Display refs in task show
+
+---
+
+### 7.6 Impact Analysis
+**What:** `mc req impact <id>` shows what depends on a requirement
+
+- [ ] Traverse hierarchy downward
+- [ ] Find all descendant requirements
+- [ ] Find all linked specs and tasks
+- [ ] Summary of blast radius
+
+---
+
+### 7.7 Coverage Report
+**What:** `mc req coverage` shows implementation status of all requirements
+
+- [ ] For each requirement, find linked tasks
+- [ ] Calculate completion percentage
+- [ ] Roll up to parent requirements
+- [ ] Summary by level/category
+
+---
+
+### 7.8 Spec Status Command
+**What:** `mc spec status <file>` shows implementation status of spec sections
+
+- [ ] Parse spec file for FR-X sections
+- [ ] Match to tasks via refs
+- [ ] Show completion status per section
+
+---
+
+### 7.9 Spec Orphans Detection
+**What:** `mc spec orphans` finds spec sections without implementing tasks
+
+- [ ] Parse all specs for sections
+- [ ] Find sections with no linked tasks
+- [ ] Report gaps
+
+---
+
+### 7.10 Trace Command
+**What:** `mc trace <id>` shows full lineage up and down
+
+- [ ] Trace task → spec → requirements → app-level
+- [ ] Trace requirement → children → tasks
+- [ ] Tree visualization
+- [ ] Both directions
+
+---
+
+### 7.11 Requirements Index Cache
+**What:** `requirements/index.json` caches hierarchy for fast queries
+
+- [ ] Generate on requirement changes
+- [ ] Store parent/child/descendant relationships
+- [ ] Invalidate and regenerate on mutations
+
+---
+
+### 7.12 Auto-Generate Tasks from Spec
+**What:** `mc task create --from-spec <file>` creates tasks for spec sections
+
+- [ ] Parse spec for FR-X sections
+- [ ] Generate task per section (or prompt for confirmation)
+- [ ] Auto-link refs
+
+---
+
+## v8 — Infrastructure & Scale
+
+Cost optimization and team features.
+
+### 8.1 Multi-Model Routing (Haiku/Sonnet/Opus)
+**What:** Route different task types to different Claude models
+
+- [ ] Configuration for model per persona/task-type
+- [ ] Update worker spawn to pass model flag
+- [ ] Routing logic (simple tasks → Haiku, complex → Opus)
+- [ ] Cost tracking per model
+
+**Sub-features:**
+- [ ] 8.1a: Config schema for model mapping
+- [ ] 8.1b: Per-persona model defaults
+- [ ] 8.1c: Per-task model override
+- [ ] 8.1d: Cost tracking and reporting
+- [ ] 8.1e: Auto-routing based on task complexity (advanced)
+
+**Benefit:** 10-50x cost reduction for simple tasks
+
+---
+
+### 8.2 Cost Tracking & Budgets
+**What:** Track token usage and costs, enforce budgets
+
+- [ ] Parse Claude API responses for token counts
+- [ ] Store usage per task/worker/session
+- [ ] `mc costs` command for reporting
+- [ ] Budget limits with warnings/stops
+
+---
+
+### 8.3 Worker Health Monitoring
+**What:** Detect stuck/crashed workers and alert/recover
+
+- [ ] Heartbeat mechanism
+- [ ] Timeout detection
+- [ ] Alert to King/user
+- [ ] Optional auto-restart
+
+---
+
+### 8.4 Headless Mode
+**What:** Run MissionControl without UI for CI/CD pipelines
+
+- [ ] CLI-only operation mode
+- [ ] Script-friendly JSON output
+- [ ] Exit codes for success/failure
+- [ ] Pipeline examples (GitHub Actions, etc.)
+
+---
+
+### 8.5 Remote Bridge Deployment
+**What:** Deploy Go bridge to remote server for team access
+
+- [ ] Dockerize Go bridge
+- [ ] Authentication layer (API keys, OAuth)
+- [ ] WebSocket proxying
+- [ ] State sync between instances
+- [ ] Multi-tenant isolation
+
+**Sub-features:**
+- [ ] 8.5a: Docker containerization
+- [ ] 8.5b: Authentication middleware
+- [ ] 8.5c: HTTPS/WSS termination
+- [ ] 8.5d: Multi-project routing
+- [ ] 8.5e: User session management
+- [ ] 8.5f: Kubernetes deployment manifests (optional)
+
+---
+
+## v9 — Advanced UI
+
+Visual tools for complex workflows.
+
+### 9.1 Requirements Panel
+**What:** UI panel showing requirements hierarchy and coverage
+
+- [ ] Tree view of requirements
+- [ ] Coverage indicators
+- [ ] Click to see linked tasks
+- [ ] Filter by level/status
+
+---
+
+### 9.2 Dependency Graph Visualization
+**What:** Visual graph of task dependencies
+
+- [ ] D3 or similar graph library
+- [ ] Interactive (click nodes, zoom, pan)
+- [ ] Show blocked/ready status
+- [ ] Critical path highlighting
+
+---
+
+### 9.3 Traceability View
+**What:** UI for exploring trace relationships
+
+- [ ] Select task/requirement/spec
+- [ ] Show lineage tree
+- [ ] Navigate by clicking nodes
+
+---
+
+### 9.4 Audit Log Viewer
+**What:** UI for browsing audit history
+
+- [ ] Timeline view of state changes
+- [ ] Filter by actor, action, target
+- [ ] Diff view for changes
+
+---
+
+## Future: v10 — 3D Visualization
 
 - [ ] React Three Fiber setup
 - [ ] Agent avatars in 3D space
@@ -210,15 +382,43 @@ Rust `core/` built but never called. Go does its own parsing.
 
 ---
 
-## Future: v7+ — Polish & Scale
+## Summary Table
 
-- [ ] Persistence (PostgreSQL or SQLite)
-- [ ] Multi-model routing (Haiku/Sonnet/Opus)
-- [ ] Token budget enforcement
-- [ ] Worker health monitoring in UI
-- [ ] Dark/light themes
-- [ ] Remote access (deploy bridge)
-- [ ] Conductor Skill (MissionControl builds MissionControl)
+| ID | Feature | Benefit | Dependencies |
+|----|---------|---------|--------------|
+| **v6 - State Management** |
+| 6.1 | JSONL Migration | High | None |
+| 6.2 | Hash-Based IDs | High | None |
+| 6.3 | Audit Trail | High | None |
+| 6.4 | Task Dependencies | Very High | 6.1 |
+| 6.5 | Ready Queue | Very High | 6.4 |
+| 6.6 | Dependency Visualization | Medium | 6.4 |
+| 6.7 | Git Commit Hooks | High | 6.1 |
+| 6.8 | 10-Stage Workflow | Medium | None |
+| **v7 - Requirements & Traceability** |
+| 7.1 | Requirements Directory | Med-High | None |
+| 7.2 | Requirement CRUD | Medium | 7.1 |
+| 7.3 | Requirement Hierarchy | High | 7.1 |
+| 7.4 | Task-to-Requirement Refs | High | 7.1 |
+| 7.5 | Task-to-Spec Refs | High | None |
+| 7.6 | Impact Analysis | High | 7.3 |
+| 7.7 | Coverage Report | Very High | 7.4 |
+| 7.8 | Spec Status | High | 7.5 |
+| 7.9 | Spec Orphans | Med-High | 7.5 |
+| 7.10 | Trace Command | Very High | 7.3, 7.4, 7.5 |
+| 7.11 | Requirements Index | Medium | 7.1 |
+| 7.12 | Auto-Generate Tasks | Medium | 7.5 |
+| **v8 - Infrastructure** |
+| 8.1 | Multi-Model Routing | Very High | None |
+| 8.2 | Cost Tracking | High | None |
+| 8.3 | Worker Health | Med-High | None |
+| 8.4 | Headless Mode | Med-High | None |
+| 8.5 | Remote Bridge | High | None |
+| **v9 - Advanced UI** |
+| 9.1 | Requirements Panel | Med-High | 7.1-7.7 |
+| 9.2 | Dependency Graph | Medium | 6.4 |
+| 9.3 | Traceability View | Medium | 7.10 |
+| 9.4 | Audit Log Viewer | Medium | 6.3 |
 
 ---
 
@@ -232,7 +432,10 @@ Rust `core/` built but never called. Go does its own parsing.
 | v4 | Rust core | Done |
 | v5 | King + mc CLI | Done |
 | v5.1 | Quality of life | Current |
-| v6 | 3D visualization | Future |
-| v7+ | Polish & scale | Future |
+| v6 | State management | Future |
+| v7 | Requirements & traceability | Future |
+| v8 | Infrastructure & scale | Future |
+| v9 | Advanced UI | Future |
+| v10 | 3D visualization | Future |
 
 See [CHANGELOG.md](CHANGELOG.md) for completed version details.
