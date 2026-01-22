@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useStore, spawnAgent } from '../stores/useStore'
+import { useProjectStore } from '../stores/useProjectStore'
 import { toast } from '../stores/useToast'
 import { Modal } from './Modal'
 import { Spinner } from './Spinner'
-import type { AgentType, Persona } from '../types'
+import type { Persona } from '../types'
 
 interface SpawnDialogProps {
   open: boolean
@@ -16,13 +17,16 @@ export function SpawnDialog({ open, onClose }: SpawnDialogProps) {
   const addAgent = useStore((s) => s.addAgent)
   const selectAgent = useStore((s) => s.selectAgent)
 
+  // Get current project for offline mode
+  const currentProjectPath = useProjectStore((s) => s.currentProject)
+  const projects = useProjectStore((s) => s.projects)
+  const currentProject = projects.find((p) => p.path === currentProjectPath)
+
   const [selectedPersona, setSelectedPersona] = useState<string | null>(null)
-  const [type, setType] = useState<AgentType>('claude-code')
   const [name, setName] = useState('')
   const [task, setTask] = useState('')
   const [zone, setZone] = useState('default')
   const [workingDir, setWorkingDir] = useState('')
-  const [agent, setAgent] = useState('v1_basic')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -30,15 +34,13 @@ export function SpawnDialog({ open, onClose }: SpawnDialogProps) {
   useEffect(() => {
     if (open) {
       setSelectedPersona(null)
-      setType('claude-code')
       setName('')
       setTask('')
       setZone('default')
-      setWorkingDir('')
-      setAgent('v1_basic')
+      setWorkingDir(currentProject?.path || '')
       setError('')
     }
-  }, [open])
+  }, [open, currentProject?.path])
 
   // Update working dir when zone changes
   useEffect(() => {
@@ -58,13 +60,13 @@ export function SpawnDialog({ open, onClose }: SpawnDialogProps) {
     try {
       const agentName = name.trim() || `agent-${Date.now().toString(36)}`
       const newAgent = await spawnAgent({
-        type,
         name: agentName,
         task: task.trim(),
         persona: selectedPersona || undefined,
         zone,
-        workingDir: workingDir.trim() || undefined,
-        agent: type === 'python' ? agent : undefined
+        workingDir: workingDir.trim() || currentProject?.path || undefined,
+        offlineMode: currentProject?.mode === 'offline',
+        ollamaModel: currentProject?.ollamaModel
       })
       addAgent(newAgent)
       selectAgent(newAgent.id)
@@ -82,6 +84,18 @@ export function SpawnDialog({ open, onClose }: SpawnDialogProps) {
   return (
     <Modal open={open} onClose={onClose} title="Spawn Agent" width="md">
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Mode indicator */}
+        {currentProject && (
+          <div className="flex items-center gap-2 text-xs text-gray-500 pb-2 border-b border-gray-800">
+            <span className={`w-2 h-2 rounded-full ${
+              currentProject.mode === 'offline' ? 'bg-yellow-500' : 'bg-green-500'
+            }`} />
+            {currentProject.mode === 'offline'
+              ? `Offline (${currentProject.ollamaModel || 'Ollama'})`
+              : 'Online (Claude API)'}
+          </div>
+        )}
+
         {/* Persona selector - 2x2 grid */}
         <div>
           <label className="block text-[11px] text-gray-500 mb-2">Persona</label>
@@ -98,52 +112,6 @@ export function SpawnDialog({ open, onClose }: SpawnDialogProps) {
             ))}
           </div>
         </div>
-
-        {/* Type selector */}
-        <div>
-          <label className="block text-[11px] text-gray-500 mb-2">Type</label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setType('claude-code')}
-              className={`flex-1 py-2 text-xs font-medium rounded transition-colors ${
-                type === 'claude-code'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-            >
-              Claude Code
-            </button>
-            <button
-              type="button"
-              onClick={() => setType('python')}
-              className={`flex-1 py-2 text-xs font-medium rounded transition-colors ${
-                type === 'python'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-            >
-              Python Agent
-            </button>
-          </div>
-        </div>
-
-        {/* Python agent version (only for python type) */}
-        {type === 'python' && (
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-2">Agent Version</label>
-            <select
-              value={agent}
-              onChange={(e) => setAgent(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600"
-            >
-              <option value="v0_minimal">v0_minimal (bash only)</option>
-              <option value="v1_basic">v1_basic (full tools)</option>
-              <option value="v2_todo">v2_todo (with planning)</option>
-              <option value="v3_subagent">v3_subagent (with delegation)</option>
-            </select>
-          </div>
-        )}
 
         {/* Name */}
         <div>

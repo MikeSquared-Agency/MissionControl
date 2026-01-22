@@ -466,6 +466,36 @@ export async function updatePersonaPrompt(
   }
 }
 
+// Ollama API types
+export interface OllamaStatus {
+  running: boolean
+  models?: string[]
+}
+
+export interface OllamaModel {
+  name: string
+  size: number
+  modified_at: string
+}
+
+// Fetch Ollama status (running state and available models)
+export async function fetchOllamaStatus(): Promise<OllamaStatus> {
+  const res = await fetch(`${API_BASE}/ollama/status`)
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  return res.json()
+}
+
+// Fetch available Ollama models
+export async function fetchOllamaModels(): Promise<OllamaModel[]> {
+  const res = await fetch(`${API_BASE}/ollama/models`)
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  return res.json()
+}
+
 // Normalize agent data from backend to match our frontend types
 function normalizeAgent(backendAgent: Record<string, unknown>): Agent {
   return {
@@ -484,13 +514,15 @@ function normalizeAgent(backendAgent: Record<string, unknown>): Agent {
     conversation: [],
     created_at: (backendAgent.created_at as string) || new Date().toISOString(),
     error: backendAgent.error as string | undefined,
-    pid: backendAgent.pid as number | undefined
+    pid: backendAgent.pid as number | undefined,
+    offlineMode: backendAgent.offlineMode as boolean | undefined,
+    model: backendAgent.model as string | undefined
   }
 }
 
-function normalizeAgentType(type: string): Agent['type'] {
-  if (type === 'claude' || type === 'claude-code') return 'claude-code'
-  return 'python'
+function normalizeAgentType(_type: string): Agent['type'] {
+  // All agents now use claude-code (python is deprecated)
+  return 'claude-code'
 }
 
 function normalizeAgentStatus(status: string): Agent['status'] {

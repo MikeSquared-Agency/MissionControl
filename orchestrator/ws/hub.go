@@ -255,13 +255,15 @@ type Command struct {
 
 // SpawnCommand represents a spawn_agent command
 type SpawnCommand struct {
-	Type       manager.AgentType `json:"type"`
-	Name       string            `json:"name"`
-	Task       string            `json:"task"`
-	Persona    string            `json:"persona"`
-	Zone       string            `json:"zone"`
-	WorkingDir string            `json:"workingDir"`
-	Agent      string            `json:"agent"`
+	Type        manager.AgentType `json:"type"`
+	Name        string            `json:"name"`
+	Task        string            `json:"task"`
+	Persona     string            `json:"persona"`
+	Zone        string            `json:"zone"`
+	WorkingDir  string            `json:"workingDir"`
+	Agent       string            `json:"agent"`
+	OfflineMode bool              `json:"offlineMode"`
+	OllamaModel string            `json:"ollamaModel"`
 }
 
 // handleCommand processes commands from the client
@@ -280,13 +282,15 @@ func (c *Client) handleCommand(message []byte) {
 			return
 		}
 		_, err := c.hub.manager.Spawn(manager.SpawnRequest{
-			Type:       spawn.Type,
-			Name:       spawn.Name,
-			Task:       spawn.Task,
-			Persona:    spawn.Persona,
-			Zone:       spawn.Zone,
-			WorkingDir: spawn.WorkingDir,
-			Agent:      spawn.Agent,
+			Type:        spawn.Type,
+			Name:        spawn.Name,
+			Task:        spawn.Task,
+			Persona:     spawn.Persona,
+			Zone:        spawn.Zone,
+			WorkingDir:  spawn.WorkingDir,
+			Agent:       spawn.Agent,
+			OfflineMode: spawn.OfflineMode,
+			OllamaModel: spawn.OllamaModel,
 		})
 		if err != nil {
 			log.Printf("Failed to spawn agent: %v", err)

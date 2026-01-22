@@ -8,6 +8,8 @@ export interface Project {
   path: string
   name: string
   lastOpened: string // ISO 8601
+  mode?: 'online' | 'offline'
+  ollamaModel?: string
 }
 
 // Global config structure
@@ -36,6 +38,8 @@ export interface WizardFormData {
   initGit: boolean
   enableKing: boolean
   matrix: MatrixCell[]
+  mode: 'online' | 'offline'
+  ollamaModel?: string
 }
 
 // Audience type (UI-only, for matrix defaults)

@@ -126,11 +126,17 @@ func main() {
 	// Create Projects API handler
 	projectsHandler := api.NewProjectsHandler()
 
+	// Create Ollama API handler
+	ollamaHandler := api.NewOllamaHandler()
+
 	// Set up routes
 	mux := http.NewServeMux()
 
 	// Projects API routes (must be before generic /api/ handler)
 	projectsHandler.RegisterRoutes(mux)
+
+	// Ollama API routes (for offline mode)
+	ollamaHandler.RegisterRoutes(mux)
 
 	// King API routes (King and gates)
 	kingHandler.RegisterRoutes(mux)
@@ -193,6 +199,12 @@ func main() {
 <ul>
 <li>GET /api/gates/:id - Get gate status</li>
 <li>POST /api/gates/:id/approve - Approve gate</li>
+</ul>
+
+<h2>Ollama Endpoints</h2>
+<ul>
+<li><a href="/api/ollama/status">GET /api/ollama/status</a> - Ollama status and models</li>
+<li><a href="/api/ollama/models">GET /api/ollama/models</a> - List Ollama models</li>
 </ul>
 
 <h2>v5 King Endpoints</h2>

@@ -20,9 +20,11 @@ type GlobalConfig struct {
 
 // Project represents a MissionControl project
 type Project struct {
-	Path       string `json:"path"`
-	Name       string `json:"name"`
-	LastOpened string `json:"lastOpened"`
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	LastOpened  string `json:"lastOpened"`
+	Mode        string `json:"mode,omitempty"`        // "online" or "offline"
+	OllamaModel string `json:"ollamaModel,omitempty"` // e.g., "qwen3-coder"
 }
 
 // Preferences stores user preferences
@@ -171,11 +173,13 @@ func (h *ProjectsHandler) listProjects(w http.ResponseWriter, r *http.Request) {
 
 // CreateProjectRequest is the request body for creating a project
 type CreateProjectRequest struct {
-	Path       string       `json:"path"`
-	Import     bool         `json:"import"`     // If true, import existing .mission project without running mc init
-	InitGit    bool         `json:"initGit"`
-	EnableKing bool         `json:"enableKing"`
-	Matrix     []MatrixCell `json:"matrix"`
+	Path        string       `json:"path"`
+	Import      bool         `json:"import"`     // If true, import existing .mission project without running mc init
+	InitGit     bool         `json:"initGit"`
+	EnableKing  bool         `json:"enableKing"`
+	Matrix      []MatrixCell `json:"matrix"`
+	Mode        string       `json:"mode"`        // "online" or "offline"
+	OllamaModel string       `json:"ollamaModel"` // For offline mode, e.g., "qwen3-coder"
 }
 
 // MatrixCell represents a cell in the workflow matrix
@@ -193,12 +197,14 @@ type PersonaConfig struct {
 
 // ProjectConfig represents .mission/config.json
 type ProjectConfig struct {
-	Version  string                   `json:"version"`
-	Audience string                   `json:"audience"`
-	Zones    []string                 `json:"zones"`
-	King     bool                     `json:"king"`
-	Matrix   []MatrixCell             `json:"matrix,omitempty"`
-	Personas map[string]PersonaConfig `json:"personas,omitempty"`
+	Version     string                   `json:"version"`
+	Audience    string                   `json:"audience"`
+	Zones       []string                 `json:"zones"`
+	King        bool                     `json:"king"`
+	Matrix      []MatrixCell             `json:"matrix,omitempty"`
+	Personas    map[string]PersonaConfig `json:"personas,omitempty"`
+	Mode        string                   `json:"mode,omitempty"`        // "online" or "offline"
+	OllamaModel string                   `json:"ollamaModel,omitempty"` // For offline mode
 }
 
 // PersonaResponse represents persona data returned by API
@@ -291,10 +297,16 @@ func (h *ProjectsHandler) createProject(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Add to global config
+	mode := req.Mode
+	if mode == "" {
+		mode = "online" // Default to online mode
+	}
 	project := Project{
-		Path:       path,
-		Name:       filepath.Base(path),
-		LastOpened: time.Now().UTC().Format(time.RFC3339),
+		Path:        path,
+		Name:        filepath.Base(path),
+		LastOpened:  time.Now().UTC().Format(time.RFC3339),
+		Mode:        mode,
+		OllamaModel: req.OllamaModel,
 	}
 
 	config, _ := h.loadConfig()

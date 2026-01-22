@@ -14,11 +14,12 @@ import (
 )
 
 // AgentType represents the type of agent
+// Note: Python agent type has been deprecated. All agents now use Claude Code.
 type AgentType string
 
 const (
-	AgentTypePython    AgentType = "python"
-	AgentTypeClaudeCode AgentType = "claude-code"
+	AgentTypePython     AgentType = "python"      // Deprecated: kept for backward compatibility
+	AgentTypeClaudeCode AgentType = "claude-code" // Default agent type
 )
 
 // AgentStatus represents the current status of an agent
@@ -35,19 +36,21 @@ const (
 
 // Agent represents a running agent process
 type Agent struct {
-	ID        string      `json:"id"`
-	Name      string      `json:"name"`
-	Type      AgentType   `json:"type"`
-	Task      string      `json:"task"`
-	Persona   string      `json:"persona,omitempty"`
-	Zone      string      `json:"zone"`
-	WorkingDir string     `json:"workingDir"`
-	Status    AgentStatus `json:"status"`
-	PID       int         `json:"pid"`
-	Tokens    int         `json:"tokens"`
-	Cost      float64     `json:"cost"`
-	CreatedAt time.Time   `json:"created_at"`
-	Error     string      `json:"error,omitempty"`
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Type        AgentType   `json:"type"`
+	Task        string      `json:"task"`
+	Persona     string      `json:"persona,omitempty"`
+	Zone        string      `json:"zone"`
+	WorkingDir  string      `json:"workingDir"`
+	Status      AgentStatus `json:"status"`
+	PID         int         `json:"pid"`
+	Tokens      int         `json:"tokens"`
+	Cost        float64     `json:"cost"`
+	CreatedAt   time.Time   `json:"created_at"`
+	Error       string      `json:"error,omitempty"`
+	OfflineMode bool        `json:"offlineMode"`
+	Model       string      `json:"model,omitempty"`
 
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
@@ -106,13 +109,15 @@ func (m *Manager) Events() <-chan Event {
 
 // SpawnRequest represents a request to spawn an agent
 type SpawnRequest struct {
-	Type       AgentType `json:"type"`
-	Name       string    `json:"name"`
-	Task       string    `json:"task"`
-	Persona    string    `json:"persona"`
-	Zone       string    `json:"zone"`
-	WorkingDir string    `json:"workingDir"`
-	Agent      string    `json:"agent"` // For python type: v0_minimal, v1_basic, etc.
+	Type        AgentType `json:"type"`
+	Name        string    `json:"name"`
+	Task        string    `json:"task"`
+	Persona     string    `json:"persona"`
+	Zone        string    `json:"zone"`
+	WorkingDir  string    `json:"workingDir"`
+	Agent       string    `json:"agent"`       // For python type: v0_minimal, v1_basic, etc.
+	OfflineMode bool      `json:"offlineMode"` // Use Ollama instead of Anthropic API
+	OllamaModel string    `json:"ollamaModel"` // Model to use in offline mode, e.g., "qwen3-coder"
 }
 
 // Spawn creates and starts a new agent
@@ -132,39 +137,33 @@ func (m *Manager) Spawn(req SpawnRequest) (*Agent, error) {
 	}
 
 	agent := &Agent{
-		ID:         id,
-		Name:       name,
-		Type:       req.Type,
-		Task:       req.Task,
-		Persona:    req.Persona,
-		Zone:       zone,
-		WorkingDir: req.WorkingDir,
-		Status:     StatusStarting,
-		Tokens:     0,
-		Cost:       0,
-		CreatedAt:  time.Now(),
+		ID:          id,
+		Name:        name,
+		Type:        req.Type,
+		Task:        req.Task,
+		Persona:     req.Persona,
+		Zone:        zone,
+		WorkingDir:  req.WorkingDir,
+		Status:      StatusStarting,
+		Tokens:      0,
+		Cost:        0,
+		CreatedAt:   time.Now(),
+		OfflineMode: req.OfflineMode,
+		Model:       req.OllamaModel,
 	}
 
-	var cmd *exec.Cmd
+	// All agents now use Claude Code (Python agents have been deprecated)
+	// Use --dangerously-skip-permissions for headless execution
+	// In production, consider using --permission-mode with more granular control
+	args := []string{"-p", req.Task, "--output-format", "stream-json", "--dangerously-skip-permissions"}
 
-	switch req.Type {
-	case AgentTypePython:
-		agentFile := req.Agent
-		if agentFile == "" {
-			agentFile = "v1_basic"
-		}
-		agentPath := fmt.Sprintf("%s/%s.py", m.agentsDir, agentFile)
-		cmd = exec.Command("python3", agentPath, req.Task)
-
-	case AgentTypeClaudeCode:
-		// Use --dangerously-skip-permissions for headless execution
-		// In production, consider using --permission-mode with more granular control
-		cmd = exec.Command("claude", "-p", req.Task, "--output-format", "stream-json", "--dangerously-skip-permissions")
-		fmt.Printf("Spawning Claude Code agent: claude -p %q --output-format stream-json --dangerously-skip-permissions\n", req.Task)
-
-	default:
-		return nil, fmt.Errorf("unknown agent type: %s", req.Type)
+	// Add model flag for offline mode
+	if req.OfflineMode && req.OllamaModel != "" {
+		args = append(args, "--model", req.OllamaModel)
 	}
+
+	cmd := exec.Command("claude", args...)
+	fmt.Printf("Spawning Claude Code agent: claude %v\n", args)
 
 	if req.WorkingDir != "" {
 		cmd.Dir = req.WorkingDir
@@ -172,6 +171,16 @@ func (m *Manager) Spawn(req SpawnRequest) (*Agent, error) {
 
 	// Pass through environment variables (includes ANTHROPIC_API_KEY)
 	cmd.Env = os.Environ()
+
+	// For offline mode, override environment to point to Ollama
+	if req.OfflineMode {
+		cmd.Env = append(cmd.Env,
+			"ANTHROPIC_BASE_URL=http://localhost:11434",
+			"ANTHROPIC_AUTH_TOKEN=ollama",
+			"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+		)
+		fmt.Printf("Agent %s running in offline mode with Ollama (model: %s)\n", id, req.OllamaModel)
+	}
 
 	// Set up pipes
 	stdout, err := cmd.StdoutPipe()

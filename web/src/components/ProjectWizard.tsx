@@ -5,6 +5,7 @@ import { TypingIndicator } from './TypingIndicator'
 import { WorkflowMatrix } from './WorkflowMatrix'
 import { FolderPicker } from './FolderPicker'
 import { useProjectStore, createProject, checkPath, importProject } from '../stores/useProjectStore'
+import { fetchOllamaStatus, type OllamaStatus } from '../stores/useStore'
 import { toast } from '../stores/useToast'
 import type { WizardStep, MatrixCell, Audience, PathCheckResult } from '../types/project'
 import { buildInitialMatrix } from '../types/project'
@@ -32,6 +33,12 @@ export function ProjectWizard() {
   const [matrix, setMatrix] = useState<MatrixCell[]>([])
   const [folderPickerOpen, setFolderPickerOpen] = useState(false)
 
+  // Offline mode state
+  const [mode, setMode] = useState<'online' | 'offline'>('online')
+  const [ollamaModel, setOllamaModel] = useState('')
+  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null)
+  const [loadingOllama, setLoadingOllama] = useState(false)
+
   // Reset on open
   useEffect(() => {
     if (wizardOpen) {
@@ -43,6 +50,25 @@ export function ProjectWizard() {
       setMatrix(buildInitialMatrix('personal'))
       setError('')
       setPathStatus({ exists: false, hasGit: false, hasMission: false })
+      setMode('online')
+      setOllamaModel('')
+
+      // Check Ollama status
+      setLoadingOllama(true)
+      fetchOllamaStatus()
+        .then((status) => {
+          setOllamaStatus(status)
+          // Set default model if available
+          if (status.running && status.models && status.models.length > 0) {
+            setOllamaModel(status.models[0])
+          }
+        })
+        .catch(() => {
+          setOllamaStatus({ running: false })
+        })
+        .finally(() => {
+          setLoadingOllama(false)
+        })
     }
   }, [wizardOpen])
 
@@ -104,7 +130,9 @@ export function ProjectWizard() {
         path,
         initGit: !pathStatus.hasGit && initGit,
         enableKing,
-        matrix
+        matrix,
+        mode,
+        ollamaModel: mode === 'offline' ? ollamaModel : undefined
       })
       addProject(project)
       setCurrentProject(project.path)
@@ -198,6 +226,67 @@ export function ProjectWizard() {
                     : 'Customer-facing projects enable all workflow steps'}
                 </p>
               </div>
+
+              {/* Mode selector */}
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1.5">Mode</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode('online')}
+                    className={`flex-1 py-2 text-sm font-medium rounded transition-colors ${
+                      mode === 'online'
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    Online (Claude API)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('offline')}
+                    disabled={!ollamaStatus?.running}
+                    className={`flex-1 py-2 text-sm font-medium rounded transition-colors ${
+                      mode === 'offline'
+                        ? 'bg-yellow-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    } ${!ollamaStatus?.running ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {loadingOllama ? 'Checking...' : 'Offline (Ollama)'}
+                  </button>
+                </div>
+                {!ollamaStatus?.running && !loadingOllama && (
+                  <p className="mt-1 text-[10px] text-yellow-400">
+                    Ollama not detected. Start Ollama to enable offline mode.
+                  </p>
+                )}
+                {mode === 'online' && (
+                  <p className="mt-1 text-[10px] text-gray-600">
+                    Uses Claude API with your ANTHROPIC_API_KEY
+                  </p>
+                )}
+              </div>
+
+              {/* Model selector - only show when offline */}
+              {mode === 'offline' && ollamaStatus?.models && ollamaStatus.models.length > 0 && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1.5">Local Model</label>
+                  <select
+                    value={ollamaModel}
+                    onChange={(e) => setOllamaModel(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600"
+                  >
+                    {ollamaStatus.models.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[10px] text-gray-600">
+                    Select which Ollama model to use for this project
+                  </p>
+                </div>
+              )}
 
               {/* Checkboxes */}
               <div className="space-y-3">

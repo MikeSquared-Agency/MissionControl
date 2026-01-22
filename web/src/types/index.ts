@@ -3,6 +3,7 @@ export * from './workflow'
 import type { Phase } from './workflow'
 
 // Agent types
+// Note: 'python' is deprecated, all agents now use 'claude-code'
 export type AgentType = 'python' | 'claude-code'
 
 export type AgentStatus = 'starting' | 'working' | 'idle' | 'error' | 'waiting' | 'stopped'
@@ -24,6 +25,8 @@ export interface Agent {
   created_at: string
   error?: string
   pid?: number
+  offlineMode?: boolean
+  model?: string
 }
 
 // Attention types
@@ -101,13 +104,15 @@ export interface KingQuestion {
 
 // API types
 export interface SpawnRequest {
-  type: AgentType
+  type?: AgentType
   name: string
   task: string
   persona?: string
   zone: string
   workingDir?: string
   agent?: string // for python agent version
+  offlineMode?: boolean
+  ollamaModel?: string
 }
 
 // Connection status

@@ -148,7 +148,7 @@ func (h *Handler) spawnAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Type == "" {
-		req.Type = manager.AgentTypePython // Default to python
+		req.Type = manager.AgentTypeClaudeCode // Default to Claude Code
 	}
 
 	agent, err := h.Manager.Spawn(req)
