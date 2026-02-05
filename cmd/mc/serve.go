@@ -118,12 +118,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Handler: mux,
 	}
 
-	// Handle shutdown gracefully
+	// Handle shutdown gracefully with auto-checkpoint (G3.3)
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
 		log.Println("Shutting down...")
+
+		// Auto-checkpoint on shutdown
+		if cp, err := createCheckpoint(missionDir, ""); err == nil {
+			log.Printf("Shutdown checkpoint created: %s", cp.ID)
+		}
+
 		server.Close()
 	}()
 

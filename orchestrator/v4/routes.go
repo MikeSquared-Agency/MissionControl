@@ -38,6 +38,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/checkpoints/", h.handleCheckpoint)
 	mux.HandleFunc("/api/budgets/", h.handleBudget)
 
+	// Session/checkpoint management routes
+	mux.HandleFunc("/api/checkpoint/status", h.handleCheckpointStatus)
+	mux.HandleFunc("/api/checkpoint/history", h.handleCheckpointHistory)
+	mux.HandleFunc("/api/checkpoint/restart", h.handleCheckpointRestart)
+
 	// Strategy routes
 	mux.HandleFunc("/api/gates/", h.handleGate)
 }
@@ -541,7 +546,7 @@ func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, stage Stag
 	gate, _ = h.Store.GetGate(stage)
 	canProceed := h.Store.CanTransition(stage.Next())
 
-	// Notify
+	// Notify gate approval
 	if h.Notifier != nil {
 		h.Notifier.Notify(map[string]interface{}{
 			"type":   "gate_status",
@@ -550,9 +555,103 @@ func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, stage Stag
 		})
 	}
 
+	// Auto-create checkpoint on gate approval (G3.1)
+	cpSummary := h.Store.CreateCheckpoint()
+	if h.Notifier != nil {
+		h.Notifier.Notify(map[string]interface{}{
+			"type":          "checkpoint_created",
+			"checkpoint_id": cpSummary.ID,
+			"stage":         cpSummary.Stage,
+			"trigger":       "gate_approval",
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(GateApprovalResponse{
 		Gate:       gate,
 		CanProceed: canProceed,
 	})
+}
+
+// ============================================================================
+// Session / Checkpoint Management
+// ============================================================================
+
+// CheckpointStatusResponse is the response for GET /api/checkpoint/status
+type CheckpointStatusResponse struct {
+	SessionID      string `json:"session_id"`
+	Stage          Stage  `json:"stage"`
+	SessionStart   int64  `json:"session_start"`
+	DurationMin    int    `json:"duration_minutes"`
+	LastCheckpoint string `json:"last_checkpoint,omitempty"`
+	TasksTotal     int    `json:"tasks_total"`
+	TasksComplete  int    `json:"tasks_complete"`
+	Health         string `json:"health"`
+	Recommendation string `json:"recommendation"`
+}
+
+func (h *Handler) handleCheckpointStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	status := h.Store.GetSessionStatus()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
+}
+
+func (h *Handler) handleCheckpointHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessions := h.Store.GetSessionHistory()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"sessions": sessions,
+	})
+}
+
+// CheckpointRestartRequest is the request for POST /api/checkpoint/restart
+type CheckpointRestartRequest struct {
+	FromCheckpointID string `json:"from_checkpoint_id,omitempty"`
+}
+
+// CheckpointRestartResponse is the response for POST /api/checkpoint/restart
+type CheckpointRestartResponse struct {
+	OldSessionID string `json:"old_session_id"`
+	NewSessionID string `json:"new_session_id"`
+	CheckpointID string `json:"checkpoint_id"`
+	Stage        Stage  `json:"stage"`
+	Briefing     string `json:"briefing"`
+}
+
+func (h *Handler) handleCheckpointRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CheckpointRestartRequest
+	json.NewDecoder(r.Body).Decode(&req)
+
+	result := h.Store.RestartSession(req.FromCheckpointID)
+
+	// Notify via WebSocket
+	if h.Notifier != nil {
+		h.Notifier.Notify(map[string]interface{}{
+			"type":        "session_restarted",
+			"old_session": result.OldSessionID,
+			"new_session": result.NewSessionID,
+			"checkpoint":  result.CheckpointID,
+			"stage":       result.Stage,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

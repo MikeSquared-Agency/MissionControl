@@ -20,10 +20,13 @@ type Store struct {
 	handoffs     []*Handoff
 	findings     []Finding
 	budgets      map[string]*TokenBudget
+	sessions     []SessionRecord
+	sessionID    string
 }
 
 // NewStore creates a new v4 store
 func NewStore() *Store {
+	sessionID := uuid.New().String()[:8]
 	s := &Store{
 		currentStage: StageDiscovery,
 		tasks:        make(map[string]*Task),
@@ -32,7 +35,15 @@ func NewStore() *Store {
 		handoffs:     make([]*Handoff, 0),
 		findings:     make([]Finding, 0),
 		budgets:      make(map[string]*TokenBudget),
+		sessions:     make([]SessionRecord, 0),
+		sessionID:    sessionID,
 	}
+	// Record initial session
+	s.sessions = append(s.sessions, SessionRecord{
+		SessionID: sessionID,
+		StartedAt: time.Now().Unix(),
+		Stage:     StageDiscovery,
+	})
 
 	// Initialize gates for all stages
 	for _, stage := range AllStages() {
@@ -506,3 +517,150 @@ func (s *Store) GetBudget(workerID string) (*TokenBudget, bool) {
 	b, ok := s.budgets[workerID]
 	return b, ok
 }
+
+// Session operations
+
+// GetSessionStatus returns current session health
+func (s *Store) GetSessionStatus() CheckpointStatusResponse {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	now := time.Now().Unix()
+
+	// Find current session start
+	var sessionStart int64
+	for i := len(s.sessions) - 1; i >= 0; i-- {
+		if s.sessions[i].EndedAt == 0 {
+			sessionStart = s.sessions[i].StartedAt
+			break
+		}
+	}
+	if sessionStart == 0 {
+		sessionStart = now
+	}
+
+	durationMin := int((now - sessionStart) / 60)
+
+	// Count tasks
+	total := len(s.tasks)
+	complete := 0
+	for _, t := range s.tasks {
+		if t.Status == TaskStatusDone {
+			complete++
+		}
+	}
+
+	// Last checkpoint
+	lastCP := ""
+	if len(s.checkpoints) > 0 {
+		lastCP = s.checkpoints[len(s.checkpoints)-1].ID
+	}
+
+	// Health assessment
+	health := "green"
+	recommendation := "Session is healthy"
+	if durationMin > 120 {
+		health = "red"
+		recommendation = "Session is long. Consider restarting to preserve context."
+	} else if durationMin > 60 {
+		health = "yellow"
+		recommendation = "Session approaching limit. Consider checkpointing soon."
+	}
+
+	return CheckpointStatusResponse{
+		SessionID:      s.sessionID,
+		Stage:          s.currentStage,
+		SessionStart:   sessionStart,
+		DurationMin:    durationMin,
+		LastCheckpoint: lastCP,
+		TasksTotal:     total,
+		TasksComplete:  complete,
+		Health:         health,
+		Recommendation: recommendation,
+	}
+}
+
+// GetSessionHistory returns all session records
+func (s *Store) GetSessionHistory() []SessionRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]SessionRecord, len(s.sessions))
+	copy(result, s.sessions)
+	return result
+}
+
+// RestartSession creates a checkpoint, ends current session, starts new one
+func (s *Store) RestartSession(fromCheckpointID string) CheckpointRestartResponse {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().Unix()
+	oldSessionID := s.sessionID
+
+	// Create checkpoint
+	cpID := fmt.Sprintf("cp-%s-%d", s.currentStage, len(s.checkpoints))
+	var tasksSnapshot []Task
+	for _, t := range s.tasks {
+		tasksSnapshot = append(tasksSnapshot, *t)
+	}
+
+	checkpoint := &Checkpoint{
+		ID:               cpID,
+		Stage:            s.currentStage,
+		SessionID:        oldSessionID,
+		CreatedAt:        now,
+		TasksSnapshot:    tasksSnapshot,
+		FindingsSnapshot: append([]Finding{}, s.findings...),
+		Decisions:        []string{},
+	}
+	s.checkpoints = append(s.checkpoints, checkpoint)
+
+	// End current session
+	for i := len(s.sessions) - 1; i >= 0; i-- {
+		if s.sessions[i].SessionID == oldSessionID && s.sessions[i].EndedAt == 0 {
+			s.sessions[i].EndedAt = now
+			s.sessions[i].CheckpointID = cpID
+			s.sessions[i].Reason = "restart"
+			break
+		}
+	}
+
+	// Start new session
+	newSessionID := uuid.New().String()[:8]
+	s.sessionID = newSessionID
+	s.sessions = append(s.sessions, SessionRecord{
+		SessionID:    newSessionID,
+		StartedAt:    now,
+		CheckpointID: cpID,
+		Stage:        s.currentStage,
+	})
+
+	// Generate briefing
+	briefing := s.generateBriefing(checkpoint)
+
+	return CheckpointRestartResponse{
+		OldSessionID: oldSessionID,
+		NewSessionID: newSessionID,
+		CheckpointID: cpID,
+		Stage:        s.currentStage,
+		Briefing:     briefing,
+	}
+}
+
+func (s *Store) generateBriefing(cp *Checkpoint) string {
+	total := len(cp.TasksSnapshot)
+	done := 0
+	pending := 0
+	for _, t := range cp.TasksSnapshot {
+		switch t.Status {
+		case TaskStatusDone:
+			done++
+		case TaskStatusPending:
+			pending++
+		}
+	}
+
+	return fmt.Sprintf("# Session Briefing\n\n**Stage:** %s\n\n## Tasks\n- Total: %d, Done: %d, Pending: %d\n",
+		cp.Stage, total, done, pending)
+}
+

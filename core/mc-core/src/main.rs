@@ -5,7 +5,7 @@ use knowledge::checkpoint::CheckpointCompiler;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use workflow::{Gate, GateStatus, Stage};
 
 #[derive(Parser)]
@@ -180,7 +180,7 @@ fn validate_handoff(file: &PathBuf) -> Result<ValidationResult> {
     })
 }
 
-fn check_gate(stage_str: &str, mission_dir: &PathBuf) -> Result<GateCheckResult> {
+fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
     // Parse stage
     let stage: Stage = serde_json::from_str(&format!("\"{}\"", stage_str))
         .with_context(|| format!("Invalid stage: {}. Valid: discovery, goal, requirements, planning, design, implement, verify, validate, document, release", stage_str))?;

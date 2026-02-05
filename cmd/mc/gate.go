@@ -176,6 +176,11 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to update gate: %w", err)
 	}
 
+	// Auto-checkpoint on gate approval (G3.1)
+	if cp, err := createCheckpoint(missionDir, ""); err == nil {
+		fmt.Printf("Checkpoint created: %s\n", cp.ID)
+	}
+
 	// Transition to next stage
 	nextStage, err := getNextStage(stage)
 	if err != nil {

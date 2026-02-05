@@ -216,3 +216,13 @@ type StageInfo struct {
 	Stage  Stage  `json:"stage"`
 	Status string `json:"status"` // "complete", "current", "pending"
 }
+
+// SessionRecord tracks session lifecycle
+type SessionRecord struct {
+	SessionID    string `json:"session_id"`
+	StartedAt    int64  `json:"started_at"`
+	EndedAt      int64  `json:"ended_at,omitempty"`
+	CheckpointID string `json:"checkpoint_id,omitempty"`
+	Stage        Stage  `json:"stage"`
+	Reason       string `json:"reason,omitempty"`
+}
