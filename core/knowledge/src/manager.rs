@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use thiserror::Error;
-use workflow::{Phase, Task};
+use workflow::{Stage, Task};
 
 use crate::tokens::TokenCounter;
 use crate::budget::{TokenBudget, BudgetStatus};
@@ -111,12 +111,12 @@ impl KnowledgeManager {
     // Checkpoint management
     pub fn create_checkpoint(
         &mut self,
-        phase: Phase,
+        stage: Stage,
         tasks: &[Task],
         findings: &[Finding],
     ) -> String {
-        let id = format!("cp-{}-{}", phase.as_str(), self.checkpoints.len());
-        let checkpoint = Checkpoint::new(&id, phase)
+        let id = format!("cp-{}-{}", stage.as_str(), self.checkpoints.len());
+        let checkpoint = Checkpoint::new(&id, stage)
             .with_tasks(tasks.to_vec())
             .with_findings(findings.to_vec());
 
@@ -176,7 +176,7 @@ impl KnowledgeManager {
             Vec::new()
         };
 
-        // Filter findings relevant to this task's zone/phase
+        // Filter findings relevant to this task's zone/stage
         let relevant_findings: Vec<Finding> = self.findings.iter()
             .cloned()
             .collect();
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn test_checkpoint_creation() {
         let mut manager = KnowledgeManager::new();
-        let id = manager.create_checkpoint(Phase::Design, &[], &[]);
+        let id = manager.create_checkpoint(Stage::Design, &[], &[]);
 
         assert!(id.starts_with("cp-design"));
         assert!(manager.get_checkpoint(&id).is_some());
@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn test_delta_management() {
         let mut manager = KnowledgeManager::new();
-        let cp_id = manager.create_checkpoint(Phase::Design, &[], &[]);
+        let cp_id = manager.create_checkpoint(Stage::Design, &[], &[]);
 
         let delta = manager.compute_delta(
             &cp_id,

@@ -1,6 +1,6 @@
 // Re-export workflow types
 export * from './workflow'
-import type { Phase } from './workflow'
+import type { Stage } from './workflow'
 
 // Agent types
 // Note: 'python' is deprecated, all agents now use 'claude-code'
@@ -70,12 +70,12 @@ export interface Persona {
   name: string
   description: string
   color: string
-  phase: Phase // which workflow phase this persona belongs to
+  stage: Stage // which workflow stage this persona belongs to
   enabled: boolean // can be disabled per-project
   tools: string[] // available tools for this persona
   skills: string[] // skills/capabilities
   systemPrompt: string
-  isBuiltin: boolean // true for the 11 workflow personas
+  isBuiltin: boolean // true for the workflow personas
 }
 
 // King Mode types
@@ -139,14 +139,14 @@ export interface Event {
   data?: unknown
 }
 
-// The 11 workflow personas
+// The workflow personas
 export const DEFAULT_PERSONAS: Persona[] = [
   {
     id: 'researcher',
     name: 'Researcher',
     description: 'Research prior art, assess feasibility, analyze competitors',
     color: '#6366f1', // indigo
-    phase: 'idea',
+    stage: 'discovery',
     enabled: true,
     tools: ['read', 'grep', 'web_search', 'bash_readonly'],
     skills: ['research', 'analysis', 'feasibility-assessment'],
@@ -154,15 +154,27 @@ export const DEFAULT_PERSONAS: Persona[] = [
     isBuiltin: true
   },
   {
-    id: 'designer',
-    name: 'Designer',
-    description: 'UI mockups, wireframes, user flows',
-    color: '#ec4899', // pink
-    phase: 'design',
+    id: 'analyst',
+    name: 'Analyst',
+    description: 'Defines goals, success metrics, and project scope',
+    color: '#f59e0b', // amber
+    stage: 'goal',
     enabled: true,
-    tools: ['read', 'write', 'grep'],
-    skills: ['ui-design', 'wireframing', 'user-flows', 'mockups'],
-    systemPrompt: 'You are a Designer. Create UI mockups, wireframes, and user flows. Focus on design artifacts.',
+    tools: ['read', 'write', 'bash'],
+    skills: ['goal-definition', 'metrics', 'scope-analysis'],
+    systemPrompt: 'You are an Analyst. Define clear goals, success metrics, and project scope. Focus on measurable outcomes.',
+    isBuiltin: true
+  },
+  {
+    id: 'requirements-engineer',
+    name: 'Requirements Engineer',
+    description: 'Documents requirements and acceptance criteria',
+    color: '#8b5cf6', // violet
+    stage: 'requirements',
+    enabled: true,
+    tools: ['read', 'write', 'bash'],
+    skills: ['requirements-gathering', 'acceptance-criteria', 'specifications'],
+    systemPrompt: 'You are a Requirements Engineer. Document requirements and acceptance criteria. Be precise and testable.',
     isBuiltin: true
   },
   {
@@ -170,7 +182,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
     name: 'Architect',
     description: 'API contracts, data models, system design',
     color: '#06b6d4', // cyan
-    phase: 'design',
+    stage: 'planning',
     enabled: true,
     tools: ['read', 'write', 'grep', 'bash_readonly'],
     skills: ['api-design', 'data-modeling', 'system-architecture', 'technical-specs'],
@@ -178,11 +190,23 @@ export const DEFAULT_PERSONAS: Persona[] = [
     isBuiltin: true
   },
   {
+    id: 'designer',
+    name: 'Designer',
+    description: 'UI mockups, wireframes, user flows',
+    color: '#ec4899', // pink
+    stage: 'design',
+    enabled: true,
+    tools: ['read', 'write', 'grep'],
+    skills: ['ui-design', 'wireframing', 'user-flows', 'mockups'],
+    systemPrompt: 'You are a Designer. Create UI mockups, wireframes, and user flows. Focus on design artifacts.',
+    isBuiltin: true
+  },
+  {
     id: 'developer',
     name: 'Developer',
     description: 'Production code, tests, feature implementation',
     color: '#3b82f6', // blue
-    phase: 'implement',
+    stage: 'implement',
     enabled: true,
     tools: ['read', 'write', 'edit', 'bash', 'grep', 'tree'],
     skills: ['implementation', 'testing', 'refactoring', 'debugging'],
@@ -194,7 +218,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
     name: 'Debugger',
     description: 'Bug investigation, root cause analysis, fixes',
     color: '#f97316', // orange
-    phase: 'implement',
+    stage: 'implement',
     enabled: true,
     tools: ['read', 'write', 'edit', 'bash', 'grep'],
     skills: ['debugging', 'root-cause-analysis', 'bug-fixing', 'log-analysis'],
@@ -206,7 +230,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
     name: 'Reviewer',
     description: 'Code quality review, best practices',
     color: '#22c55e', // green
-    phase: 'verify',
+    stage: 'verify',
     enabled: true,
     tools: ['read', 'grep', 'bash_readonly'],
     skills: ['code-review', 'best-practices', 'quality-assurance'],
@@ -218,7 +242,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
     name: 'Security',
     description: 'Vulnerability checks, OWASP compliance',
     color: '#ef4444', // red
-    phase: 'verify',
+    stage: 'verify',
     enabled: false, // disabled by default for personal projects
     tools: ['read', 'grep', 'bash_readonly'],
     skills: ['security-audit', 'vulnerability-assessment', 'owasp', 'penetration-testing'],
@@ -230,7 +254,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
     name: 'Tester',
     description: 'Unit and integration tests, coverage',
     color: '#eab308', // yellow
-    phase: 'verify',
+    stage: 'verify',
     enabled: true,
     tools: ['read', 'write', 'bash', 'grep'],
     skills: ['unit-testing', 'integration-testing', 'test-coverage', 'test-design'],
@@ -242,7 +266,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
     name: 'QA',
     description: 'E2E validation, user flows, UX testing',
     color: '#a855f7', // purple
-    phase: 'verify',
+    stage: 'validate',
     enabled: false, // disabled by default for personal projects
     tools: ['read', 'write', 'bash', 'grep'],
     skills: ['e2e-testing', 'user-acceptance-testing', 'ux-validation', 'manual-testing'],
@@ -254,7 +278,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
     name: 'Docs',
     description: 'Documentation, guides, API docs',
     color: '#64748b', // slate
-    phase: 'document',
+    stage: 'document',
     enabled: true,
     tools: ['read', 'write', 'grep'],
     skills: ['documentation', 'technical-writing', 'api-docs', 'tutorials'],
@@ -266,7 +290,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
     name: 'DevOps',
     description: 'CI/CD, deployments, versioning',
     color: '#10b981', // emerald
-    phase: 'release',
+    stage: 'release',
     enabled: false, // disabled by default for personal projects
     tools: ['read', 'write', 'edit', 'bash', 'grep'],
     skills: ['ci-cd', 'deployment', 'infrastructure', 'monitoring', 'versioning'],

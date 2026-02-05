@@ -4,7 +4,7 @@ package v4
 
 // WorkflowEvent types
 const (
-	EventPhaseChanged  = "phase_changed"
+	EventStageChanged  = "stage_changed"
 	EventTaskCreated   = "task_created"
 	EventTaskUpdated   = "task_updated"
 	EventGateStatus    = "gate_status"
@@ -26,11 +26,11 @@ const (
 	EventAgentStuck  = "agent_stuck"
 )
 
-// PhaseChangedEvent is sent when the phase changes
-type PhaseChangedEvent struct {
+// StageChangedEvent is sent when the stage changes
+type StageChangedEvent struct {
 	Type     string `json:"type"`
-	Phase    Phase  `json:"phase"`
-	Previous Phase  `json:"previous"`
+	Stage    Stage  `json:"stage"`
+	Previous Stage  `json:"previous"`
 }
 
 // TaskCreatedEvent is sent when a task is created
@@ -50,7 +50,7 @@ type TaskUpdatedEvent struct {
 // GateStatusEvent is sent when a gate status changes
 type GateStatusEvent struct {
 	Type     string          `json:"type"`
-	Phase    Phase           `json:"phase"`
+	Stage    Stage           `json:"stage"`
 	Status   GateStatus      `json:"status"`
 	Criteria []GateCriterion `json:"criteria,omitempty"`
 }
@@ -77,7 +77,7 @@ type TokenWarningEvent struct {
 type CheckpointCreatedEvent struct {
 	Type         string `json:"type"`
 	CheckpointID string `json:"checkpoint_id"`
-	Phase        Phase  `json:"phase"`
+	Stage        Stage  `json:"stage"`
 }
 
 // HandoffReceivedEvent is sent when a handoff is received

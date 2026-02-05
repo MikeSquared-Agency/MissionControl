@@ -86,7 +86,7 @@ export const useKnowledgeStore = create<KnowledgeState>()((set, get) => ({
       case 'checkpoint_created':
         get().addCheckpoint({
           id: event.checkpoint_id,
-          phase: event.phase,
+          stage: event.stage,
           created_at: Date.now()
         })
         break

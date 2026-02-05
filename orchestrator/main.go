@@ -110,8 +110,8 @@ func main() {
 	// Set v4 state provider for WebSocket initial sync
 	hub.SetV4StateProvider(func() interface{} {
 		return map[string]interface{}{
-			"current_phase": v4Store.CurrentPhase(),
-			"phases":        v4Store.GetPhases(),
+			"current_stage": v4Store.CurrentStage(),
+			"stages":        v4Store.GetStages(),
 			"tasks":         v4Store.ListTasks(nil, nil, nil, nil),
 			"checkpoints":   v4Store.ListCheckpoints(),
 		}
@@ -179,7 +179,7 @@ func main() {
 
 <h2>v4 Workflow Endpoints</h2>
 <ul>
-<li><a href="/api/phases">GET /api/phases</a> - Current phase and all phases</li>
+<li><a href="/api/stages">GET /api/stages</a> - Current stage and all stages</li>
 <li><a href="/api/tasks">GET /api/tasks</a> - List tasks</li>
 <li>POST /api/tasks - Create task</li>
 <li>GET /api/tasks/:id - Get task</li>
@@ -213,15 +213,15 @@ func main() {
 <li>POST /api/king/stop - Stop King process</li>
 <li><a href="/api/king/status">GET /api/king/status</a> - King status</li>
 <li>POST /api/king/message - Send message to King</li>
-<li>GET /api/mission/gates/:phase - Check gate status</li>
-<li>POST /api/mission/gates/:phase/approve - Approve gate</li>
+<li>GET /api/mission/gates/:stage - Check gate status</li>
+<li>POST /api/mission/gates/:stage/approve - Approve gate</li>
 </ul>
 
 <h2>WebSocket Events (v5)</h2>
 <ul>
 <li>mission_state - Initial mission state sync</li>
 <li>king_status - King running status</li>
-<li>phase_changed - Phase transitioned</li>
+<li>stage_changed - Stage transitioned</li>
 <li>task_created - New task created</li>
 <li>task_updated - Task status changed</li>
 <li>worker_spawned - Worker started</li>

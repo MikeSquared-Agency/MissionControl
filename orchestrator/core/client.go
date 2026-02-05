@@ -142,20 +142,20 @@ type GateCriterion struct {
 
 // GateResult is the JSON response from mc-core check-gate
 type GateResult struct {
-	Phase      string          `json:"phase"`
+	Stage      string          `json:"stage"`
 	Status     string          `json:"status"` // "open", "closed", "awaiting_approval"
 	Criteria   []GateCriterion `json:"criteria"`
 	CanApprove bool            `json:"can_approve"`
 }
 
-// CheckGate checks the gate status for a given phase.
-func CheckGate(phase string, missionDir string) (*GateResult, error) {
+// CheckGate checks the gate status for a given stage.
+func CheckGate(stage string, missionDir string) (*GateResult, error) {
 	mcCore, err := findMcCore()
 	if err != nil {
 		return nil, err
 	}
 
-	cmd := exec.Command(mcCore, "check-gate", phase, "--mission-dir", missionDir)
+	cmd := exec.Command(mcCore, "check-gate", stage, "--mission-dir", missionDir)
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

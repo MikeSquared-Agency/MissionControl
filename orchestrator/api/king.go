@@ -200,36 +200,36 @@ func (h *KingHandler) handleKingAnswer(w http.ResponseWriter, r *http.Request) {
 
 // handleGates handles gate operations
 func (h *KingHandler) handleGates(w http.ResponseWriter, r *http.Request) {
-	// Extract phase from path: /api/mission/gates/{phase}/approve
+	// Extract stage from path: /api/mission/gates/{stage}/approve
 	path := strings.TrimPrefix(r.URL.Path, "/api/mission/gates/")
 	parts := strings.Split(path, "/")
 
 	if len(parts) < 1 || parts[0] == "" {
-		http.Error(w, "Phase required", http.StatusBadRequest)
+		http.Error(w, "Stage required", http.StatusBadRequest)
 		return
 	}
 
-	phase := parts[0]
+	stage := parts[0]
 
 	// Check if this is an approve request
 	if len(parts) >= 2 && parts[1] == "approve" {
-		h.handleGateApprove(w, r, phase)
+		h.handleGateApprove(w, r, stage)
 		return
 	}
 
 	// Otherwise return gate status
-	h.handleGateCheck(w, r, phase)
+	h.handleGateCheck(w, r, stage)
 }
 
-// handleGateCheck checks the gate status for a phase
-func (h *KingHandler) handleGateCheck(w http.ResponseWriter, r *http.Request, phase string) {
+// handleGateCheck checks the gate status for a stage
+func (h *KingHandler) handleGateCheck(w http.ResponseWriter, r *http.Request, stage string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Call mc gate check
-	cmd := exec.Command(h.mcPath, "gate", "check", phase)
+	cmd := exec.Command(h.mcPath, "gate", "check", stage)
 	cmd.Dir = h.missionDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -252,14 +252,14 @@ func (h *KingHandler) handleGateCheck(w http.ResponseWriter, r *http.Request, ph
 }
 
 // handleGateApprove approves a gate
-func (h *KingHandler) handleGateApprove(w http.ResponseWriter, r *http.Request, phase string) {
+func (h *KingHandler) handleGateApprove(w http.ResponseWriter, r *http.Request, stage string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Call mc gate approve
-	cmd := exec.Command(h.mcPath, "gate", "approve", phase)
+	cmd := exec.Command(h.mcPath, "gate", "approve", stage)
 	cmd.Dir = h.missionDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -272,7 +272,7 @@ func (h *KingHandler) handleGateApprove(w http.ResponseWriter, r *http.Request, 
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status":  "approved",
-		"phase":   phase,
+		"stage":   stage,
 		"message": string(output),
 	})
 }

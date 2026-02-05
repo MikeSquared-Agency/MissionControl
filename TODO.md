@@ -1,441 +1,273 @@
-# MissionControl — TODO
+# v6 Integration TODO List
 
-## Current: v5.1 — Quality of Life (Remaining)
-
-### Repository Cleanup
-- [ ] Audit for dead code / unused files
-- [ ] Add `CODEOWNERS` for GitHub (optional)
-
-### Testing
-- [ ] E2E: Token usage displays correctly
-
-### Homebrew Distribution
-- [ ] Create `homebrew-tap` repo (`DarlingtonDeveloper/homebrew-tap`)
-- [ ] `brew tap DarlingtonDeveloper/tap && brew install mission-control` works
-- [ ] Document in README
-
-### Configuration & Storage
-- [ ] Sort sidebar by `lastOpened` descending
-
-### UI Polish
-
-**Loading/Error/Empty States:**
-- [ ] Loading spinner while waiting for King response
-- [ ] Error state with retry button (WebSocket disconnect, API error)
-- [ ] Empty state: no project selected → show wizard
-- [ ] Empty state: no agents → "Spawn your first agent" prompt
-
-**UX Improvements:**
-- [ ] WebSocket connection indicator (green/red dot in header)
-- [ ] King conversation persists in localStorage
-- [ ] Clear conversation button
-- [ ] Copy response to clipboard button
-- [ ] Keyboard shortcut hints (tooltips on hover)
-
-**Visual Polish:**
-- [ ] Consistent color palette
-- [ ] Agent status indicators (idle/working/error)
-- [ ] Typing indicator in King chat
-
-### Developer Experience
-- [ ] `.vscode/settings.json` — format on save, recommended settings
-- [ ] `.vscode/extensions.json` — recommended extensions list
-- [ ] Pre-commit hooks via lefthook or husky (optional)
-
-### Dynamic Project Switching
-- [ ] Orchestrator API: `POST /api/projects/select` to switch active project
-- [ ] Orchestrator reloads `.mission/state/` watcher on project switch
-- [ ] WebSocket broadcasts project change event
-- [ ] UI reloads state when project switches (no page refresh needed)
-- [ ] Remove need to restart orchestrator with `--workdir` flag
+## Legend
+- 🔴 = Breaking change / high risk
+- 🟡 = Medium effort / some coordination
+- 🟢 = Low risk / isolated change
 
 ---
 
-## v6 — State Management
+## A. Rust Core (`core/`)
 
-Foundation for multi-agent coordination and intelligent work distribution.
+### A1. 10-Stage Workflow Engine 🔴
 
-### 6.1 JSONL Migration
-**What:** Convert `tasks.json` to `tasks.jsonl` (one JSON object per line)
+- [ ] **A1.1** Rename `core/workflow/src/phase.rs` → `core/workflow/src/stage.rs`
+- [ ] **A1.2** Replace `Phase` enum with `Stage` enum (10 variants: Discovery, Goal, Requirements, Planning, Design, Implement, Verify, Validate, Document, Release)
+- [ ] **A1.3** Update `Stage::next()` — 9 transitions instead of 5
+- [ ] **A1.4** Update `Stage::all()` — return 10 stages
+- [ ] **A1.5** Update `Stage::as_str()` — 10 string representations
+- [ ] **A1.6** Update `Default for Stage` — `Discovery` instead of `Idea`
+- [ ] **A1.7** Update `core/workflow/src/lib.rs` — rename `pub mod phase` → `pub mod stage`, update re-exports
+- [ ] **A1.8** Global find/replace: `Phase` → `Stage` across all Rust crates (workflow, knowledge, mc-protocol, mc-core, ffi)
 
-- [ ] One-time migration script
-- [ ] Update all read/write functions in `mc` CLI
-- [ ] Update file watcher in Go bridge
+### A2. Gate Criteria 🟡
 
-**Benefit:** Git merges line-by-line, enables concurrent writes
+- [ ] **A2.1** Update `Gate::new()` to accept `Stage` instead of `Phase`
+- [ ] **A2.2** Implement `default_criteria_for_stage()` with criteria for all 10 stages
+- [ ] **A2.3** Update `Gate.phase` field → `Gate.stage` in struct definition
+- [ ] **A2.4** Update gate ID generation: `gate-{stage.as_str()}`
 
----
+### A3. Task Struct 🟡
 
-### 6.2 Hash-Based Task IDs
-**What:** Replace sequential/random IDs with content-hash IDs (`mc-a7x2k`)
+- [ ] **A3.1** `Task.phase: Phase` → `Task.stage: Stage` in `core/workflow/src/task.rs`
+- [ ] **A3.2** Update all task creation/filtering logic referencing `.phase`
 
-- [ ] SHA256(title + timestamp) truncated to 5 chars
-- [ ] Update ID generation in `mc task create`
-- [ ] Migration for existing tasks
+### A4. Engine Updates 🟡
 
-**Benefit:** Prevents ID collisions, deterministic retries
+- [ ] **A4.1** `WorkflowEngine.current_phase` → `WorkflowEngine.current_stage`
+- [ ] **A4.2** `current_phase()` → `current_stage()`
+- [ ] **A4.3** `can_transition()` — works as-is (delegates to `Stage::next()`)
+- [ ] **A4.4** `WorkflowEngine::new()` — initializes 10 gates instead of 6
 
----
+### A5. mc-core CLI 🟡
 
-### 6.3 Audit Trail
-**What:** Append-only `audit/interactions.jsonl` logging all state mutations
+- [ ] **A5.1** Update `check-gate` command: accept 10 stage names, update error message listing valid stages
+- [ ] **A5.2** Update `validate-handoff`: if handoff JSON has `phase` field, accept as alias for `stage`
+- [ ] **A5.3** Update help text and `--help` output
 
-- [ ] Create audit log format (actor, action, target, timestamp)
-- [ ] Hook into all `mc` commands that mutate state
-- [ ] Add `mc audit` command to query history
+### A6. Knowledge & Protocol Crates 🟡
 
-**Benefit:** Full history, debug replay, compliance support
+- [ ] **A6.1** `core/knowledge/` — update any `Phase` references in handoff validation
+- [ ] **A6.2** `core/mc-protocol/` — update shared data structures if they reference `Phase`
 
----
+### A7. Rust Tests 🔴
 
-### 6.4 Task Dependencies
-**What:** Add `blocks`/`blockedBy` fields to tasks
-
-- [ ] Schema changes to task format
-- [ ] `mc task create --blocks <id>` flag
-- [ ] `mc dep add/remove` commands
-- [ ] Dependency validation (no cycles)
-- [ ] Auto-update blocked tasks when blockers close
-
-**Benefit:** King distributes work intelligently, workers get actionable tasks
-
----
-
-### 6.5 Ready Queue Command
-**What:** `mc ready` shows tasks with no open blockers
-
-- [ ] Query tasks where all `blockedBy` are closed
-- [ ] Filter by stage, assignee, labels
-- [ ] JSON output for King to consume
-
-**Benefit:** Workers ask "what can I do?" and get real answers
+- [ ] **A7.1** Update all 24 workflow crate tests (phase transitions, gate checks, task creation)
+- [ ] **A7.2** Add tests for new stages (Discovery, Goal, Requirements, Planning, Validate)
+- [ ] **A7.3** Add test: 9 sequential transitions from Discovery → Release
+- [ ] **A7.4** Update knowledge crate tests referencing phases
+- [ ] **A7.5** Update mc-protocol tests if applicable
+- [ ] **A7.6** `cargo test` passes across workspace
+- [ ] **A7.7** `cargo clippy` clean
 
 ---
 
-### 6.6 Dependency Visualization
-**What:** `mc dep tree <id>` shows dependency graph
+## B. Go Layer (`orchestrator/`, `cmd/mc/`)
 
-- [ ] Tree view of what blocks what
-- [ ] Show status of each node
-- [ ] `mc blocked` shows all blocked tasks and why
+### B1. Type Definitions 🔴
 
----
+- [ ] **B1.1** `orchestrator/v4/types.go`: Rename `Phase` → `Stage`, add 4 new constants
+- [ ] **B1.2** Update `AllStages()` (was `AllPhases()`) — return 10 stages
+- [ ] **B1.3** Update `Stage.Next()` (was `Phase.Next()`) — 9 transitions
+- [ ] **B1.4** `Task.Phase` → `Task.Stage` in struct
+- [ ] **B1.5** `Gate.Phase` → `Gate.Stage` in struct
+- [ ] **B1.6** `GateResult.Phase` → `GateResult.Stage` in `orchestrator/core/client.go`
 
-### 6.7 Git Commit Hooks
-**What:** Auto-commit state changes to git
+### B2. CLI Commands 🟡
 
-- [ ] Post-mutation hook in `mc` commands
-- [ ] Commit with message: `mc: {action} {target}`
-- [ ] Optional: push to remote
+- [ ] **B2.1** `mc phase` → `mc stage` (new command, keep `mc phase` as deprecated alias)
+- [ ] **B2.2** `mc task create --phase` → `--stage` (keep `--phase` as deprecated alias)
+- [ ] **B2.3** `mc gate check/approve` — accept new stage names
+- [ ] **B2.4** `mc init` — scaffold `stage.json` instead of `phase.json`, generate 10 gates in `gates.json`
+- [ ] **B2.5** `mc status` — output `stage` field instead of `phase`
+- [ ] **B2.6** Add `mc migrate` command: reads `phase.json` → writes `stage.json`, maps `idea` → `discovery`, regenerates `gates.json`
 
-**Benefit:** Automatic version history, disaster recovery
+### B3. `.mission/` File Changes 🟡
 
----
+- [ ] **B3.1** `mc init`: create `state/stage.json` (not `phase.json`)
+- [ ] **B3.2** `mc init`: `gates.json` has 10 entries
+- [ ] **B3.3** Update `CLAUDE.md` template with 10-stage instructions
+- [ ] **B3.4** Update persona prompt templates with new stage assignments
 
-### 6.8 10-Stage Workflow
-**What:** Expand from 6 phases to 10 stages
+### B4. OpenClaw Integration 🔴
 
-- [ ] Rename phase.json → stage.json
-- [ ] Add DISCOVERY, GOAL, REQUIREMENTS, PLANNING, VALIDATION stages
-- [ ] Update gates.json with new stage gates
-- [ ] Update UI phase display
+- [ ] **B4.1** Create `api/openclaw.go` — `POST /api/openclaw/event`, `GET /api/openclaw/status`, `POST /api/openclaw/send`
+- [ ] **B4.2** Create `bridge/openclaw.go` — WS client connecting to `ws://127.0.0.1:18789`
+- [ ] **B4.3** Event relay: OpenClaw agent events → MC WebSocket hub
+- [ ] **B4.4** Message relay: React UI chat → OpenClaw agent session
+- [ ] **B4.5** Remove `bridge/king.go` — King tmux lifecycle
+- [ ] **B4.6** Remove `api/king.go` — King start/stop/message endpoints
+- [ ] **B4.7** Add `--openclaw-gateway` flag to `mc serve`
+- [ ] **B4.8** Fallback logic: if OpenClaw WS disconnects, optionally spawn King as backup
 
----
+### B5. Go Tests 🟡
 
-## v7 — Requirements & Traceability
-
-Full traceability from business needs to implementation.
-
-### 7.1 Requirements Directory Structure
-**What:** Create `requirements/` with application, entities, capabilities levels
-
-- [ ] Create directory structure
-- [ ] Define JSONL schemas for each level
-- [ ] `mc req create` command
-
----
-
-### 7.2 Requirement CRUD Commands
-**What:** `mc req create/list/show/update` commands
-
-- [ ] Create requirements at each level
-- [ ] List with filters (level, entity, capability, status)
-- [ ] Show with full details
-- [ ] Update status, acceptance criteria
+- [ ] **B5.1** Update 8 Go CLI tests (`cmd/mc/mc_test.go`) — phase → stage references
+- [ ] **B5.2** Add test for `mc migrate` command
+- [ ] **B5.3** Add test for `mc stage next` transitioning through 10 stages
+- [ ] **B5.4** Add test for OpenClaw endpoint handlers
 
 ---
 
-### 7.3 Requirement Hierarchy (derivedFrom)
-**What:** Link requirements to parent requirements via `derivedFrom` field
+## C. React UI (`web/`)
 
-- [ ] Add derivedFrom field to requirement schema
-- [ ] Validate parent exists
-- [ ] Build hierarchy index for fast traversal
+### C1. Type Updates 🔴
 
----
+- [ ] **C1.1** Update `Persona.phase` type → `Persona.stage` with 10 stage values
+- [ ] **C1.2** Update `DEFAULT_PERSONAS` — reassign stages per §6.8.5 table
+- [ ] **C1.3** Update phase constants/labels → stage constants/labels throughout
+- [ ] **C1.4** Update Zustand store: `phase` → `stage` in state shape
 
-### 7.4 Task-to-Requirement Refs
-**What:** Add `refs.requirements` field to tasks
+### C2. Component Updates 🟡
 
-- [ ] Schema change to tasks
-- [ ] `mc task create --req REQ-CAP-001` flag
-- [ ] Display refs in task show
+- [ ] **C2.1** `SettingsPanel.tsx` — update `phases` array → `stages`, update `phaseLabels` → `stageLabels`, add 4 new stages
+- [ ] **C2.2** WorkflowMatrix / phase progression display — expand to 10 stages, adjust layout
+- [ ] **C2.3** Gate approval dialog — accept 10 stage names
+- [ ] **C2.4** King Mode panel → OpenClaw Mode panel (status, chat relay, channel badges)
+- [ ] **C2.5** Workers panel — show Agent Teams members + OpenClaw sub-agents
+- [ ] **C2.6** Add channel indicator badges (WhatsApp, Telegram, Slack, Discord, WebChat icons)
 
----
+### C3. WebSocket Events 🟡
 
-### 7.5 Task-to-Spec Refs
-**What:** Add `refs.spec` and `refs.specSections` to tasks
+- [ ] **C3.1** Update WS event handlers: `phase_changed` → `stage_changed`
+- [ ] **C3.2** Add handler for OpenClaw connection status events
 
-- [ ] Schema change to tasks
-- [ ] `mc task create --spec SPEC-auth.md --section FR-1` flags
-- [ ] Display refs in task show
+### C4. React Tests 🔴
 
----
-
-### 7.6 Impact Analysis
-**What:** `mc req impact <id>` shows what depends on a requirement
-
-- [ ] Traverse hierarchy downward
-- [ ] Find all descendant requirements
-- [ ] Find all linked specs and tasks
-- [ ] Summary of blast radius
+- [ ] **C4.1** Update `types.test.ts` — persona stage assertions (`'idea'` → `'discovery'`), coverage for all 10 stages
+- [ ] **C4.2** Update remaining 130+ web tests referencing phases
+- [ ] **C4.3** Add tests for OpenClaw Mode panel
+- [ ] **C4.4** Add tests for 10-stage workflow display
 
 ---
 
-### 7.7 Coverage Report
-**What:** `mc req coverage` shows implementation status of all requirements
+## D. OpenClaw Skill & Configuration
 
-- [ ] For each requirement, find linked tasks
-- [ ] Calculate completion percentage
-- [ ] Roll up to parent requirements
-- [ ] Summary by level/category
+### D1. MissionControl Skill 🟢
 
----
+- [ ] **D1.1** Create `~/.openclaw/workspace/skills/mission-control/SKILL.md` with 10-stage instructions
+- [ ] **D1.2** Document all `mc` CLI commands available to the agent
+- [ ] **D1.3** Include stage gate criteria reference
+- [ ] **D1.4** Include persona-to-stage mapping reference
 
-### 7.8 Spec Status Command
-**What:** `mc spec status <file>` shows implementation status of spec sections
+### D2. OpenClaw Configuration 🟢
 
-- [ ] Parse spec file for FR-X sections
-- [ ] Match to tasks via refs
-- [ ] Show completion status per section
+- [ ] **D2.1** Configure `openclaw.json` — agent model, sub-agent defaults, compaction settings
+- [ ] **D2.2** Set up pre-compaction memory flush prompt referencing stages
+- [ ] **D2.3** Configure channel connectivity (WhatsApp, Telegram minimum)
+- [ ] **D2.4** Set up project symlinks: `~/.openclaw/workspace/projects/<name>` → project `.mission/`
 
----
+### D3. Agent Teams Setup 🟡
 
-### 7.9 Spec Orphans Detection
-**What:** `mc spec orphans` finds spec sections without implementing tasks
-
-- [ ] Parse all specs for sections
-- [ ] Find sections with no linked tasks
-- [ ] Report gaps
+- [ ] **D3.1** Enable `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` in settings
+- [ ] **D3.2** Test Agent Teams spawning with MC worker personas
+- [ ] **D3.3** Verify workers can write to `.mission/findings/` and call `mc handoff`
+- [ ] **D3.4** Test file watcher picks up Agent Teams output
 
 ---
 
-### 7.10 Trace Command
-**What:** `mc trace <id>` shows full lineage up and down
+## E. Documentation & Migration
 
-- [ ] Trace task → spec → requirements → app-level
-- [ ] Trace requirement → children → tasks
-- [ ] Tree visualization
-- [ ] Both directions
+### E1. Documentation 🟢
 
----
+- [ ] **E1.1** Update `ARCHITECTURE.md` — 10-stage diagram, new stage table
+- [ ] **E1.2** Update `core/README.md` — Stage enum, gate criteria, state diagram
+- [ ] **E1.3** Update `CHANGELOG.md` — v6 entry with all changes
+- [ ] **E1.4** Update `docs/archive/V4-RUST-CONTRACTS.md` — Stage structs (or mark as superseded)
+- [ ] **E1.5** Update `docs/archive/V4-IMPLEMENTATION.md` — mark Phase 1 Rust items as needing stage update
+- [ ] **E1.6** Write `docs/MIGRATION-v5-to-v6.md` — step-by-step for existing projects
 
-### 7.11 Requirements Index Cache
-**What:** `requirements/index.json` caches hierarchy for fast queries
+### E2. Migration Tooling 🟡
 
-- [ ] Generate on requirement changes
-- [ ] Store parent/child/descendant relationships
-- [ ] Invalidate and regenerate on mutations
-
----
-
-### 7.12 Auto-Generate Tasks from Spec
-**What:** `mc task create --from-spec <file>` creates tasks for spec sections
-
-- [ ] Parse spec for FR-X sections
-- [ ] Generate task per section (or prompt for confirmation)
-- [ ] Auto-link refs
+- [ ] **E2.1** `mc migrate` command implementation (Go)
+- [ ] **E2.2** Phase-to-stage mapping: `idea` → `discovery`, others keep names
+- [ ] **E2.3** Auto-regenerate `gates.json` with 10 entries
+- [ ] **E2.4** Rename `phase.json` → `stage.json` preserving current value
+- [ ] **E2.5** Update `tasks.json` — rewrite `phase` field → `stage` in all task records
+- [ ] **E2.6** Test migration on existing `.mission/` directories
 
 ---
 
-## v8 — Infrastructure & Scale
+## F. Integration Testing
 
-Cost optimization and team features.
-
-### 8.1 Multi-Model Routing (Haiku/Sonnet/Opus)
-**What:** Route different task types to different Claude models
-
-- [ ] Configuration for model per persona/task-type
-- [ ] Update worker spawn to pass model flag
-- [ ] Routing logic (simple tasks → Haiku, complex → Opus)
-- [ ] Cost tracking per model
-
-**Sub-features:**
-- [ ] 8.1a: Config schema for model mapping
-- [ ] 8.1b: Per-persona model defaults
-- [ ] 8.1c: Per-task model override
-- [ ] 8.1d: Cost tracking and reporting
-- [ ] 8.1e: Auto-routing based on task complexity (advanced)
-
-**Benefit:** 10-50x cost reduction for simple tasks
+- [ ] **F1** End-to-end: OpenClaw agent → `mc task create --stage implement` → worker → handoff → gate approve → stage transition
+- [ ] **F2** Multi-channel: send gate approval from WhatsApp, verify React UI updates
+- [ ] **F3** Compaction: trigger memory flush, verify `.mission/` state summary persists
+- [ ] **F4** Fallback: disconnect OpenClaw, verify Go Bridge falls back to King mode
+- [ ] **F5** Migration: run `mc migrate` on v5 project, verify 10-stage operation
+- [ ] **F6** Full stage walk: traverse all 10 stages Discovery → Release with gate approvals
+- [ ] **F7** Checkpoint round-trip: create checkpoint → restart → verify briefing injected → verify state continuity
+- [ ] **F8** Auto-checkpoint: approve a gate, verify checkpoint auto-created and git-committed
+- [ ] **F9** `cargo test && go test ./... && npm test` — all green across all layers
 
 ---
 
-### 8.2 Cost Tracking & Budgets
-**What:** Track token usage and costs, enforce budgets
+## G. Session Continuity (Checkpoints & Briefings)
 
-- [ ] Parse Claude API responses for token counts
-- [ ] Store usage per task/worker/session
-- [ ] `mc costs` command for reporting
-- [ ] Budget limits with warnings/stops
+### G1. Rust: Checkpoint Schema 🟡
 
----
+- [ ] **G1.1** Extend `core/knowledge/src/checkpoint.rs` `Checkpoint` struct with `session_id`, `decisions: Vec<String>`, `blockers: Vec<String>`, `stage` (replacing `phase`)
+- [ ] **G1.2** Add `CheckpointCompiler` — takes checkpoint JSON → produces ~500 token markdown briefing
+- [ ] **G1.3** Add `mc-core checkpoint-compile <file>` command to `mc-core` CLI
+- [ ] **G1.4** Add `mc-core checkpoint-validate <file>` — schema validation for checkpoint JSON
+- [ ] **G1.5** Unit tests for checkpoint compilation (verify token budget, required sections)
 
-### 8.3 Worker Health Monitoring
-**What:** Detect stuck/crashed workers and alert/recover
+### G2. Go: CLI Commands 🟡
 
-- [ ] Heartbeat mechanism
-- [ ] Timeout detection
-- [ ] Alert to King/user
-- [ ] Optional auto-restart
+- [ ] **G2.1** `mc checkpoint` — snapshot stage + gates + decisions + tasks + blockers → write to `.mission/orchestrator/checkpoints/<timestamp>.json`, auto-commit to git
+- [ ] **G2.2** `mc checkpoint restart [--from <id>]` — create final checkpoint, call `mc-core checkpoint-compile`, restart OpenClaw session with briefing, log to `sessions.jsonl`
+- [ ] **G2.3** `mc checkpoint status` — read `current.json` + token estimate + session duration → output health recommendation
+- [ ] **G2.4** `mc checkpoint history` — parse `sessions.jsonl`, display session list with final checkpoint summaries
+- [ ] **G2.5** `mc checkpoint query <id>` — load historical checkpoint, display formatted summary
+- [ ] **G2.6** Create `.mission/orchestrator/` directory in `mc init` scaffold
 
----
+### G3. Go: Auto-Checkpoint Triggers 🟡
 
-### 8.4 Headless Mode
-**What:** Run MissionControl without UI for CI/CD pipelines
+- [ ] **G3.1** Wire gate approval handler → auto-create checkpoint after `mc gate approve`
+- [ ] **G3.2** Token threshold monitor — periodically check conversation token count, checkpoint at 50k (configurable in `config.json`)
+- [ ] **G3.3** Graceful shutdown hook — checkpoint on `mc serve` stop / SIGTERM
+- [ ] **G3.4** Pre-compaction integration — OpenClaw skill calls `mc checkpoint` before memory flush
 
-- [ ] CLI-only operation mode
-- [ ] Script-friendly JSON output
-- [ ] Exit codes for success/failure
-- [ ] Pipeline examples (GitHub Actions, etc.)
+### G4. Go: API Endpoints 🟢
 
----
+- [ ] **G4.1** `POST /api/checkpoint` — create checkpoint (used by UI + auto-triggers)
+- [ ] **G4.2** `POST /api/checkpoint/restart` — restart with briefing
+- [ ] **G4.3** `GET /api/checkpoint/status` — session health JSON
+- [ ] **G4.4** `GET /api/checkpoint/history` — session list JSON
 
-### 8.5 Remote Bridge Deployment
-**What:** Deploy Go bridge to remote server for team access
+### G5. React UI 🟢
 
-- [ ] Dockerize Go bridge
-- [ ] Authentication layer (API keys, OAuth)
-- [ ] WebSocket proxying
-- [ ] State sync between instances
-- [ ] Multi-tenant isolation
+- [ ] **G5.1** Token health indicator in OpenClaw Mode panel (green/yellow/red based on token count)
+- [ ] **G5.2** "Restart Session" button with confirmation dialog
+- [ ] **G5.3** Checkpoint history viewer (expandable list with summaries)
+- [ ] **G5.4** Auto-checkpoint notification toast when triggered
 
-**Sub-features:**
-- [ ] 8.5a: Docker containerization
-- [ ] 8.5b: Authentication middleware
-- [ ] 8.5c: HTTPS/WSS termination
-- [ ] 8.5d: Multi-project routing
-- [ ] 8.5e: User session management
-- [ ] 8.5f: Kubernetes deployment manifests (optional)
+### G6. OpenClaw Skill Integration 🟢
 
----
+- [ ] **G6.1** Update MissionControl skill: on startup, read `.mission/orchestrator/current.json` and include latest briefing if restart just occurred
+- [ ] **G6.2** Update pre-compaction flush prompt: call `mc checkpoint` first, then write briefing summary to `memory/YYYY-MM-DD.md`
+- [ ] **G6.3** Skill documents `mc checkpoint` commands as available tools
 
-## v9 — Advanced UI
+### G7. Session Continuity Tests 🟡
 
-Visual tools for complex workflows.
-
-### 9.1 Requirements Panel
-**What:** UI panel showing requirements hierarchy and coverage
-
-- [ ] Tree view of requirements
-- [ ] Coverage indicators
-- [ ] Click to see linked tasks
-- [ ] Filter by level/status
+- [ ] **G7.1** Rust: checkpoint compile produces valid markdown under 500 tokens
+- [ ] **G7.2** Rust: checkpoint validate rejects missing required fields
+- [ ] **G7.3** Go: `mc checkpoint` creates file + git commits
+- [ ] **G7.4** Go: `mc checkpoint restart` logs session transition to `sessions.jsonl`
+- [ ] **G7.5** Go: auto-checkpoint fires on gate approval
+- [ ] **G7.6** React: health indicator reflects token count thresholds
 
 ---
 
-### 9.2 Dependency Graph Visualization
-**What:** Visual graph of task dependencies
+## Recommended Execution Order
 
-- [ ] D3 or similar graph library
-- [ ] Interactive (click nodes, zoom, pan)
-- [ ] Show blocked/ready status
-- [ ] Critical path highlighting
-
----
-
-### 9.3 Traceability View
-**What:** UI for exploring trace relationships
-
-- [ ] Select task/requirement/spec
-- [ ] Show lineage tree
-- [ ] Navigate by clicking nodes
-
----
-
-### 9.4 Audit Log Viewer
-**What:** UI for browsing audit history
-
-- [ ] Timeline view of state changes
-- [ ] Filter by actor, action, target
-- [ ] Diff view for changes
-
----
-
-## Future: v10 — 3D Visualization
-
-- [ ] React Three Fiber setup
-- [ ] Agent avatars in 3D space
-- [ ] Zone visualization
-- [ ] Camera controls
-- [ ] Animations (spawn, complete, handoff)
-
----
-
-## Summary Table
-
-| ID | Feature | Benefit | Dependencies |
-|----|---------|---------|--------------|
-| **v6 - State Management** |
-| 6.1 | JSONL Migration | High | None |
-| 6.2 | Hash-Based IDs | High | None |
-| 6.3 | Audit Trail | High | None |
-| 6.4 | Task Dependencies | Very High | 6.1 |
-| 6.5 | Ready Queue | Very High | 6.4 |
-| 6.6 | Dependency Visualization | Medium | 6.4 |
-| 6.7 | Git Commit Hooks | High | 6.1 |
-| 6.8 | 10-Stage Workflow | Medium | None |
-| **v7 - Requirements & Traceability** |
-| 7.1 | Requirements Directory | Med-High | None |
-| 7.2 | Requirement CRUD | Medium | 7.1 |
-| 7.3 | Requirement Hierarchy | High | 7.1 |
-| 7.4 | Task-to-Requirement Refs | High | 7.1 |
-| 7.5 | Task-to-Spec Refs | High | None |
-| 7.6 | Impact Analysis | High | 7.3 |
-| 7.7 | Coverage Report | Very High | 7.4 |
-| 7.8 | Spec Status | High | 7.5 |
-| 7.9 | Spec Orphans | Med-High | 7.5 |
-| 7.10 | Trace Command | Very High | 7.3, 7.4, 7.5 |
-| 7.11 | Requirements Index | Medium | 7.1 |
-| 7.12 | Auto-Generate Tasks | Medium | 7.5 |
-| **v8 - Infrastructure** |
-| 8.1 | Multi-Model Routing | Very High | None |
-| 8.2 | Cost Tracking | High | None |
-| 8.3 | Worker Health | Med-High | None |
-| 8.4 | Headless Mode | Med-High | None |
-| 8.5 | Remote Bridge | High | None |
-| **v9 - Advanced UI** |
-| 9.1 | Requirements Panel | Med-High | 7.1-7.7 |
-| 9.2 | Dependency Graph | Medium | 6.4 |
-| 9.3 | Traceability View | Medium | 7.10 |
-| 9.4 | Audit Log Viewer | Medium | 6.3 |
-
----
-
-## Quick Reference
-
-| Version | Focus | Status |
-|---------|-------|--------|
-| v1 | Agent fundamentals | Done |
-| v2 | Go orchestrator | Done |
-| v3 | React UI | Done |
-| v4 | Rust core | Done |
-| v5 | King + mc CLI | Done |
-| v5.1 | Quality of life | Current |
-| v6 | State management | Future |
-| v7 | Requirements & traceability | Future |
-| v8 | Infrastructure & scale | Future |
-| v9 | Advanced UI | Future |
-| v10 | 3D visualization | Future |
-
-See [CHANGELOG.md](CHANGELOG.md) for completed version details.
+1. **A1–A7** — Rust Stage enum + tests (foundation, everything depends on this)
+2. **B1–B3** — Go types + CLI + `.mission/` files (consume Rust changes)
+3. **C1–C4** — React UI updates (consume Go API changes)
+4. **G1** — Rust checkpoint schema extension (builds on A1 stage work)
+5. **G2–G4** — Go checkpoint commands + API (builds on B1 Go types)
+6. **G5** — React checkpoint UI (builds on C1 UI updates)
+7. **E1–E2** — Documentation + migration tooling
+8. **B4** — OpenClaw integration (can parallel with stage + checkpoint work)
+9. **D1–D3, G6** — OpenClaw skill + Agent Teams + checkpoint skill integration (depends on B4)
+10. **F1–F9** — Integration testing (final validation)

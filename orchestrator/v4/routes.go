@@ -28,7 +28,7 @@ func NewHandler(store *Store, notifier EventNotifier) *Handler {
 // RegisterRoutes registers v4 routes on the given mux
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Workflow routes
-	mux.HandleFunc("/api/phases", h.handlePhases)
+	mux.HandleFunc("/api/stages", h.handleStages)
 	mux.HandleFunc("/api/tasks", h.handleTasks)
 	mux.HandleFunc("/api/tasks/", h.handleTask)
 
@@ -46,21 +46,21 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 // Workflow Domain
 // ============================================================================
 
-// PhasesResponse is the response for GET /api/phases
-type PhasesResponse struct {
-	Current Phase       `json:"current"`
-	Phases  []PhaseInfo `json:"phases"`
+// StagesResponse is the response for GET /api/stages
+type StagesResponse struct {
+	Current Stage       `json:"current"`
+	Stages  []StageInfo `json:"stages"`
 }
 
-func (h *Handler) handlePhases(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleStages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	response := PhasesResponse{
-		Current: h.Store.CurrentPhase(),
-		Phases:  h.Store.GetPhases(),
+	response := StagesResponse{
+		Current: h.Store.CurrentStage(),
+		Stages:  h.Store.GetStages(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -70,7 +70,7 @@ func (h *Handler) handlePhases(w http.ResponseWriter, r *http.Request) {
 // CreateTaskRequest is the request for POST /api/tasks
 type CreateTaskRequest struct {
 	Name         string   `json:"name"`
-	Phase        Phase    `json:"phase"`
+	Stage        Stage    `json:"stage"`
 	Zone         string   `json:"zone"`
 	Persona      string   `json:"persona"`
 	Dependencies []string `json:"dependencies,omitempty"`
@@ -95,10 +95,10 @@ func (h *Handler) handleTasks(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
-	var phase *Phase
-	if p := query.Get("phase"); p != "" {
-		ph := Phase(p)
-		phase = &ph
+	var stage *Stage
+	if s := query.Get("stage"); s != "" {
+		st := Stage(s)
+		stage = &st
 	}
 
 	var zone *string
@@ -116,7 +116,7 @@ func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 		persona = &p
 	}
 
-	tasks := h.Store.ListTasks(phase, zone, status, persona)
+	tasks := h.Store.ListTasks(stage, zone, status, persona)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(TasksResponse{Tasks: tasks})
@@ -134,11 +134,11 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Phase == "" {
-		req.Phase = h.Store.CurrentPhase()
+	if req.Stage == "" {
+		req.Stage = h.Store.CurrentStage()
 	}
 
-	task := h.Store.CreateTask(req.Name, req.Phase, req.Zone, req.Persona, req.Dependencies)
+	task := h.Store.CreateTask(req.Name, req.Stage, req.Zone, req.Persona, req.Dependencies)
 
 	// Notify via WebSocket
 	if h.Notifier != nil {
@@ -352,7 +352,7 @@ func (h *Handler) handleCheckpoints(w http.ResponseWriter, r *http.Request) {
 			h.Notifier.Notify(map[string]interface{}{
 				"type":          "checkpoint_created",
 				"checkpoint_id": summary.ID,
-				"phase":         summary.Phase,
+				"stage":         summary.Stage,
 			})
 		}
 
@@ -482,14 +482,14 @@ func (h *Handler) handleGate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Gate ID is "gate-{phase}", extract phase
+	// Gate ID is "gate-{stage}", extract stage
 	gateID := parts[0]
-	phase := Phase(strings.TrimPrefix(gateID, "gate-"))
+	stage := Stage(strings.TrimPrefix(gateID, "gate-"))
 
 	// Check for /approve subpath
 	if len(parts) > 1 && parts[1] == "approve" {
 		if r.Method == "POST" {
-			h.approveGate(w, r, phase)
+			h.approveGate(w, r, stage)
 			return
 		}
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -498,7 +498,7 @@ func (h *Handler) handleGate(w http.ResponseWriter, r *http.Request) {
 
 	// GET /api/gates/:id
 	if r.Method == "GET" {
-		gate, ok := h.Store.GetGate(phase)
+		gate, ok := h.Store.GetGate(stage)
 		if !ok {
 			http.Error(w, "Gate not found", http.StatusNotFound)
 			return
@@ -511,7 +511,7 @@ func (h *Handler) handleGate(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
-func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, phase Phase) {
+func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, stage Stage) {
 	var req GateApprovalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
@@ -522,7 +522,7 @@ func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, phase Phas
 		req.ApprovedBy = "user"
 	}
 
-	gate, ok := h.Store.GetGate(phase)
+	gate, ok := h.Store.GetGate(stage)
 	if !ok {
 		http.Error(w, "Gate not found", http.StatusNotFound)
 		return
@@ -533,19 +533,19 @@ func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, phase Phas
 		// Allow approval even if closed (manual override)
 	}
 
-	if err := h.Store.ApproveGate(phase, req.ApprovedBy); err != nil {
+	if err := h.Store.ApproveGate(stage, req.ApprovedBy); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	gate, _ = h.Store.GetGate(phase)
-	canProceed := h.Store.CanTransition(phase.Next())
+	gate, _ = h.Store.GetGate(stage)
+	canProceed := h.Store.CanTransition(stage.Next())
 
 	// Notify
 	if h.Notifier != nil {
 		h.Notifier.Notify(map[string]interface{}{
 			"type":   "gate_status",
-			"phase":  phase,
+			"stage":  stage,
 			"status": gate.Status,
 		})
 	}

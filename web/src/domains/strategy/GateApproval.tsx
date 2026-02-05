@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react'
 import {
   useWorkflowStore,
-  useCurrentPhase,
-  usePhases,
+  useCurrentStage,
+  useStages,
   fetchGate,
   approveGate
 } from '../../stores/useWorkflowStore'
-import type { Phase, Gate, GateCriterion } from '../../types/workflow'
+import type { Stage, Gate, GateCriterion } from '../../types/workflow'
 import {
-  ALL_PHASES,
-  getPhaseLabel,
+  ALL_STAGES,
+  getStageLabel,
   getGateStatusColor,
-  getNextPhase
+  getNextStage
 } from '../../types/workflow'
 
 export function GateApproval() {
-  const currentPhase = useCurrentPhase()
-  const phases = usePhases()
+  const currentStage = useCurrentStage()
+  const stages = useStages()
   const gates = useWorkflowStore((s) => s.gates)
   const setGate = useWorkflowStore((s) => s.setGate)
   const [loading, setLoading] = useState(true)
@@ -27,10 +27,10 @@ export function GateApproval() {
       setLoading(true)
       try {
         await Promise.all(
-          ALL_PHASES.map(async (phase) => {
+          ALL_STAGES.map(async (stage) => {
             try {
-              const gate = await fetchGate(phase)
-              setGate(phase, gate)
+              const gate = await fetchGate(stage)
+              setGate(stage, gate)
             } catch (err) {
               // Gate might not exist yet, that's ok
             }
@@ -52,8 +52,8 @@ export function GateApproval() {
   }
 
   // Find gates that need attention
-  const awaitingApproval = ALL_PHASES.filter(
-    (p) => gates[p]?.status === 'awaiting_approval'
+  const awaitingApproval = ALL_STAGES.filter(
+    (s) => gates[s]?.status === 'awaiting_approval'
   )
 
   return (
@@ -63,7 +63,7 @@ export function GateApproval() {
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-gray-200">Gate Approval</h2>
           <span className="text-xs text-gray-500">
-            Current: {getPhaseLabel(currentPhase)}
+            Current: {getStageLabel(currentStage)}
           </span>
         </div>
 
@@ -81,22 +81,22 @@ export function GateApproval() {
       {/* Gates list */}
       <div className="flex-1 overflow-auto p-3">
         <div className="space-y-3">
-          {ALL_PHASES.map((phase, index) => {
-            const gate = gates[phase]
-            const phaseInfo = phases.find((p) => p.phase === phase)
-            const isCurrentPhase = phase === currentPhase
-            const isPastPhase = phaseInfo?.status === 'complete'
-            const isFuturePhase = !isCurrentPhase && !isPastPhase
+          {ALL_STAGES.map((stage, index) => {
+            const gate = gates[stage]
+            const stageInfo = stages.find((s) => s.stage === stage)
+            const isCurrentStage = stage === currentStage
+            const isPastStage = stageInfo?.status === 'complete'
+            const isFutureStage = !isCurrentStage && !isPastStage
 
             return (
               <GateCard
-                key={phase}
-                phase={phase}
+                key={stage}
+                stage={stage}
                 gate={gate}
-                isCurrentPhase={isCurrentPhase}
-                isPastPhase={isPastPhase}
-                isFuturePhase={isFuturePhase}
-                phaseNumber={index + 1}
+                isCurrentStage={isCurrentStage}
+                isPastStage={isPastStage}
+                isFutureStage={isFutureStage}
+                stageNumber={index + 1}
               />
             )
           })}
@@ -107,31 +107,31 @@ export function GateApproval() {
 }
 
 interface GateCardProps {
-  phase: Phase
+  stage: Stage
   gate: Gate | undefined
-  isCurrentPhase: boolean
-  isPastPhase: boolean
-  isFuturePhase: boolean
-  phaseNumber: number
+  isCurrentStage: boolean
+  isPastStage: boolean
+  isFutureStage: boolean
+  stageNumber: number
 }
 
 function GateCard({
-  phase,
+  stage,
   gate,
-  isCurrentPhase,
-  isPastPhase,
-  isFuturePhase,
-  phaseNumber
+  isCurrentStage,
+  isPastStage,
+  isFutureStage,
+  stageNumber
 }: GateCardProps) {
   const [approving, setApproving] = useState(false)
-  const [expanded, setExpanded] = useState(isCurrentPhase)
+  const [expanded, setExpanded] = useState(isCurrentStage)
   const setGate = useWorkflowStore((s) => s.setGate)
 
   const handleApprove = async () => {
     setApproving(true)
     try {
-      const result = await approveGate(phase, 'user')
-      setGate(phase, result.gate)
+      const result = await approveGate(stage, 'user')
+      setGate(stage, result.gate)
     } catch (err) {
       console.error('Failed to approve gate:', err)
     } finally {
@@ -143,15 +143,15 @@ function GateCard({
   const criteria = gate?.criteria || []
   const allCriteriaMet = criteria.every((c) => c.satisfied)
   const satisfiedCount = criteria.filter((c) => c.satisfied).length
-  const nextPhase = getNextPhase(phase)
+  const nextStage = getNextStage(stage)
 
   return (
     <div
       className={`
         rounded-lg border transition-all
-        ${isCurrentPhase
+        ${isCurrentStage
           ? 'bg-blue-500/5 border-blue-500/30'
-          : isPastPhase
+          : isPastStage
             ? 'bg-green-500/5 border-green-500/20'
             : 'bg-gray-800/30 border-gray-800'
         }
@@ -163,31 +163,31 @@ function GateCard({
         onClick={() => setExpanded(!expanded)}
         className="w-full p-3 flex items-center gap-3 text-left"
       >
-        {/* Phase number */}
+        {/* Stage number */}
         <div
           className={`
             w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
-            ${isPastPhase
+            ${isPastStage
               ? 'bg-green-500 text-white'
-              : isCurrentPhase
+              : isCurrentStage
                 ? 'bg-blue-500 text-white'
                 : 'bg-gray-700 text-gray-400'
             }
           `}
         >
-          {isPastPhase ? '✓' : phaseNumber}
+          {isPastStage ? '\u2713' : stageNumber}
         </div>
 
-        {/* Phase name and status */}
+        {/* Stage name and status */}
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <span className={`
               text-sm font-medium
-              ${isPastPhase ? 'text-green-400' : isCurrentPhase ? 'text-blue-400' : 'text-gray-400'}
+              ${isPastStage ? 'text-green-400' : isCurrentStage ? 'text-blue-400' : 'text-gray-400'}
             `}>
-              {getPhaseLabel(phase)}
+              {getStageLabel(stage)}
             </span>
-            {isCurrentPhase && (
+            {isCurrentStage && (
               <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/20 text-blue-400 rounded">
                 CURRENT
               </span>
@@ -257,7 +257,7 @@ function GateCard({
             {status !== 'open' && (
               <button
                 onClick={handleApprove}
-                disabled={approving || isFuturePhase}
+                disabled={approving || isFutureStage}
                 className={`
                   flex-1 py-2 text-xs font-medium rounded transition-colors
                   ${allCriteriaMet || status === 'awaiting_approval'
@@ -276,15 +276,15 @@ function GateCard({
               </button>
             )}
 
-            {status === 'open' && nextPhase && (
+            {status === 'open' && nextStage && (
               <div className="flex-1 py-2 text-xs text-center text-green-400">
-                ✓ Gate approved — ready for {getPhaseLabel(nextPhase)}
+                {'\u2713'} Gate approved — ready for {getStageLabel(nextStage)}
               </div>
             )}
 
-            {status === 'open' && !nextPhase && (
+            {status === 'open' && !nextStage && (
               <div className="flex-1 py-2 text-xs text-center text-green-400">
-                ✓ Final gate approved — project complete!
+                {'\u2713'} Final gate approved — project complete!
               </div>
             )}
           </div>

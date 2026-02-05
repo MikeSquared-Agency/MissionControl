@@ -36,6 +36,8 @@ func TestMcInit(t *testing.T) {
 		".mission/handoffs",
 		".mission/checkpoints",
 		".mission/prompts",
+		".mission/orchestrator",
+		".mission/orchestrator/checkpoints",
 	}
 
 	for _, dir := range requiredDirs {
@@ -47,7 +49,7 @@ func TestMcInit(t *testing.T) {
 
 	// Verify state files
 	stateFiles := []string{
-		".mission/state/phase.json",
+		".mission/state/stage.json",
 		".mission/state/tasks.json",
 		".mission/state/workers.json",
 		".mission/state/gates.json",
@@ -66,20 +68,20 @@ func TestMcInit(t *testing.T) {
 		t.Error("CLAUDE.md not created")
 	}
 
-	// Verify phase.json has valid content
-	phaseFile := filepath.Join(tmpDir, ".mission/state/phase.json")
-	data, err := os.ReadFile(phaseFile)
+	// Verify stage.json has valid content
+	stageFile := filepath.Join(tmpDir, ".mission/state/stage.json")
+	data, err := os.ReadFile(stageFile)
 	if err != nil {
-		t.Fatalf("Failed to read phase.json: %v", err)
+		t.Fatalf("Failed to read stage.json: %v", err)
 	}
 
-	var phase PhaseState
-	if err := json.Unmarshal(data, &phase); err != nil {
-		t.Fatalf("Invalid phase.json: %v", err)
+	var stage StageState
+	if err := json.Unmarshal(data, &stage); err != nil {
+		t.Fatalf("Invalid stage.json: %v", err)
 	}
 
-	if phase.Current != "idea" {
-		t.Errorf("Expected phase 'idea', got '%s'", phase.Current)
+	if stage.Current != "discovery" {
+		t.Errorf("Expected stage 'discovery', got '%s'", stage.Current)
 	}
 }
 
@@ -115,7 +117,7 @@ func TestTaskCreateDirect(t *testing.T) {
 	task := Task{
 		ID:        "test-task-1",
 		Name:      "Research authentication options",
-		Phase:     "idea",
+		Stage:     "discovery",
 		Zone:      "research",
 		Persona:   "researcher",
 		Status:    "pending",
@@ -148,8 +150,8 @@ func TestTaskCreateDirect(t *testing.T) {
 	}
 }
 
-// TestPhaseTransition tests phase transitions
-func TestPhaseTransition(t *testing.T) {
+// TestStageTransition tests stage transitions
+func TestStageTransition(t *testing.T) {
 	// Create temp directory with .mission
 	tmpDir, err := os.MkdirTemp("", "mc-test-*")
 	if err != nil {
@@ -168,26 +170,26 @@ func TestPhaseTransition(t *testing.T) {
 		t.Fatalf("mc init failed: %v", err)
 	}
 
-	// Test phase transition using runPhase with "next" arg
-	err = runPhase(nil, []string{"next"})
+	// Test stage transition using runStage with "next" arg
+	err = runStage(nil, []string{"next"})
 	if err != nil {
-		t.Fatalf("mc phase next failed: %v", err)
+		t.Fatalf("mc stage next failed: %v", err)
 	}
 
-	// Verify phase changed
-	phaseFile := filepath.Join(tmpDir, ".mission/state/phase.json")
-	data, err := os.ReadFile(phaseFile)
+	// Verify stage changed
+	stageFile := filepath.Join(tmpDir, ".mission/state/stage.json")
+	data, err := os.ReadFile(stageFile)
 	if err != nil {
-		t.Fatalf("Failed to read phase.json: %v", err)
+		t.Fatalf("Failed to read stage.json: %v", err)
 	}
 
-	var phase PhaseState
-	if err := json.Unmarshal(data, &phase); err != nil {
-		t.Fatalf("Invalid phase.json: %v", err)
+	var stage StageState
+	if err := json.Unmarshal(data, &stage); err != nil {
+		t.Fatalf("Invalid stage.json: %v", err)
 	}
 
-	if phase.Current != "design" {
-		t.Errorf("Expected phase 'design', got '%s'", phase.Current)
+	if stage.Current != "goal" {
+		t.Errorf("Expected stage 'goal', got '%s'", stage.Current)
 	}
 }
 
@@ -268,7 +270,7 @@ func TestGateCheck(t *testing.T) {
 	}
 
 	// Run gate check
-	err = runGateCheck(nil, []string{"idea"})
+	err = runGateCheck(nil, []string{"discovery"})
 	if err != nil {
 		t.Fatalf("mc gate check failed: %v", err)
 	}
@@ -296,9 +298,9 @@ func TestPromptGeneration(t *testing.T) {
 
 	// Verify all persona prompts exist
 	personas := []string{
-		"researcher", "designer", "architect", "developer",
-		"debugger", "reviewer", "security", "tester",
-		"qa", "docs", "devops",
+		"researcher", "analyst", "requirements-engineer", "designer",
+		"architect", "developer", "debugger", "reviewer", "security",
+		"tester", "qa", "docs", "devops",
 	}
 
 	for _, persona := range personas {
@@ -309,8 +311,8 @@ func TestPromptGeneration(t *testing.T) {
 	}
 }
 
-// TestPhaseSequence tests the full phase sequence
-func TestPhaseSequence(t *testing.T) {
+// TestStageSequence tests the full stage sequence
+func TestStageSequence(t *testing.T) {
 	// Create temp directory with .mission
 	tmpDir, err := os.MkdirTemp("", "mc-test-*")
 	if err != nil {
@@ -329,35 +331,35 @@ func TestPhaseSequence(t *testing.T) {
 		t.Fatalf("mc init failed: %v", err)
 	}
 
-	// Test full phase sequence
-	expectedPhases := []string{"design", "implement", "verify", "document", "release"}
+	// Test full stage sequence
+	expectedStages := []string{"goal", "requirements", "planning", "design", "implement", "verify", "validate", "document", "release"}
 
-	for _, expected := range expectedPhases {
-		err = runPhase(nil, []string{"next"})
+	for _, expected := range expectedStages {
+		err = runStage(nil, []string{"next"})
 		if err != nil {
-			t.Fatalf("mc phase next failed: %v", err)
+			t.Fatalf("mc stage next failed: %v", err)
 		}
 
-		phaseFile := filepath.Join(tmpDir, ".mission/state/phase.json")
-		data, err := os.ReadFile(phaseFile)
+		stageFile := filepath.Join(tmpDir, ".mission/state/stage.json")
+		data, err := os.ReadFile(stageFile)
 		if err != nil {
-			t.Fatalf("Failed to read phase.json: %v", err)
+			t.Fatalf("Failed to read stage.json: %v", err)
 		}
 
-		var phase PhaseState
-		if err := json.Unmarshal(data, &phase); err != nil {
-			t.Fatalf("Invalid phase.json: %v", err)
+		var stage StageState
+		if err := json.Unmarshal(data, &stage); err != nil {
+			t.Fatalf("Invalid stage.json: %v", err)
 		}
 
-		if phase.Current != expected {
-			t.Errorf("Expected phase '%s', got '%s'", expected, phase.Current)
+		if stage.Current != expected {
+			t.Errorf("Expected stage '%s', got '%s'", expected, stage.Current)
 		}
 	}
 
-	// Final phase should not transition
-	err = runPhase(nil, []string{"next"})
+	// Final stage should not transition
+	err = runStage(nil, []string{"next"})
 	if err == nil {
-		t.Error("Expected error when transitioning from final phase")
+		t.Error("Expected error when transitioning from final stage")
 	}
 }
 

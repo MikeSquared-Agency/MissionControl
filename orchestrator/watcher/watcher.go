@@ -16,8 +16,8 @@ type Event struct {
 	Data interface{} `json:"data,omitempty"`
 }
 
-// PhaseState represents the phase.json structure
-type PhaseState struct {
+// StageState represents the stage.json structure
+type StageState struct {
 	Current   string `json:"current"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -26,7 +26,7 @@ type PhaseState struct {
 type Task struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
-	Phase     string `json:"phase"`
+	Stage     string `json:"stage"`
 	Zone      string `json:"zone"`
 	Persona   string `json:"persona"`
 	Status    string `json:"status"`
@@ -58,7 +58,7 @@ type WorkersState struct {
 
 // Gate represents a gate from gates.json
 type Gate struct {
-	Phase      string   `json:"phase"`
+	Stage      string   `json:"stage"`
 	Status     string   `json:"status"`
 	Criteria   []string `json:"criteria"`
 	ApprovedAt string   `json:"approved_at,omitempty"`
@@ -77,7 +77,7 @@ type Watcher struct {
 	mu         sync.RWMutex
 
 	// Last known state for diffing
-	lastPhase   PhaseState
+	lastStage   StageState
 	lastTasks   map[string]Task
 	lastWorkers map[string]Worker
 	lastGates   map[string]Gate
@@ -146,9 +146,9 @@ func (w *Watcher) loadInitialState() {
 
 	stateDir := filepath.Join(w.missionDir, "state")
 
-	// Load phase
-	if data, err := os.ReadFile(filepath.Join(stateDir, "phase.json")); err == nil {
-		json.Unmarshal(data, &w.lastPhase)
+	// Load stage
+	if data, err := os.ReadFile(filepath.Join(stateDir, "stage.json")); err == nil {
+		json.Unmarshal(data, &w.lastStage)
 	}
 
 	// Load tasks
@@ -181,17 +181,17 @@ func (w *Watcher) loadInitialState() {
 func (w *Watcher) checkForChanges() {
 	stateDir := filepath.Join(w.missionDir, "state")
 
-	// Check phase
-	var currentPhase PhaseState
-	if data, err := os.ReadFile(filepath.Join(stateDir, "phase.json")); err == nil {
-		json.Unmarshal(data, &currentPhase)
+	// Check stage
+	var currentStage StageState
+	if data, err := os.ReadFile(filepath.Join(stateDir, "stage.json")); err == nil {
+		json.Unmarshal(data, &currentStage)
 		w.mu.Lock()
-		if currentPhase.Current != w.lastPhase.Current {
-			w.emitEvent("phase_changed", map[string]interface{}{
-				"previous": w.lastPhase.Current,
-				"current":  currentPhase.Current,
+		if currentStage.Current != w.lastStage.Current {
+			w.emitEvent("stage_changed", map[string]interface{}{
+				"previous": w.lastStage.Current,
+				"current":  currentStage.Current,
 			})
-			w.lastPhase = currentPhase
+			w.lastStage = currentStage
 		}
 		w.mu.Unlock()
 	}
@@ -263,17 +263,17 @@ func (w *Watcher) checkForChanges() {
 		json.Unmarshal(data, &gatesState)
 
 		w.mu.Lock()
-		for phase, gate := range gatesState.Gates {
-			if lastGate, exists := w.lastGates[phase]; exists {
+		for stage, gate := range gatesState.Gates {
+			if lastGate, exists := w.lastGates[stage]; exists {
 				if gate.Status != lastGate.Status {
 					if gate.Status == "approved" {
 						w.emitEvent("gate_approved", map[string]interface{}{
-							"phase":      phase,
+							"stage":      stage,
 							"approved_at": gate.ApprovedAt,
 						})
 					} else if gate.Status == "ready" {
 						w.emitEvent("gate_ready", map[string]interface{}{
-							"phase":    phase,
+							"stage":    stage,
 							"criteria": gate.Criteria,
 						})
 					}
@@ -350,7 +350,7 @@ func (w *Watcher) GetCurrentState() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"phase":   w.lastPhase,
+		"stage":   w.lastStage,
 		"tasks":   tasks,
 		"workers": workers,
 		"gates":   w.lastGates,

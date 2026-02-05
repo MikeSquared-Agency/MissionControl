@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::phase::Phase;
+use crate::stage::Stage;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -33,7 +33,7 @@ impl Default for TaskStatus {
 pub struct Task {
     pub id: String,
     pub name: String,
-    pub phase: Phase,
+    pub stage: Stage,
     pub zone: String,
     pub status: TaskStatus,
     pub persona: String,
@@ -46,7 +46,7 @@ impl Task {
     pub fn new(
         id: impl Into<String>,
         name: impl Into<String>,
-        phase: Phase,
+        stage: Stage,
         zone: impl Into<String>,
         persona: impl Into<String>,
     ) -> Self {
@@ -58,7 +58,7 @@ impl Task {
         Self {
             id: id.into(),
             name: name.into(),
-            phase,
+            stage,
             zone: zone.into(),
             status: TaskStatus::Pending,
             persona: persona.into(),
@@ -88,10 +88,10 @@ mod tests {
 
     #[test]
     fn test_task_creation() {
-        let task = Task::new("task-1", "Build login", Phase::Implement, "frontend", "developer");
+        let task = Task::new("task-1", "Build login", Stage::Implement, "frontend", "developer");
         assert_eq!(task.id, "task-1");
         assert_eq!(task.name, "Build login");
-        assert_eq!(task.phase, Phase::Implement);
+        assert_eq!(task.stage, Stage::Implement);
         assert_eq!(task.zone, "frontend");
         assert_eq!(task.persona, "developer");
         assert_eq!(task.status, TaskStatus::Pending);
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_task_with_dependencies() {
-        let task = Task::new("task-2", "Build auth", Phase::Implement, "backend", "developer")
+        let task = Task::new("task-2", "Build auth", Stage::Implement, "backend", "developer")
             .with_dependencies(vec!["task-1".to_string()]);
         assert_eq!(task.dependencies.len(), 1);
         assert_eq!(task.dependencies[0], "task-1");

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::phase::Phase;
+use crate::stage::Stage;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,7 +37,7 @@ impl GateCriterion {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Gate {
     pub id: String,
-    pub phase: Phase,
+    pub stage: Stage,
     pub status: GateStatus,
     pub criteria: Vec<GateCriterion>,
     pub approved_at: Option<u64>,
@@ -45,41 +45,57 @@ pub struct Gate {
 }
 
 impl Gate {
-    pub fn new(phase: Phase) -> Self {
-        let id = format!("gate-{}", phase.as_str());
+    pub fn new(stage: Stage) -> Self {
+        let id = format!("gate-{}", stage.as_str());
         Self {
             id,
-            phase,
+            stage,
             status: GateStatus::Closed,
-            criteria: Self::default_criteria_for_phase(phase),
+            criteria: Self::default_criteria_for_stage(stage),
             approved_at: None,
             approved_by: None,
         }
     }
 
-    fn default_criteria_for_phase(phase: Phase) -> Vec<GateCriterion> {
-        match phase {
-            Phase::Idea => vec![
-                GateCriterion::new("Problem statement defined"),
-                GateCriterion::new("Feasibility assessed"),
+    fn default_criteria_for_stage(stage: Stage) -> Vec<GateCriterion> {
+        match stage {
+            Stage::Discovery => vec![
+                GateCriterion::new("Problem space explored"),
+                GateCriterion::new("Stakeholders identified"),
             ],
-            Phase::Design => vec![
+            Stage::Goal => vec![
+                GateCriterion::new("Goal statement defined"),
+                GateCriterion::new("Success metrics established"),
+            ],
+            Stage::Requirements => vec![
+                GateCriterion::new("Requirements documented"),
+                GateCriterion::new("Acceptance criteria defined"),
+            ],
+            Stage::Planning => vec![
+                GateCriterion::new("Tasks broken down"),
+                GateCriterion::new("Dependencies mapped"),
+            ],
+            Stage::Design => vec![
                 GateCriterion::new("Spec document complete"),
                 GateCriterion::new("Technical approach approved"),
             ],
-            Phase::Implement => vec![
+            Stage::Implement => vec![
                 GateCriterion::new("All tasks complete"),
                 GateCriterion::new("Code compiles"),
             ],
-            Phase::Verify => vec![
+            Stage::Verify => vec![
                 GateCriterion::new("Tests passing"),
                 GateCriterion::new("Review complete"),
             ],
-            Phase::Document => vec![
+            Stage::Validate => vec![
+                GateCriterion::new("Acceptance criteria met"),
+                GateCriterion::new("Stakeholder sign-off"),
+            ],
+            Stage::Document => vec![
                 GateCriterion::new("README updated"),
                 GateCriterion::new("API documented"),
             ],
-            Phase::Release => vec![
+            Stage::Release => vec![
                 GateCriterion::new("Deployed successfully"),
                 GateCriterion::new("Smoke tests pass"),
             ],
@@ -130,16 +146,26 @@ mod tests {
 
     #[test]
     fn test_gate_creation() {
-        let gate = Gate::new(Phase::Design);
+        let gate = Gate::new(Stage::Design);
         assert_eq!(gate.id, "gate-design");
-        assert_eq!(gate.phase, Phase::Design);
+        assert_eq!(gate.stage, Stage::Design);
         assert_eq!(gate.status, GateStatus::Closed);
         assert!(!gate.criteria.is_empty());
     }
 
     #[test]
+    fn test_gate_creation_all_stages() {
+        for stage in Stage::all() {
+            let gate = Gate::new(*stage);
+            assert_eq!(gate.id, format!("gate-{}", stage.as_str()));
+            assert_eq!(gate.stage, *stage);
+            assert!(gate.criteria.len() >= 2);
+        }
+    }
+
+    #[test]
     fn test_gate_status_progression() {
-        let mut gate = Gate::new(Phase::Idea);
+        let mut gate = Gate::new(Stage::Discovery);
         assert_eq!(gate.status, GateStatus::Closed);
 
         // Satisfy all criteria
@@ -157,9 +183,9 @@ mod tests {
 
     #[test]
     fn test_gate_serialization() {
-        let gate = Gate::new(Phase::Implement);
+        let gate = Gate::new(Stage::Implement);
         let json = serde_json::to_string(&gate).unwrap();
         let parsed: Gate = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.phase, Phase::Implement);
+        assert_eq!(parsed.stage, Stage::Implement);
     }
 }

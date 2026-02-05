@@ -184,7 +184,7 @@ type CreateProjectRequest struct {
 
 // MatrixCell represents a cell in the workflow matrix
 type MatrixCell struct {
-	Phase   string `json:"phase"`
+	Stage   string `json:"stage"`
 	Zone    string `json:"zone"`
 	Persona string `json:"persona"`
 	Enabled bool   `json:"enabled"`

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::phase::Phase;
+use crate::stage::Stage;
 use crate::task::{Task, TaskStatus};
 use crate::gate::{Gate, GateStatus};
 
@@ -11,14 +11,14 @@ pub enum WorkflowError {
     #[error("Task not found: {0}")]
     TaskNotFound(String),
 
-    #[error("Gate not found for phase: {0:?}")]
-    GateNotFound(Phase),
+    #[error("Gate not found for stage: {0:?}")]
+    GateNotFound(Stage),
 
     #[error("Cannot transition from {from:?} to {to:?}")]
-    InvalidTransition { from: Phase, to: Phase },
+    InvalidTransition { from: Stage, to: Stage },
 
-    #[error("Gate not open for phase: {0:?}")]
-    GateNotOpen(Phase),
+    #[error("Gate not open for stage: {0:?}")]
+    GateNotOpen(Stage),
 
     #[error("Serialization error: {0}")]
     SerializationError(String),
@@ -29,7 +29,7 @@ pub enum WorkflowError {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowEngine {
-    current_phase: Phase,
+    current_stage: Stage,
     tasks: HashMap<String, Task>,
     gates: HashMap<String, Gate>,
 }
@@ -37,46 +37,46 @@ pub struct WorkflowEngine {
 impl WorkflowEngine {
     pub fn new() -> Self {
         let mut gates = HashMap::new();
-        for phase in Phase::all() {
-            let gate = Gate::new(*phase);
+        for stage in Stage::all() {
+            let gate = Gate::new(*stage);
             gates.insert(gate.id.clone(), gate);
         }
 
         Self {
-            current_phase: Phase::Idea,
+            current_stage: Stage::Discovery,
             tasks: HashMap::new(),
             gates,
         }
     }
 
-    // Phase management
-    pub fn current_phase(&self) -> Phase {
-        self.current_phase
+    // Stage management
+    pub fn current_stage(&self) -> Stage {
+        self.current_stage
     }
 
-    pub fn can_transition(&self, to: Phase) -> bool {
-        // Can only transition to the next phase
-        if let Some(next) = self.current_phase.next() {
+    pub fn can_transition(&self, to: Stage) -> bool {
+        // Can only transition to the next stage
+        if let Some(next) = self.current_stage.next() {
             if next == to {
-                // Check if current phase's gate is open
-                return self.check_gate(self.current_phase) == GateStatus::Open;
+                // Check if current stage's gate is open
+                return self.check_gate(self.current_stage) == GateStatus::Open;
             }
         }
         false
     }
 
-    pub fn transition(&mut self, to: Phase) -> Result<(), WorkflowError> {
+    pub fn transition(&mut self, to: Stage) -> Result<(), WorkflowError> {
         if !self.can_transition(to) {
-            if self.check_gate(self.current_phase) != GateStatus::Open {
-                return Err(WorkflowError::GateNotOpen(self.current_phase));
+            if self.check_gate(self.current_stage) != GateStatus::Open {
+                return Err(WorkflowError::GateNotOpen(self.current_stage));
             }
             return Err(WorkflowError::InvalidTransition {
-                from: self.current_phase,
+                from: self.current_stage,
                 to,
             });
         }
 
-        self.current_phase = to;
+        self.current_stage = to;
         Ok(())
     }
 
@@ -122,9 +122,9 @@ impl WorkflowEngine {
             .collect()
     }
 
-    pub fn get_tasks_for_phase(&self, phase: Phase) -> Vec<&Task> {
+    pub fn get_tasks_for_stage(&self, stage: Stage) -> Vec<&Task> {
         self.tasks.values()
-            .filter(|task| task.phase == phase)
+            .filter(|task| task.stage == stage)
             .collect()
     }
 
@@ -133,25 +133,25 @@ impl WorkflowEngine {
     }
 
     // Gate management
-    pub fn get_gate(&self, phase: Phase) -> Option<&Gate> {
-        let id = format!("gate-{}", phase.as_str());
+    pub fn get_gate(&self, stage: Stage) -> Option<&Gate> {
+        let id = format!("gate-{}", stage.as_str());
         self.gates.get(&id)
     }
 
-    pub fn get_gate_mut(&mut self, phase: Phase) -> Option<&mut Gate> {
-        let id = format!("gate-{}", phase.as_str());
+    pub fn get_gate_mut(&mut self, stage: Stage) -> Option<&mut Gate> {
+        let id = format!("gate-{}", stage.as_str());
         self.gates.get_mut(&id)
     }
 
-    pub fn check_gate(&self, phase: Phase) -> GateStatus {
-        self.get_gate(phase)
+    pub fn check_gate(&self, stage: Stage) -> GateStatus {
+        self.get_gate(stage)
             .map(|g| g.status.clone())
             .unwrap_or(GateStatus::Closed)
     }
 
-    pub fn approve_gate(&mut self, phase: Phase, by: &str) -> Result<(), WorkflowError> {
-        let gate = self.get_gate_mut(phase)
-            .ok_or(WorkflowError::GateNotFound(phase))?;
+    pub fn approve_gate(&mut self, stage: Stage, by: &str) -> Result<(), WorkflowError> {
+        let gate = self.get_gate_mut(stage)
+            .ok_or(WorkflowError::GateNotFound(stage))?;
 
         gate.approve(by);
         Ok(())
@@ -181,15 +181,24 @@ mod tests {
     #[test]
     fn test_engine_creation() {
         let engine = WorkflowEngine::new();
-        assert_eq!(engine.current_phase(), Phase::Idea);
-        assert!(engine.get_gate(Phase::Idea).is_some());
-        assert!(engine.get_gate(Phase::Release).is_some());
+        assert_eq!(engine.current_stage(), Stage::Discovery);
+        assert_eq!(engine.gates.len(), 10);
+        assert!(engine.get_gate(Stage::Discovery).is_some());
+        assert!(engine.get_gate(Stage::Goal).is_some());
+        assert!(engine.get_gate(Stage::Requirements).is_some());
+        assert!(engine.get_gate(Stage::Planning).is_some());
+        assert!(engine.get_gate(Stage::Design).is_some());
+        assert!(engine.get_gate(Stage::Implement).is_some());
+        assert!(engine.get_gate(Stage::Verify).is_some());
+        assert!(engine.get_gate(Stage::Validate).is_some());
+        assert!(engine.get_gate(Stage::Document).is_some());
+        assert!(engine.get_gate(Stage::Release).is_some());
     }
 
     #[test]
     fn test_task_creation_and_retrieval() {
         let mut engine = WorkflowEngine::new();
-        let task = Task::new("task-1", "Test task", Phase::Idea, "system", "researcher");
+        let task = Task::new("task-1", "Test task", Stage::Discovery, "system", "researcher");
 
         let id = engine.create_task(task);
         assert_eq!(id, "task-1");
@@ -204,11 +213,11 @@ mod tests {
         let mut engine = WorkflowEngine::new();
 
         // Create task with no dependencies
-        let task1 = Task::new("task-1", "First", Phase::Implement, "backend", "developer");
+        let task1 = Task::new("task-1", "First", Stage::Implement, "backend", "developer");
         engine.create_task(task1);
 
         // Create task with dependency on task-1
-        let task2 = Task::new("task-2", "Second", Phase::Implement, "backend", "developer")
+        let task2 = Task::new("task-2", "Second", Stage::Implement, "backend", "developer")
             .with_dependencies(vec!["task-1".to_string()]);
         engine.create_task(task2);
 
@@ -227,14 +236,14 @@ mod tests {
     }
 
     #[test]
-    fn test_phase_transition() {
+    fn test_stage_transition() {
         let mut engine = WorkflowEngine::new();
 
         // Cannot transition without gate approval
-        assert!(!engine.can_transition(Phase::Design));
+        assert!(!engine.can_transition(Stage::Goal));
 
         // Satisfy gate criteria and approve
-        if let Some(gate) = engine.get_gate_mut(Phase::Idea) {
+        if let Some(gate) = engine.get_gate_mut(Stage::Discovery) {
             for i in 0..gate.criteria.len() {
                 gate.satisfy_criterion(i);
             }
@@ -242,21 +251,38 @@ mod tests {
         }
 
         // Now can transition
-        assert!(engine.can_transition(Phase::Design));
-        engine.transition(Phase::Design).unwrap();
-        assert_eq!(engine.current_phase(), Phase::Design);
+        assert!(engine.can_transition(Stage::Goal));
+        engine.transition(Stage::Goal).unwrap();
+        assert_eq!(engine.current_stage(), Stage::Goal);
     }
 
     #[test]
     fn test_serialization() {
         let mut engine = WorkflowEngine::new();
-        let task = Task::new("task-1", "Test", Phase::Idea, "system", "researcher");
+        let task = Task::new("task-1", "Test", Stage::Discovery, "system", "researcher");
         engine.create_task(task);
 
         let json = engine.to_json();
         let restored = WorkflowEngine::from_json(&json).unwrap();
 
-        assert_eq!(restored.current_phase(), Phase::Idea);
+        assert_eq!(restored.current_stage(), Stage::Discovery);
         assert!(restored.get_task("task-1").is_some());
+    }
+
+    #[test]
+    fn test_get_tasks_for_stage() {
+        let mut engine = WorkflowEngine::new();
+        let task1 = Task::new("task-1", "Research", Stage::Discovery, "system", "researcher");
+        let task2 = Task::new("task-2", "Build", Stage::Implement, "backend", "developer");
+        engine.create_task(task1);
+        engine.create_task(task2);
+
+        let discovery_tasks = engine.get_tasks_for_stage(Stage::Discovery);
+        assert_eq!(discovery_tasks.len(), 1);
+        assert_eq!(discovery_tasks[0].id, "task-1");
+
+        let implement_tasks = engine.get_tasks_for_stage(Stage::Implement);
+        assert_eq!(implement_tasks.len(), 1);
+        assert_eq!(implement_tasks[0].id, "task-2");
     }
 }

@@ -14,7 +14,7 @@ export interface MissionWorker {
 export interface MissionTask {
   id: string
   name: string
-  phase: string
+  stage: string
   zone: string
   persona: string
   status: string
@@ -24,7 +24,7 @@ export interface MissionTask {
 }
 
 export interface MissionGate {
-  phase: string
+  stage: string
   status: 'pending' | 'awaiting_approval' | 'approved'
   criteria: string[]
   approvedAt?: string
@@ -42,7 +42,7 @@ export interface Finding {
 export interface MissionState {
   // State
   initialized: boolean
-  currentPhase: string
+  currentStage: string
   workers: MissionWorker[]
   tasks: MissionTask[]
   gates: Record<string, MissionGate>
@@ -53,7 +53,7 @@ export interface MissionState {
 
   // Actions
   setInitialized: (initialized: boolean) => void
-  setCurrentPhase: (phase: string) => void
+  setCurrentStage: (stage: string) => void
   setWorkers: (workers: MissionWorker[]) => void
   addWorker: (worker: MissionWorker) => void
   updateWorker: (id: string, updates: Partial<MissionWorker>) => void
@@ -61,7 +61,7 @@ export interface MissionState {
   setTasks: (tasks: MissionTask[]) => void
   addTask: (task: MissionTask) => void
   updateTask: (id: string, updates: Partial<MissionTask>) => void
-  setGate: (phase: string, gate: MissionGate) => void
+  setGate: (stage: string, gate: MissionGate) => void
   addFinding: (finding: Finding) => void
   setFindings: (findings: Finding[]) => void
   setKingRunning: (running: boolean) => void
@@ -73,15 +73,15 @@ export interface MissionState {
 }
 
 export type V5Event =
-  | { type: 'mission_state'; state: { phase: string; workers: MissionWorker[]; tasks: MissionTask[]; gates: Record<string, MissionGate> } }
-  | { type: 'phase_changed'; phase: string }
+  | { type: 'mission_state'; state: { stage: string; workers: MissionWorker[]; tasks: MissionTask[]; gates: Record<string, MissionGate> } }
+  | { type: 'stage_changed'; stage: string }
   | { type: 'task_created'; task: MissionTask }
   | { type: 'task_updated'; task_id: string; status: string }
   | { type: 'worker_spawned'; worker_id: string; persona: string; task_id: string; zone: string }
   | { type: 'worker_completed'; worker_id: string }
   | { type: 'findings_ready'; task_id: string }
-  | { type: 'gate_ready'; phase: string }
-  | { type: 'gate_approved'; phase: string }
+  | { type: 'gate_ready'; stage: string }
+  | { type: 'gate_approved'; stage: string }
   | { type: 'king_output'; data: unknown }
   | { type: 'king_message'; data: { role: string; content: string; timestamp: number } }
   | { type: 'king_status'; is_running: boolean }
@@ -92,7 +92,7 @@ export type V5Event =
 export const useMissionStore = create<MissionState>()((set, get) => ({
   // Initial state
   initialized: false,
-  currentPhase: 'idea',
+  currentStage: 'discovery',
   workers: [],
   tasks: [],
   gates: {},
@@ -103,7 +103,7 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
 
   // Actions
   setInitialized: (initialized) => set({ initialized }),
-  setCurrentPhase: (phase) => set({ currentPhase: phase }),
+  setCurrentStage: (stage) => set({ currentStage: stage }),
 
   setWorkers: (workers) => set({ workers }),
 
@@ -133,8 +133,8 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
     )
   })),
 
-  setGate: (phase, gate) => set((state) => ({
-    gates: { ...state.gates, [phase]: gate }
+  setGate: (stage, gate) => set((state) => ({
+    gates: { ...state.gates, [stage]: gate }
   })),
 
   addFinding: (finding) => set((state) => ({
@@ -153,15 +153,15 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
       case 'mission_state':
         set({
           initialized: true,
-          currentPhase: event.state.phase,
+          currentStage: event.state.stage,
           workers: event.state.workers,
           tasks: event.state.tasks,
           gates: event.state.gates
         })
         break
 
-      case 'phase_changed':
-        set({ currentPhase: event.phase })
+      case 'stage_changed':
+        set({ currentStage: event.stage })
         break
 
       case 'task_created':
@@ -191,8 +191,8 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
         set((state) => ({
           gates: {
             ...state.gates,
-            [event.phase]: {
-              ...state.gates[event.phase],
+            [event.stage]: {
+              ...state.gates[event.stage],
               status: 'awaiting_approval'
             }
           }
@@ -203,8 +203,8 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
         set((state) => ({
           gates: {
             ...state.gates,
-            [event.phase]: {
-              ...state.gates[event.phase],
+            [event.stage]: {
+              ...state.gates[event.stage],
               status: 'approved',
               approvedAt: new Date().toISOString()
             }
@@ -242,7 +242,7 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
 }))
 
 // Selectors
-export const useCurrentPhase = () => useMissionStore((s) => s.currentPhase)
+export const useCurrentStage = () => useMissionStore((s) => s.currentStage)
 export const useMissionWorkers = () => useMissionStore((s) => s.workers)
 export const useMissionTasks = () => useMissionStore((s) => s.tasks)
 export const useMissionGates = () => useMissionStore((s) => s.gates)
@@ -302,8 +302,8 @@ export async function answerKingQuestion(optionIndex: number): Promise<void> {
   useMissionStore.getState().setKingQuestion(null)
 }
 
-export async function approveGate(phase: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/mission/gates/${phase}/approve`, {
+export async function approveGate(stage: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/mission/gates/${stage}/approve`, {
     method: 'POST'
   })
   if (!res.ok) {

@@ -1,48 +1,48 @@
 import { useEffect, useState } from 'react'
 import {
   useWorkflowStore,
-  useCurrentPhase,
-  usePhases,
-  useTasksForPhase,
+  useCurrentStage,
+  useStages,
+  useTasksForStage,
   useGate,
-  fetchPhases,
+  fetchStages,
   fetchTasks,
   fetchGate,
   approveGate,
   updateTaskStatus
 } from '../../stores/useWorkflowStore'
-import type { Phase, Task, Gate, TaskStatus } from '../../types/workflow'
+import type { Stage, Task, Gate, TaskStatus } from '../../types/workflow'
 import {
-  ALL_PHASES,
-  getPhaseLabel,
+  ALL_STAGES,
+  getStageLabel,
   getTaskStatusColor,
   getGateStatusColor
 } from '../../types/workflow'
 
-export function PhaseView() {
-  const currentPhase = useCurrentPhase()
-  const phases = usePhases()
-  const setPhases = useWorkflowStore((s) => s.setPhases)
+export function StageView() {
+  const currentStage = useCurrentStage()
+  const stages = useStages()
+  const setStages = useWorkflowStore((s) => s.setStages)
   const setTasks = useWorkflowStore((s) => s.setTasks)
   const setGate = useWorkflowStore((s) => s.setGate)
   const [loading, setLoading] = useState(true)
-  const [selectedPhase, setSelectedPhase] = useState<Phase>(currentPhase)
+  const [selectedStage, setSelectedStage] = useState<Stage>(currentStage)
 
   // Load initial data
   useEffect(() => {
     async function load() {
       try {
-        const [phasesData, tasksData] = await Promise.all([
-          fetchPhases(),
+        const [stagesData, tasksData] = await Promise.all([
+          fetchStages(),
           fetchTasks()
         ])
-        setPhases(phasesData.current, phasesData.phases)
+        setStages(stagesData.current, stagesData.stages)
         setTasks(tasksData)
-        setSelectedPhase(phasesData.current)
+        setSelectedStage(stagesData.current)
 
-        // Load gate for current phase
-        const gate = await fetchGate(phasesData.current)
-        setGate(phasesData.current, gate)
+        // Load gate for current stage
+        const gate = await fetchGate(stagesData.current)
+        setGate(stagesData.current, gate)
       } catch (err) {
         console.error('Failed to load workflow data:', err)
       } finally {
@@ -50,20 +50,20 @@ export function PhaseView() {
       }
     }
     load()
-  }, [setPhases, setTasks, setGate])
+  }, [setStages, setTasks, setGate])
 
-  // Load gate when selected phase changes
+  // Load gate when selected stage changes
   useEffect(() => {
     async function loadGate() {
       try {
-        const gate = await fetchGate(selectedPhase)
-        setGate(selectedPhase, gate)
+        const gate = await fetchGate(selectedStage)
+        setGate(selectedStage, gate)
       } catch (err) {
         console.error('Failed to load gate:', err)
       }
     }
     loadGate()
-  }, [selectedPhase, setGate])
+  }, [selectedStage, setGate])
 
   if (loading) {
     return (
@@ -75,48 +75,48 @@ export function PhaseView() {
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
-      {/* Phase timeline */}
-      <PhaseTimeline
-        phases={phases.length > 0 ? phases : ALL_PHASES.map(p => ({
-          phase: p,
-          status: p === currentPhase ? 'current' : 'pending'
+      {/* Stage timeline */}
+      <StageTimeline
+        stages={stages.length > 0 ? stages : ALL_STAGES.map(s => ({
+          stage: s,
+          status: s === currentStage ? 'current' : 'pending'
         }))}
-        currentPhase={currentPhase}
-        selectedPhase={selectedPhase}
-        onSelectPhase={setSelectedPhase}
+        currentStage={currentStage}
+        selectedStage={selectedStage}
+        onSelectStage={setSelectedStage}
       />
 
-      {/* Selected phase content */}
+      {/* Selected stage content */}
       <div className="flex-1 overflow-auto p-4">
-        <PhaseDetail phase={selectedPhase} />
+        <StageDetail stage={selectedStage} />
       </div>
     </div>
   )
 }
 
-interface PhaseTimelineProps {
-  phases: Array<{ phase: Phase; status: string }>
-  currentPhase: Phase
-  selectedPhase: Phase
-  onSelectPhase: (phase: Phase) => void
+interface StageTimelineProps {
+  stages: Array<{ stage: Stage; status: string }>
+  currentStage: Stage
+  selectedStage: Stage
+  onSelectStage: (stage: Stage) => void
 }
 
-function PhaseTimeline({ phases, currentPhase: _currentPhase, selectedPhase, onSelectPhase }: PhaseTimelineProps) {
+function StageTimeline({ stages, currentStage: _currentStage, selectedStage, onSelectStage }: StageTimelineProps) {
   return (
     <div className="flex items-center gap-1 p-3 bg-gray-850 border-b border-gray-800">
-      {phases.map((p, i) => (
-        <div key={p.phase} className="flex items-center">
-          {/* Phase node */}
+      {stages.map((s, i) => (
+        <div key={s.stage} className="flex items-center">
+          {/* Stage node */}
           <button
-            onClick={() => onSelectPhase(p.phase)}
+            onClick={() => onSelectStage(s.stage)}
             className={`
               flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium
               transition-all
-              ${p.phase === selectedPhase
+              ${s.stage === selectedStage
                 ? 'bg-blue-600 text-white'
-                : p.status === 'complete'
+                : s.status === 'complete'
                   ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                  : p.status === 'current'
+                  : s.status === 'current'
                     ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
                     : 'bg-gray-800 text-gray-500 hover:bg-gray-700'
               }
@@ -125,18 +125,18 @@ function PhaseTimeline({ phases, currentPhase: _currentPhase, selectedPhase, onS
             {/* Status indicator */}
             <span className={`
               w-2 h-2 rounded-full
-              ${p.status === 'complete' ? 'bg-green-500' :
-                p.status === 'current' ? 'bg-amber-500 animate-pulse' :
+              ${s.status === 'complete' ? 'bg-green-500' :
+                s.status === 'current' ? 'bg-amber-500 animate-pulse' :
                 'bg-gray-600'}
             `} />
-            {getPhaseLabel(p.phase)}
+            {getStageLabel(s.stage)}
           </button>
 
           {/* Connector line */}
-          {i < phases.length - 1 && (
+          {i < stages.length - 1 && (
             <div className={`
               w-6 h-0.5 mx-1
-              ${p.status === 'complete' ? 'bg-green-500/50' : 'bg-gray-700'}
+              ${s.status === 'complete' ? 'bg-green-500/50' : 'bg-gray-700'}
             `} />
           )}
         </div>
@@ -145,20 +145,20 @@ function PhaseTimeline({ phases, currentPhase: _currentPhase, selectedPhase, onS
   )
 }
 
-interface PhaseDetailProps {
-  phase: Phase
+interface StageDetailProps {
+  stage: Stage
 }
 
-function PhaseDetail({ phase }: PhaseDetailProps) {
-  const tasks = useTasksForPhase(phase)
-  const gate = useGate(phase)
+function StageDetail({ stage }: StageDetailProps) {
+  const tasks = useTasksForStage(stage)
+  const gate = useGate(stage)
 
   return (
     <div className="space-y-4">
-      {/* Phase header */}
+      {/* Stage header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-200">
-          {getPhaseLabel(phase)} Phase
+          {getStageLabel(stage)} Stage
         </h2>
         <span className="text-xs text-gray-500">
           {tasks.length} task{tasks.length !== 1 ? 's' : ''}
@@ -166,7 +166,7 @@ function PhaseDetail({ phase }: PhaseDetailProps) {
       </div>
 
       {/* Gate status */}
-      {gate && <GateCard gate={gate} phase={phase} />}
+      {gate && <GateCard gate={gate} stage={stage} />}
 
       {/* Tasks list */}
       <div className="space-y-2">
@@ -175,7 +175,7 @@ function PhaseDetail({ phase }: PhaseDetailProps) {
         </h3>
         {tasks.length === 0 ? (
           <div className="text-sm text-gray-600 py-4 text-center">
-            No tasks in this phase
+            No tasks in this stage
           </div>
         ) : (
           <div className="space-y-1">
@@ -191,18 +191,18 @@ function PhaseDetail({ phase }: PhaseDetailProps) {
 
 interface GateCardProps {
   gate: Gate
-  phase: Phase
+  stage: Stage
 }
 
-function GateCard({ gate, phase }: GateCardProps) {
+function GateCard({ gate, stage }: GateCardProps) {
   const [approving, setApproving] = useState(false)
   const setGate = useWorkflowStore((s) => s.setGate)
 
   const handleApprove = async () => {
     setApproving(true)
     try {
-      const result = await approveGate(phase, 'user')
-      setGate(phase, result.gate)
+      const result = await approveGate(stage, 'user')
+      setGate(stage, result.gate)
     } catch (err) {
       console.error('Failed to approve gate:', err)
     } finally {
@@ -222,7 +222,7 @@ function GateCard({ gate, phase }: GateCardProps) {
             style={{ backgroundColor: getGateStatusColor(gate.status) }}
           />
           <span className="text-sm font-medium text-gray-300">
-            Phase Gate
+            Stage Gate
           </span>
         </div>
         <span
@@ -247,7 +247,7 @@ function GateCard({ gate, phase }: GateCardProps) {
                 : 'bg-gray-700 text-gray-500'
               }
             `}>
-              {criterion.satisfied ? '✓' : '○'}
+              {criterion.satisfied ? '\u2713' : '\u25CB'}
             </span>
             <span className={criterion.satisfied ? 'text-gray-300' : 'text-gray-500'}>
               {criterion.description}

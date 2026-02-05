@@ -49,7 +49,7 @@ describe('useKnowledgeStore', () => {
   describe('Checkpoint actions', () => {
     it('should set checkpoints', () => {
       const checkpoints = [
-        { id: 'cp-1', phase: 'idea' as const, created_at: Date.now() }
+        { id: 'cp-1', stage: 'discovery' as const, created_at: Date.now() }
       ]
       useKnowledgeStore.getState().setCheckpoints(checkpoints)
 
@@ -59,7 +59,7 @@ describe('useKnowledgeStore', () => {
     it('should add a checkpoint', () => {
       useKnowledgeStore.getState().addCheckpoint({
         id: 'cp-2',
-        phase: 'design',
+        stage: 'design',
         created_at: Date.now()
       })
 
@@ -172,7 +172,7 @@ describe('useKnowledgeStore', () => {
       const event: WorkflowEvent = {
         type: 'checkpoint_created',
         checkpoint_id: 'cp-new',
-        phase: 'design'
+        stage: 'design'
       }
 
       useKnowledgeStore.getState().handleEvent(event)

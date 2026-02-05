@@ -242,7 +242,7 @@ export function useWebSocket() {
         break
 
       // V4 Workflow events
-      case 'phase_changed':
+      case 'stage_changed':
         useWorkflowStore.getState().handleEvent(data as WorkflowEvent)
         break
 
@@ -497,12 +497,12 @@ interface WebSocketMessage {
 
   // V4 fields
   state?: {
-    current_phase: string
-    phases: Array<{ phase: string; status: string }>
+    current_stage: string
+    stages: Array<{ stage: string; status: string }>
     tasks: unknown[]
     checkpoints: unknown[]
   }
-  phase?: string
+  stage?: string
   previous?: string
   task?: unknown
   task_id?: string

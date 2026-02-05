@@ -334,7 +334,7 @@ function CheckpointRow({ checkpoint }: CheckpointRowProps) {
       </div>
       <div className="flex items-center gap-2">
         <span className="px-1.5 py-0.5 text-[10px] font-medium text-gray-500 bg-gray-800 rounded">
-          {checkpoint.phase}
+          {checkpoint.stage}
         </span>
         <span className="text-[10px] text-gray-600">
           {formatTime(checkpoint.created_at)}

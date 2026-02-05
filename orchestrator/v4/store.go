@@ -13,9 +13,9 @@ import (
 type Store struct {
 	mu sync.RWMutex
 
-	currentPhase Phase
+	currentStage Stage
 	tasks        map[string]*Task
-	gates        map[Phase]*Gate
+	gates        map[Stage]*Gate
 	checkpoints  []*Checkpoint
 	handoffs     []*Handoff
 	findings     []Finding
@@ -25,61 +25,81 @@ type Store struct {
 // NewStore creates a new v4 store
 func NewStore() *Store {
 	s := &Store{
-		currentPhase: PhaseIdea,
+		currentStage: StageDiscovery,
 		tasks:        make(map[string]*Task),
-		gates:        make(map[Phase]*Gate),
+		gates:        make(map[Stage]*Gate),
 		checkpoints:  make([]*Checkpoint, 0),
 		handoffs:     make([]*Handoff, 0),
 		findings:     make([]Finding, 0),
 		budgets:      make(map[string]*TokenBudget),
 	}
 
-	// Initialize gates for all phases
-	for _, phase := range AllPhases() {
-		s.gates[phase] = s.createGateForPhase(phase)
+	// Initialize gates for all stages
+	for _, stage := range AllStages() {
+		s.gates[stage] = s.createGateForStage(stage)
 	}
 
 	return s
 }
 
-func (s *Store) createGateForPhase(phase Phase) *Gate {
-	criteria := s.defaultCriteriaForPhase(phase)
+func (s *Store) createGateForStage(stage Stage) *Gate {
+	criteria := s.defaultCriteriaForStage(stage)
 	return &Gate{
-		ID:       fmt.Sprintf("gate-%s", phase),
-		Phase:    phase,
+		ID:       fmt.Sprintf("gate-%s", stage),
+		Stage:    stage,
 		Status:   GateStatusClosed,
 		Criteria: criteria,
 	}
 }
 
-func (s *Store) defaultCriteriaForPhase(phase Phase) []GateCriterion {
-	switch phase {
-	case PhaseIdea:
+func (s *Store) defaultCriteriaForStage(stage Stage) []GateCriterion {
+	switch stage {
+	case StageDiscovery:
 		return []GateCriterion{
-			{Description: "Problem statement defined", Satisfied: false},
-			{Description: "Feasibility assessed", Satisfied: false},
+			{Description: "Problem space explored", Satisfied: false},
+			{Description: "Stakeholders identified", Satisfied: false},
 		}
-	case PhaseDesign:
+	case StageGoal:
+		return []GateCriterion{
+			{Description: "Goal statement defined", Satisfied: false},
+			{Description: "Success metrics established", Satisfied: false},
+		}
+	case StageRequirements:
+		return []GateCriterion{
+			{Description: "Requirements documented", Satisfied: false},
+			{Description: "Acceptance criteria defined", Satisfied: false},
+		}
+	case StagePlanning:
+		return []GateCriterion{
+			{Description: "Tasks broken down", Satisfied: false},
+			{Description: "Dependencies mapped", Satisfied: false},
+		}
+	case StageDesign:
 		return []GateCriterion{
 			{Description: "Spec document complete", Satisfied: false},
 			{Description: "Technical approach approved", Satisfied: false},
 		}
-	case PhaseImplement:
+	case StageImplement:
 		return []GateCriterion{
 			{Description: "All tasks complete", Satisfied: false},
 			{Description: "Code compiles", Satisfied: false},
 		}
-	case PhaseVerify:
+	case StageVerify:
 		return []GateCriterion{
 			{Description: "Tests passing", Satisfied: false},
 			{Description: "Review complete", Satisfied: false},
 		}
-	case PhaseDocument:
+	case StageValidate:
+		return []GateCriterion{
+			{Description: "Acceptance criteria met", Satisfied: false},
+			{Description: "Stakeholder sign-off", Satisfied: false},
+		}
+	case StageDocument:
 		return []GateCriterion{
 			{Description: "README updated", Satisfied: false},
 			{Description: "API documented", Satisfied: false},
 		}
-	case PhaseRelease:
+	case StageRelease:
 		return []GateCriterion{
 			{Description: "Deployed successfully", Satisfied: false},
 			{Description: "Smoke tests pass", Satisfied: false},
@@ -89,54 +109,54 @@ func (s *Store) defaultCriteriaForPhase(phase Phase) []GateCriterion {
 	}
 }
 
-// Phase operations
+// Stage operations
 
-// CurrentPhase returns the current phase
-func (s *Store) CurrentPhase() Phase {
+// CurrentStage returns the current stage
+func (s *Store) CurrentStage() Stage {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.currentPhase
+	return s.currentStage
 }
 
-// GetPhases returns all phase info
-func (s *Store) GetPhases() []PhaseInfo {
+// GetStages returns all stage info
+func (s *Store) GetStages() []StageInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var infos []PhaseInfo
-	for _, phase := range AllPhases() {
+	var infos []StageInfo
+	for _, stage := range AllStages() {
 		var status string
-		if phase == s.currentPhase {
+		if stage == s.currentStage {
 			status = "current"
-		} else if s.isPhaseComplete(phase) {
+		} else if s.isStageComplete(stage) {
 			status = "complete"
 		} else {
 			status = "pending"
 		}
-		infos = append(infos, PhaseInfo{Phase: phase, Status: status})
+		infos = append(infos, StageInfo{Stage: stage, Status: status})
 	}
 	return infos
 }
 
-func (s *Store) isPhaseComplete(phase Phase) bool {
-	gate, ok := s.gates[phase]
+func (s *Store) isStageComplete(stage Stage) bool {
+	gate, ok := s.gates[stage]
 	if !ok {
 		return false
 	}
 	return gate.Status == GateStatusOpen
 }
 
-// CanTransition checks if we can transition to the given phase
-func (s *Store) CanTransition(to Phase) bool {
+// CanTransition checks if we can transition to the given stage
+func (s *Store) CanTransition(to Stage) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	next := s.currentPhase.Next()
+	next := s.currentStage.Next()
 	if next != to {
 		return false
 	}
 
-	gate, ok := s.gates[s.currentPhase]
+	gate, ok := s.gates[s.currentStage]
 	if !ok {
 		return false
 	}
@@ -144,29 +164,29 @@ func (s *Store) CanTransition(to Phase) bool {
 	return gate.Status == GateStatusOpen
 }
 
-// Transition moves to the next phase
-func (s *Store) Transition(to Phase) error {
+// Transition moves to the next stage
+func (s *Store) Transition(to Stage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	next := s.currentPhase.Next()
+	next := s.currentStage.Next()
 	if next != to {
-		return fmt.Errorf("cannot transition from %s to %s", s.currentPhase, to)
+		return fmt.Errorf("cannot transition from %s to %s", s.currentStage, to)
 	}
 
-	gate, ok := s.gates[s.currentPhase]
+	gate, ok := s.gates[s.currentStage]
 	if !ok || gate.Status != GateStatusOpen {
-		return fmt.Errorf("gate not open for phase %s", s.currentPhase)
+		return fmt.Errorf("gate not open for stage %s", s.currentStage)
 	}
 
-	s.currentPhase = to
+	s.currentStage = to
 	return nil
 }
 
 // Task operations
 
 // CreateTask creates a new task
-func (s *Store) CreateTask(name string, phase Phase, zone, persona string, deps []string) *Task {
+func (s *Store) CreateTask(name string, stage Stage, zone, persona string, deps []string) *Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -174,7 +194,7 @@ func (s *Store) CreateTask(name string, phase Phase, zone, persona string, deps 
 	task := &Task{
 		ID:           uuid.New().String(),
 		Name:         name,
-		Phase:        phase,
+		Stage:        stage,
 		Zone:         zone,
 		Status:       TaskStatusPending,
 		Persona:      persona,
@@ -213,13 +233,13 @@ func (s *Store) UpdateTaskStatus(id string, status TaskStatus, reason string) er
 }
 
 // ListTasks returns all tasks, optionally filtered
-func (s *Store) ListTasks(phase *Phase, zone, status, persona *string) []Task {
+func (s *Store) ListTasks(stage *Stage, zone, status, persona *string) []Task {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var result []Task
 	for _, task := range s.tasks {
-		if phase != nil && task.Phase != *phase {
+		if stage != nil && task.Stage != *stage {
 			continue
 		}
 		if zone != nil && task.Zone != *zone {
@@ -266,22 +286,22 @@ func (s *Store) GetReadyTasks() []Task {
 
 // Gate operations
 
-// GetGate returns a gate for a phase
-func (s *Store) GetGate(phase Phase) (*Gate, bool) {
+// GetGate returns a gate for a stage
+func (s *Store) GetGate(stage Stage) (*Gate, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	gate, ok := s.gates[phase]
+	gate, ok := s.gates[stage]
 	return gate, ok
 }
 
 // SatisfyCriterion marks a gate criterion as satisfied
-func (s *Store) SatisfyCriterion(phase Phase, index int) error {
+func (s *Store) SatisfyCriterion(stage Stage, index int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	gate, ok := s.gates[phase]
+	gate, ok := s.gates[stage]
 	if !ok {
-		return fmt.Errorf("gate not found for phase: %s", phase)
+		return fmt.Errorf("gate not found for stage: %s", stage)
 	}
 
 	if index < 0 || index >= len(gate.Criteria) {
@@ -294,13 +314,13 @@ func (s *Store) SatisfyCriterion(phase Phase, index int) error {
 }
 
 // ApproveGate approves a gate
-func (s *Store) ApproveGate(phase Phase, approvedBy string) error {
+func (s *Store) ApproveGate(stage Stage, approvedBy string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	gate, ok := s.gates[phase]
+	gate, ok := s.gates[stage]
 	if !ok {
-		return fmt.Errorf("gate not found for phase: %s", phase)
+		return fmt.Errorf("gate not found for stage: %s", stage)
 	}
 
 	now := time.Now().Unix()
@@ -379,7 +399,7 @@ func (s *Store) CreateCheckpoint() *CheckpointSummary {
 	defer s.mu.Unlock()
 
 	now := time.Now().Unix()
-	id := fmt.Sprintf("cp-%s-%d", s.currentPhase, len(s.checkpoints))
+	id := fmt.Sprintf("cp-%s-%d", s.currentStage, len(s.checkpoints))
 
 	// Snapshot current tasks
 	var tasksSnapshot []Task
@@ -389,7 +409,7 @@ func (s *Store) CreateCheckpoint() *CheckpointSummary {
 
 	checkpoint := &Checkpoint{
 		ID:               id,
-		Phase:            s.currentPhase,
+		Stage:            s.currentStage,
 		CreatedAt:        now,
 		TasksSnapshot:    tasksSnapshot,
 		FindingsSnapshot: append([]Finding{}, s.findings...),
@@ -400,7 +420,7 @@ func (s *Store) CreateCheckpoint() *CheckpointSummary {
 
 	return &CheckpointSummary{
 		ID:        id,
-		Phase:     s.currentPhase,
+		Stage:     s.currentStage,
 		CreatedAt: now,
 	}
 }
@@ -414,7 +434,7 @@ func (s *Store) ListCheckpoints() []CheckpointSummary {
 	for _, cp := range s.checkpoints {
 		summaries = append(summaries, CheckpointSummary{
 			ID:        cp.ID,
-			Phase:     cp.Phase,
+			Stage:     cp.Stage,
 			CreatedAt: cp.CreatedAt,
 		})
 	}

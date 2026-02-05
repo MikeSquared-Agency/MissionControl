@@ -17,12 +17,12 @@ func init() {
 	taskCmd.AddCommand(taskUpdateCmd)
 
 	// task create flags
-	taskCreateCmd.Flags().StringP("phase", "p", "", "Phase for the task")
+	taskCreateCmd.Flags().StringP("stage", "s", "", "Stage for the task")
 	taskCreateCmd.Flags().StringP("zone", "z", "", "Zone for the task")
 	taskCreateCmd.Flags().String("persona", "", "Persona to assign")
 
 	// task list flags
-	taskListCmd.Flags().StringP("phase", "p", "", "Filter by phase")
+	taskListCmd.Flags().String("stage", "", "Filter by stage")
 	taskListCmd.Flags().StringP("status", "s", "", "Filter by status")
 
 	// task update flags
@@ -62,15 +62,15 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	name := args[0]
-	phase, _ := cmd.Flags().GetString("phase")
+	stage, _ := cmd.Flags().GetString("stage")
 	zone, _ := cmd.Flags().GetString("zone")
 	persona, _ := cmd.Flags().GetString("persona")
 
-	// Read current phase if not specified
-	if phase == "" {
-		var phaseState PhaseState
-		if err := readJSON(filepath.Join(missionDir, "state", "phase.json"), &phaseState); err == nil {
-			phase = phaseState.Current
+	// Read current stage if not specified
+	if stage == "" {
+		var stageState StageState
+		if err := readJSON(filepath.Join(missionDir, "state", "stage.json"), &stageState); err == nil {
+			stage = stageState.Current
 		}
 	}
 
@@ -84,7 +84,7 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	task := Task{
 		ID:        uuid.New().String()[:8],
 		Name:      name,
-		Phase:     phase,
+		Stage:     stage,
 		Zone:      zone,
 		Persona:   persona,
 		Status:    "pending",
@@ -111,7 +111,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	phaseFilter, _ := cmd.Flags().GetString("phase")
+	stageFilter, _ := cmd.Flags().GetString("stage")
 	statusFilter, _ := cmd.Flags().GetString("status")
 
 	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
@@ -123,7 +123,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	// Filter tasks
 	var filtered []Task
 	for _, task := range state.Tasks {
-		if phaseFilter != "" && task.Phase != phaseFilter {
+		if stageFilter != "" && task.Stage != stageFilter {
 			continue
 		}
 		if statusFilter != "" && task.Status != statusFilter {

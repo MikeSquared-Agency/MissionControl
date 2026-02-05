@@ -16,12 +16,12 @@ func init() {
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show current MissionControl status",
-	Long:  `Displays the current phase, tasks, workers, and gate status.`,
+	Long:  `Displays the current stage, tasks, workers, and gate status.`,
 	RunE:  runStatus,
 }
 
 type Status struct {
-	Phase   PhaseState   `json:"phase"`
+	Stage   StageState   `json:"stage"`
 	Tasks   TasksState   `json:"tasks"`
 	Workers WorkersState `json:"workers"`
 	Gates   GatesState   `json:"gates"`
@@ -33,11 +33,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if err := requireV6(missionDir); err != nil {
+		return err
+	}
+
 	status := Status{}
 
-	// Read phase
-	if err := readJSON(filepath.Join(missionDir, "state", "phase.json"), &status.Phase); err != nil {
-		return fmt.Errorf("failed to read phase: %w", err)
+	// Read stage
+	if err := readJSON(filepath.Join(missionDir, "state", "stage.json"), &status.Stage); err != nil {
+		return fmt.Errorf("failed to read stage: %w", err)
 	}
 
 	// Read tasks

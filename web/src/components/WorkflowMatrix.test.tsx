@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { WorkflowMatrix } from './WorkflowMatrix'
-import { buildInitialMatrix, DEFAULT_ZONES, PHASE_PERSONAS } from '../types/project'
+import { buildInitialMatrix, DEFAULT_ZONES, STAGE_PERSONAS } from '../types/project'
 import type { MatrixCell } from '../types/project'
 import { useStore } from '../stores/useStore'
 import { DEFAULT_PERSONAS } from '../types'
@@ -22,17 +22,21 @@ describe('WorkflowMatrix', () => {
     })
   })
 
-  it('should render all phases and zones', () => {
+  it('should render all stages and zones', () => {
     const cells = createTestMatrix()
     const onChange = vi.fn()
 
     render(<WorkflowMatrix cells={cells} onChange={onChange} />)
 
-    // Check phases are rendered (as uppercase labels)
-    expect(screen.getByText('Idea')).toBeInTheDocument()
+    // Check stages are rendered (as uppercase labels)
+    expect(screen.getByText('Discovery')).toBeInTheDocument()
+    expect(screen.getByText('Goal')).toBeInTheDocument()
+    expect(screen.getByText('Requirements')).toBeInTheDocument()
+    expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Design')).toBeInTheDocument()
     expect(screen.getByText('Implement')).toBeInTheDocument()
     expect(screen.getByText('Verify')).toBeInTheDocument()
+    expect(screen.getByText('Validate')).toBeInTheDocument()
     expect(screen.getByText('Document')).toBeInTheDocument()
     expect(screen.getByText('Release')).toBeInTheDocument()
 
@@ -43,7 +47,7 @@ describe('WorkflowMatrix', () => {
     expect(screen.getByText('Shared')).toBeInTheDocument()
   })
 
-  it('should render all personas for each phase', () => {
+  it('should render all personas for each stage', () => {
     const cells = createTestMatrix()
     const onChange = vi.fn()
 
@@ -51,8 +55,10 @@ describe('WorkflowMatrix', () => {
 
     // Check personas are rendered
     expect(screen.getByText('Researcher')).toBeInTheDocument()
-    expect(screen.getByText('Designer')).toBeInTheDocument()
+    expect(screen.getByText('Analyst')).toBeInTheDocument()
+    expect(screen.getByText('Requirements-engineer')).toBeInTheDocument()
     expect(screen.getByText('Architect')).toBeInTheDocument()
+    expect(screen.getByText('Designer')).toBeInTheDocument()
     expect(screen.getByText('Developer')).toBeInTheDocument()
     expect(screen.getByText('Debugger')).toBeInTheDocument()
     expect(screen.getByText('Reviewer')).toBeInTheDocument()
@@ -70,7 +76,7 @@ describe('WorkflowMatrix', () => {
     render(<WorkflowMatrix cells={cells} onChange={onChange} />)
 
     // Find a cell and click it - looking for the enabled checkmark
-    const allCheckmarks = screen.getAllByText('✓')
+    const allCheckmarks = screen.getAllByText('\u2713')
     fireEvent.click(allCheckmarks[0].closest('td')!)
 
     expect(onChange).toHaveBeenCalledTimes(1)
@@ -84,24 +90,24 @@ describe('WorkflowMatrix', () => {
     expect(changedCells.length).toBeGreaterThan(0)
   })
 
-  it('should toggle entire phase row on header click', () => {
+  it('should toggle entire stage row on header click', () => {
     const cells = createTestMatrix()
     const onChange = vi.fn()
 
     render(<WorkflowMatrix cells={cells} onChange={onChange} />)
 
-    // Click on the "Idea" phase header row
-    const ideaHeader = screen.getByText('Idea')
-    fireEvent.click(ideaHeader.closest('td')!)
+    // Click on the "Discovery" stage header row
+    const discoveryHeader = screen.getByText('Discovery')
+    fireEvent.click(discoveryHeader.closest('td')!)
 
     expect(onChange).toHaveBeenCalledTimes(1)
 
     const updatedCells = onChange.mock.calls[0][0] as MatrixCell[]
 
-    // All idea phase cells should have the same enabled state
-    const ideaCells = updatedCells.filter((c) => c.phase === 'idea')
-    const firstEnabled = ideaCells[0].enabled
-    expect(ideaCells.every((c) => c.enabled === firstEnabled)).toBe(true)
+    // All discovery stage cells should have the same enabled state
+    const discoveryCells = updatedCells.filter((c) => c.stage === 'discovery')
+    const firstEnabled = discoveryCells[0].enabled
+    expect(discoveryCells.every((c) => c.enabled === firstEnabled)).toBe(true)
   })
 
   it('should toggle entire zone column on header click', () => {
@@ -124,31 +130,31 @@ describe('WorkflowMatrix', () => {
     expect(frontendCells.every((c) => c.enabled === firstEnabled)).toBe(true)
   })
 
-  it('should show correct phase state indicator (all enabled)', () => {
+  it('should show correct stage state indicator (all enabled)', () => {
     // All cells enabled
     const cells = createTestMatrix()
     const onChange = vi.fn()
 
     render(<WorkflowMatrix cells={cells} onChange={onChange} />)
 
-    // Should show ✓ for fully enabled phases
-    const checkmarks = screen.getAllByText('✓')
+    // Should show checkmark for fully enabled stages
+    const checkmarks = screen.getAllByText('\u2713')
     expect(checkmarks.length).toBeGreaterThan(0)
   })
 
-  it('should show correct phase state indicator (none enabled)', () => {
+  it('should show correct stage state indicator (none enabled)', () => {
     // All cells disabled
     const cells = createTestMatrix().map((c) => ({ ...c, enabled: false }))
     const onChange = vi.fn()
 
     render(<WorkflowMatrix cells={cells} onChange={onChange} />)
 
-    // Should show ○ for disabled
-    const emptyCircles = screen.getAllByText('○')
+    // Should show circle for disabled
+    const emptyCircles = screen.getAllByText('\u25CB')
     expect(emptyCircles.length).toBeGreaterThan(0)
   })
 
-  it('should show correct phase state indicator (some enabled)', () => {
+  it('should show correct stage state indicator (some enabled)', () => {
     // Mix of enabled/disabled
     const cells = createTestMatrix()
     cells[0].enabled = false // Disable first cell
@@ -156,8 +162,8 @@ describe('WorkflowMatrix', () => {
 
     render(<WorkflowMatrix cells={cells} onChange={onChange} />)
 
-    // Should show ◐ for partially enabled
-    expect(screen.getByText('◐')).toBeInTheDocument()
+    // Should show half-circle for partially enabled
+    expect(screen.getByText('\u25D0')).toBeInTheDocument()
   })
 
   it('should call onChange with updated state', () => {
@@ -167,7 +173,7 @@ describe('WorkflowMatrix', () => {
     render(<WorkflowMatrix cells={cells} onChange={onChange} />)
 
     // Click any cell
-    const firstCheckmark = screen.getAllByText('✓')[0]
+    const firstCheckmark = screen.getAllByText('\u2713')[0]
     fireEvent.click(firstCheckmark.closest('td')!)
 
     expect(onChange).toHaveBeenCalledWith(expect.any(Array))
@@ -177,7 +183,7 @@ describe('WorkflowMatrix', () => {
 
     // Each cell should have the correct structure
     updatedCells.forEach((cell) => {
-      expect(cell).toHaveProperty('phase')
+      expect(cell).toHaveProperty('stage')
       expect(cell).toHaveProperty('zone')
       expect(cell).toHaveProperty('persona')
       expect(cell).toHaveProperty('enabled')
@@ -190,8 +196,8 @@ describe('WorkflowMatrix', () => {
 
     render(<WorkflowMatrix cells={cells} onChange={onChange} />)
 
-    expect(screen.getByText(/✓ = enabled/)).toBeInTheDocument()
-    expect(screen.getByText(/○ = disabled/)).toBeInTheDocument()
+    expect(screen.getByText(/= enabled/)).toBeInTheDocument()
+    expect(screen.getByText(/= disabled/)).toBeInTheDocument()
     expect(screen.getByText(/Click any cell/)).toBeInTheDocument()
   })
 
@@ -203,7 +209,7 @@ describe('WorkflowMatrix', () => {
 
     // Click to toggle - find a cell td (not a header)
     // Get all tds that are clickable data cells (have checkmark)
-    const dataCells = screen.getAllByText('✓').filter(el => {
+    const dataCells = screen.getAllByText('\u2713').filter(el => {
       const td = el.closest('td')
       return td && !td.hasAttribute('colspan') // Exclude header rows
     })

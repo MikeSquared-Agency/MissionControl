@@ -21,8 +21,9 @@ import (
 var webUI embed.FS
 
 var (
-	servePort    int
-	serveWorkdir string
+	servePort            int
+	serveWorkdir         string
+	serveOpenClawGateway string
 )
 
 func init() {
@@ -30,6 +31,7 @@ func init() {
 
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 8080, "Port to serve on")
 	serveCmd.Flags().StringVarP(&serveWorkdir, "workdir", "w", "", "Working directory (default: current)")
+	serveCmd.Flags().StringVar(&serveOpenClawGateway, "openclaw-gateway", "ws://127.0.0.1:18789", "OpenClaw gateway WebSocket URL")
 }
 
 var serveCmd = &cobra.Command{

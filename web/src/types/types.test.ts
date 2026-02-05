@@ -13,8 +13,8 @@ describe('Types', () => {
   })
 
   describe('DEFAULT_PERSONAS', () => {
-    it('should have all 11 workflow personas', () => {
-      expect(DEFAULT_PERSONAS.length).toBe(11)
+    it('should have all 13 workflow personas', () => {
+      expect(DEFAULT_PERSONAS.length).toBe(13)
     })
 
     it('should have required properties on each persona', () => {
@@ -23,7 +23,7 @@ describe('Types', () => {
         expect(persona.name).toBeDefined()
         expect(persona.description).toBeDefined()
         expect(persona.color).toBeDefined()
-        expect(persona.phase).toBeDefined()
+        expect(persona.stage).toBeDefined()
         expect(typeof persona.enabled).toBe('boolean')
         expect(typeof persona.isBuiltin).toBe('boolean')
         expect(Array.isArray(persona.tools)).toBe(true)
@@ -40,7 +40,8 @@ describe('Types', () => {
 
     it('should have all expected persona IDs', () => {
       const expectedIds = [
-        'researcher', 'designer', 'architect', 'developer', 'debugger',
+        'researcher', 'analyst', 'requirements-engineer', 'architect',
+        'designer', 'developer', 'debugger',
         'reviewer', 'security', 'tester', 'qa', 'docs', 'devops'
       ]
       const actualIds = DEFAULT_PERSONAS.map(p => p.id)
@@ -49,32 +50,38 @@ describe('Types', () => {
       })
     })
 
-    it('should have personas for each workflow phase', () => {
-      const phases = DEFAULT_PERSONAS.map(p => p.phase)
-      expect(phases).toContain('idea')
-      expect(phases).toContain('design')
-      expect(phases).toContain('implement')
-      expect(phases).toContain('verify')
-      expect(phases).toContain('document')
-      expect(phases).toContain('release')
+    it('should have personas for each workflow stage', () => {
+      const stages = DEFAULT_PERSONAS.map(p => p.stage)
+      expect(stages).toContain('discovery')
+      expect(stages).toContain('goal')
+      expect(stages).toContain('requirements')
+      expect(stages).toContain('planning')
+      expect(stages).toContain('design')
+      expect(stages).toContain('implement')
+      expect(stages).toContain('verify')
+      expect(stages).toContain('validate')
+      expect(stages).toContain('document')
+      expect(stages).toContain('release')
     })
 
-    it('should have correct phase assignments', () => {
-      const phaseMap: Record<string, string> = {
-        researcher: 'idea',
+    it('should have correct stage assignments', () => {
+      const stageMap: Record<string, string> = {
+        researcher: 'discovery',
+        analyst: 'goal',
+        'requirements-engineer': 'requirements',
+        architect: 'planning',
         designer: 'design',
-        architect: 'design',
         developer: 'implement',
         debugger: 'implement',
         reviewer: 'verify',
         security: 'verify',
         tester: 'verify',
-        qa: 'verify',
+        qa: 'validate',
         docs: 'document',
         devops: 'release'
       }
       DEFAULT_PERSONAS.forEach(persona => {
-        expect(persona.phase).toBe(phaseMap[persona.id])
+        expect(persona.stage).toBe(stageMap[persona.id])
       })
     })
 
@@ -167,7 +174,7 @@ describe('Types', () => {
         name: 'Custom Persona',
         description: 'A custom persona for testing',
         color: '#ff0000',
-        phase: 'implement',
+        stage: 'implement',
         enabled: true,
         tools: ['read', 'write', 'bash'],
         skills: ['testing', 'debugging'],
@@ -176,7 +183,7 @@ describe('Types', () => {
       }
 
       expect(persona.id).toBe('custom')
-      expect(persona.phase).toBe('implement')
+      expect(persona.stage).toBe('implement')
       expect(persona.enabled).toBe(true)
       expect(persona.isBuiltin).toBe(false)
       expect(persona.tools).toContain('read')
@@ -189,7 +196,7 @@ describe('Types', () => {
         name: 'Developer',
         description: 'Production code and tests',
         color: '#3b82f6',
-        phase: 'implement',
+        stage: 'implement',
         enabled: true,
         tools: ['read', 'write', 'edit', 'bash'],
         skills: ['implementation', 'testing'],
@@ -198,7 +205,7 @@ describe('Types', () => {
       }
 
       expect(persona.isBuiltin).toBe(true)
-      expect(persona.phase).toBe('implement')
+      expect(persona.stage).toBe('implement')
     })
   })
 
