@@ -177,9 +177,7 @@ impl KnowledgeManager {
         };
 
         // Filter findings relevant to this task's zone/stage
-        let relevant_findings: Vec<Finding> = self.findings.iter()
-            .cloned()
-            .collect();
+        let relevant_findings: Vec<Finding> = self.findings.to_vec();
 
         BriefingInputs {
             task: task.clone(),
@@ -199,7 +197,7 @@ impl Default for KnowledgeManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handoff::{HandoffStatus, Finding};
+    use crate::handoff::Finding;
 
     #[test]
     fn test_manager_creation() {

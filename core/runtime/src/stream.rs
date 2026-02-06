@@ -222,7 +222,7 @@ impl StreamParser {
                     events.push(
                         UnifiedEvent::new("raw")
                             .with_agent_id(&self.agent_id)
-                            .with_content(&json.to_string()),
+                            .with_content(json.to_string()),
                     );
                 }
             }
@@ -274,7 +274,7 @@ impl StreamParser {
                         events.push(
                             UnifiedEvent::new("tool_result")
                                 .with_agent_id(&self.agent_id)
-                                .with_result(&result.to_string()),
+                                .with_result(result.to_string()),
                         );
                     }
                 }
@@ -309,7 +309,7 @@ impl StreamParser {
                     events.push(
                         UnifiedEvent::new("raw")
                             .with_agent_id(&self.agent_id)
-                            .with_content(&json.to_string()),
+                            .with_content(json.to_string()),
                     );
                 }
             }
@@ -379,8 +379,7 @@ impl StreamParser {
         }
 
         // Detect bash commands like "$ ls -la"
-        if text.starts_with("$ ") {
-            let command = &text[2..];
+        if let Some(command) = text.strip_prefix("$ ") {
             events.push(
                 UnifiedEvent::new("tool_call")
                     .with_agent_id(&self.agent_id)

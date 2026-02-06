@@ -58,7 +58,7 @@
 - [x] **A7.4** Update knowledge crate tests referencing phases
 - [x] **A7.5** Update mc-protocol tests if applicable
 - [x] **A7.6** `cargo test` passes across workspace (78 tests pass)
-- [ ] **A7.7** `cargo clippy` clean (22 FFI unsafe errors + 1 PathBuf lint warning)
+- [x] **A7.7** `cargo clippy` clean (derive Default, iter_cloned_collect, needless_borrows, manual_strip)
 
 ---
 

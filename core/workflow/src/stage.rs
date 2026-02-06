@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Stage {
+    #[default]
     Discovery,
     Goal,
     Requirements,
@@ -62,11 +63,6 @@ impl Stage {
     }
 }
 
-impl Default for Stage {
-    fn default() -> Self {
-        Stage::Discovery
-    }
-}
 
 #[cfg(test)]
 mod tests {

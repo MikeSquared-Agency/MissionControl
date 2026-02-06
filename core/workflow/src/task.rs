@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use crate::stage::Stage;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
+    #[default]
     Pending,
     Ready,
     InProgress,
@@ -23,11 +24,6 @@ impl TaskStatus {
     }
 }
 
-impl Default for TaskStatus {
-    fn default() -> Self {
-        TaskStatus::Pending
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {

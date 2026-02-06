@@ -1,18 +1,13 @@
 use serde::{Deserialize, Serialize};
 use crate::stage::Stage;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum GateStatus {
     Open,
+    #[default]
     Closed,
     AwaitingApproval,
-}
-
-impl Default for GateStatus {
-    fn default() -> Self {
-        GateStatus::Closed
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
