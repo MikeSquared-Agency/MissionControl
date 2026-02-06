@@ -155,7 +155,7 @@ sequenceDiagram
     participant UI as React UI
     participant User
 
-    Note over King: All phase tasks complete
+    Note over King: All stage tasks complete
     
     King->>CLI: mc gate check design
     CLI->>Core: check-gate design
@@ -176,8 +176,8 @@ sequenceDiagram
         CLI->>State: Update phase.json
         CLI->>State: Update gates.json
         
-        State-->>UI: phase_changed event
-        State-->>King: phase_changed event
+        State-->>UI: stage_changed event
+        State-->>King: stage_changed event
         
         King->>King: Begin next phase (Implement)
         King->>CLI: mc task create "Implement login API"
@@ -230,7 +230,7 @@ flowchart TD
 graph TD
     subgraph Mission["Mission Events"]
         MS[mission_state<br/>Initial sync]
-        PC[phase_changed]
+        PC[stage_changed]
         TC[task_created]
         TU[task_updated]
         GR[gate_ready]

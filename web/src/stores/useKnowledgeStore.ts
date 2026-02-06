@@ -6,6 +6,9 @@ import type {
   Finding,
   Handoff,
   HandoffResponse,
+  SessionStatus,
+  SessionRecord,
+  SessionRestartResponse,
   WorkflowEvent
 } from '../types/workflow'
 
@@ -15,6 +18,8 @@ interface KnowledgeState {
   checkpoints: CheckpointSummary[]
   findings: Finding[]
   recentHandoffs: Handoff[]
+  sessionStatus: SessionStatus | null
+  sessionHistory: SessionRecord[]
   loading: boolean
   error: string | null
 
@@ -25,6 +30,8 @@ interface KnowledgeState {
   addCheckpoint: (checkpoint: CheckpointSummary) => void
   addFinding: (finding: Finding) => void
   addHandoff: (handoff: Handoff) => void
+  setSessionStatus: (status: SessionStatus) => void
+  setSessionHistory: (sessions: SessionRecord[]) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
 
@@ -38,6 +45,8 @@ export const useKnowledgeStore = create<KnowledgeState>()((set, get) => ({
   checkpoints: [],
   findings: [],
   recentHandoffs: [],
+  sessionStatus: null,
+  sessionHistory: [],
   loading: false,
   error: null,
 
@@ -64,6 +73,10 @@ export const useKnowledgeStore = create<KnowledgeState>()((set, get) => ({
   addHandoff: (handoff) => set((state) => ({
     recentHandoffs: [handoff, ...state.recentHandoffs].slice(0, 50) // Keep last 50
   })),
+
+  setSessionStatus: (status) => set({ sessionStatus: status }),
+
+  setSessionHistory: (sessions) => set({ sessionHistory: sessions }),
 
   setLoading: (loading) => set({ loading }),
 
@@ -188,12 +201,44 @@ export async function createCheckpoint(): Promise<CheckpointSummary> {
   return res.json()
 }
 
+// Session API functions
+export async function fetchSessionStatus(): Promise<SessionStatus> {
+  const res = await fetch(`${API_BASE}/checkpoint/status`)
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  return res.json()
+}
+
+export async function fetchSessionHistory(): Promise<SessionRecord[]> {
+  const res = await fetch(`${API_BASE}/checkpoint/history`)
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  const data = await res.json()
+  return data.sessions || []
+}
+
+export async function restartSession(fromCheckpointID?: string): Promise<SessionRestartResponse> {
+  const res = await fetch(`${API_BASE}/checkpoint/restart`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from_checkpoint_id: fromCheckpointID || '' })
+  })
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  return res.json()
+}
+
 // Selectors
 export const useBudgets = () => useKnowledgeStore((s) => s.budgets)
 export const useBudget = (workerID: string) => useKnowledgeStore((s) => s.budgets[workerID])
 export const useCheckpoints = () => useKnowledgeStore((s) => s.checkpoints)
 export const useFindings = () => useKnowledgeStore((s) => s.findings)
 export const useRecentHandoffs = () => useKnowledgeStore((s) => s.recentHandoffs)
+export const useSessionStatus = () => useKnowledgeStore((s) => s.sessionStatus)
+export const useSessionHistory = () => useKnowledgeStore((s) => s.sessionHistory)
 
 // Computed selectors
 export const useBudgetAlerts = () => {

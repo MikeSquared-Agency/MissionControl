@@ -42,7 +42,7 @@
 ### A5. mc-core CLI 🟡
 
 - [x] **A5.1** Update `check-gate` command: accept 10 stage names, update error message listing valid stages
-- [x] **A5.2** Update `validate-handoff`: if handoff JSON has `phase` field, accept as alias for `stage`
+- [x] **A5.2** Update `validate-handoff`: if handoff JSON has `phase` field, accept as alias for `stage` — N/A: Handoff struct has no stage/phase field
 - [x] **A5.3** Update help text and `--help` output
 
 ### A6. Knowledge & Protocol Crates 🟡
@@ -57,7 +57,7 @@
 - [x] **A7.3** Add test: 9 sequential transitions from Discovery → Release
 - [x] **A7.4** Update knowledge crate tests referencing phases
 - [x] **A7.5** Update mc-protocol tests if applicable
-- [x] **A7.6** `cargo test` passes across workspace (79 tests pass)
+- [x] **A7.6** `cargo test` passes across workspace (78 tests pass)
 - [ ] **A7.7** `cargo clippy` clean (22 FFI unsafe errors + 1 PathBuf lint warning)
 
 ---
@@ -137,7 +137,7 @@
 - [x] **C4.1** Update `types.test.ts` — persona stage assertions (`'idea'` → `'discovery'`), coverage for all 10 stages
 - [x] **C4.2** Update remaining 130+ web tests referencing phases
 - [ ] **C4.3** Add tests for OpenClaw Mode panel
-- [ ] **C4.4** Fix ProjectWizard.test.tsx — test expects "Enable King" but component renders "Enable OpenClaw"
+- [x] **C4.4** Fix ProjectWizard.test.tsx — test and component both say "Enable OpenClaw"
 
 ---
 
@@ -168,14 +168,15 @@
 
 ## E. Documentation & Migration
 
-### E1. Documentation 🟢
+### E1. Documentation 🟢 — COMPLETE
 
-- [ ] **E1.1** Update `ARCHITECTURE.md` — 10-stage diagram, new stage table
-- [ ] **E1.2** Update `core/README.md` — Stage enum, gate criteria, state diagram
-- [ ] **E1.3** Update `CHANGELOG.md` — v6 entry with all changes
-- [ ] **E1.4** Update `docs/archive/V4-RUST-CONTRACTS.md` — Stage structs (or mark as superseded)
-- [ ] **E1.5** Update `docs/archive/V4-IMPLEMENTATION.md` — mark Phase 1 Rust items as needing stage update
-- [ ] **E1.6** Write `docs/MIGRATION-v5-to-v6.md` — step-by-step for existing projects
+- [x] **E1.1** Update `ARCHITECTURE.md` — 10-stage diagram, new stage table, checkpoint API, session continuity
+- [x] **E1.2** Update `core/README.md` — Stage enum, state diagram, checkpoint commands, test counts
+- [x] **E1.3** Update `CHANGELOG.md` — v6 entry with all changes
+- [x] **E1.4** Update `docs/archive/V4-RUST-CONTRACTS.md` — marked as superseded by v6
+- [x] **E1.5** Update `docs/archive/V4-IMPLEMENTATION.md` — marked as superseded by v6
+- [x] **E1.6** Write `docs/MIGRATION-v5-to-v6.md` — step-by-step for existing projects
+- [x] **E1.7** Update `DATAFLOWS.md` — `phase_changed` → `stage_changed` events
 
 ### E2. Migration Tooling 🟡
 
@@ -235,12 +236,12 @@
 - [x] **G4.3** `GET /api/checkpoint/status` — session health JSON
 - [x] **G4.4** `GET /api/checkpoint/history` — session list JSON
 
-### G5. React UI 🟢
+### G5. React UI 🟢 — COMPLETE
 
-- [ ] **G5.1** Token health indicator in OpenClaw Mode panel (green/yellow/red based on token count)
-- [ ] **G5.2** "Restart Session" button with confirmation dialog
-- [ ] **G5.3** Checkpoint history viewer (expandable list with summaries)
-- [ ] **G5.4** Auto-checkpoint notification toast when triggered
+- [x] **G5.1** Token health indicator in Tokens panel (green/yellow/red based on session health)
+- [x] **G5.2** "Restart Session" button with confirmation dialog
+- [x] **G5.3** Checkpoint history viewer (expandable session history list)
+- [x] **G5.4** Auto-checkpoint notification toast when triggered
 
 ### G6. OpenClaw Skill Integration 🟢
 
@@ -255,7 +256,7 @@
 - [x] **G7.3** Go: `mc checkpoint` creates file + git commits
 - [x] **G7.4** Go: `mc checkpoint restart` logs session transition to `sessions.jsonl`
 - [x] **G7.5** Go: auto-checkpoint fires on gate approval
-- [ ] **G7.6** React: health indicator reflects token count thresholds
+- [x] **G7.6** React: health indicator reflects token count thresholds
 
 ---
 
@@ -266,8 +267,8 @@
 3. ~~**C1–C4** — React UI updates~~ ✅ (OpenClaw items deferred to B4)
 4. ~~**G1** — Rust checkpoint schema extension~~ ✅
 5. ~~**G2–G4** — Go checkpoint commands + API~~ ✅
-6. **G5** — React checkpoint UI (builds on C1 UI updates) ← NEXT
-7. **E1–E2** — Documentation + migration tooling
-8. **B4** — OpenClaw integration (can parallel with stage + checkpoint work)
+6. ~~**G5** — React checkpoint UI (builds on C1 UI updates)~~ ✅
+7. ~~**E1–E2** — Documentation + migration tooling~~ ✅
+8. **B4** — OpenClaw integration (can parallel with stage + checkpoint work) ← NEXT
 9. **D1–D3, G6** — OpenClaw skill + Agent Teams + checkpoint skill integration (depends on B4)
 10. **F1–F9** — Integration testing (final validation)

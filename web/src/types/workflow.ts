@@ -118,6 +118,41 @@ export interface WorkerHealth {
 }
 
 // ============================================================================
+// Session Domain
+// ============================================================================
+
+export type SessionHealth = 'green' | 'yellow' | 'red'
+
+export interface SessionStatus {
+  session_id: string
+  stage: Stage
+  session_start: number
+  duration_minutes: number
+  last_checkpoint?: string
+  tasks_total: number
+  tasks_complete: number
+  health: SessionHealth
+  recommendation: string
+}
+
+export interface SessionRecord {
+  session_id: string
+  started_at: number
+  ended_at?: number
+  checkpoint_id?: string
+  stage: Stage
+  reason?: string
+}
+
+export interface SessionRestartResponse {
+  old_session_id: string
+  new_session_id: string
+  checkpoint_id: string
+  stage: Stage
+  briefing: string
+}
+
+// ============================================================================
 // API Request/Response Types
 // ============================================================================
 
@@ -254,6 +289,15 @@ export interface AgentStuckEvent {
   since_ms: number
 }
 
+// Session events
+export interface SessionRestartedEvent {
+  type: 'session_restarted'
+  old_session: string
+  new_session: string
+  checkpoint: string
+  stage: Stage
+}
+
 // Initial state event
 export interface WorkflowStateEvent {
   type: 'v4_state'
@@ -277,6 +321,7 @@ export type WorkflowEvent =
   | HandoffValidatedEvent
   | AgentHealthEvent
   | AgentStuckEvent
+  | SessionRestartedEvent
   | WorkflowStateEvent
 
 // ============================================================================

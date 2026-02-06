@@ -12,6 +12,15 @@ import (
 
 func init() {
 	rootCmd.AddCommand(stageCmd)
+	rootCmd.AddCommand(phaseCmd)
+}
+
+// phaseCmd is a deprecated alias for stageCmd
+var phaseCmd = &cobra.Command{
+	Use:        "phase [next]",
+	Short:      "Deprecated: use 'mc stage' instead",
+	Deprecated: "use 'mc stage' instead",
+	RunE:       runStage,
 }
 
 var stageCmd = &cobra.Command{

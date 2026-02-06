@@ -1,8 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../stores/useStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
-import { useKnowledgeStore } from '../stores/useKnowledgeStore'
+import { useKnowledgeStore, fetchSessionStatus } from '../stores/useKnowledgeStore'
 import { useMissionStore, type V5Event } from '../stores/useMissionStore'
+import { toast } from '../stores/useToast'
 import type { Agent, Zone, ConversationMessage, ToolCall } from '../types'
 import type { WorkflowEvent } from '../types/workflow'
 
@@ -267,6 +268,15 @@ export function useWebSocket() {
       case 'checkpoint_created':
         useWorkflowStore.getState().handleEvent(data as WorkflowEvent)
         useKnowledgeStore.getState().handleEvent(data as WorkflowEvent)
+        toast.info(`Checkpoint created: ${data.checkpoint_id || 'auto'}`)
+        break
+
+      case 'session_restarted':
+        toast.success('Session restarted with new briefing')
+        // Refresh session status in knowledge store
+        fetchSessionStatus()
+          .then((status) => useKnowledgeStore.getState().setSessionStatus(status))
+          .catch(() => {})
         break
 
       case 'handoff_received':

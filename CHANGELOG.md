@@ -2,6 +2,48 @@
 
 All notable changes to MissionControl are documented in this file.
 
+## v6 - 10-Stage Workflow & Session Continuity
+
+Major release: expanded workflow from 6 phases to 10 stages, added session continuity with checkpoints and briefings.
+
+### 10-Stage Workflow (Phase → Stage Migration)
+
+- **Renamed Phase → Stage** across entire stack (Rust, Go, React)
+- **10 stages**: Discovery, Goal, Requirements, Planning, Design, Implement, Verify, Validate, Document, Release
+- **New personas**: Analyst (Goal), Requirements Engineer (Requirements); Architect moved to Planning; QA moved to Validate
+- `mc stage` replaces `mc phase` (deprecated alias retained)
+- `mc task create --stage` replaces `--phase`
+- `mc gate check/approve` accepts all 10 stage names
+- `mc migrate` command converts v5 `.mission/` to v6 (phase.json → stage.json, remaps `idea` → `discovery`)
+- `.mission/state/stage.json` replaces `phase.json`
+- `.mission/state/gates.json` now has 10 entries with stage-specific criteria
+- WebSocket event `stage_changed` replaces `phase_changed`
+
+### Session Continuity (Checkpoints & Briefings)
+
+- **Rust**: `Checkpoint` struct with `session_id`, `decisions`, `blockers`, `stage`
+- **Rust**: `CheckpointCompiler` produces ~500 token markdown briefings
+- **Rust**: `mc-core checkpoint-compile` and `mc-core checkpoint-validate` commands
+- **Go CLI**: `mc checkpoint` — snapshot state to `.mission/orchestrator/checkpoints/`
+- **Go CLI**: `mc checkpoint restart [--from <id>]` — restart session with compiled briefing
+- **Go CLI**: `mc checkpoint status` — session health (green/yellow/red)
+- **Go CLI**: `mc checkpoint history` — list past sessions from `sessions.jsonl`
+- **Go API**: `POST /api/checkpoints`, `POST /api/checkpoint/restart`, `GET /api/checkpoint/status`, `GET /api/checkpoint/history`
+- **Auto-checkpoint**: triggers on gate approval and graceful shutdown (SIGTERM)
+- **React UI**: session health indicator (green/yellow/red) in Tokens panel
+- **React UI**: "Restart Session" button with confirmation dialog
+- **React UI**: checkpoint history viewer (expandable session list)
+- **React UI**: auto-checkpoint toast notifications
+- `.mission/orchestrator/` directory for checkpoints, `current.json`, `sessions.jsonl`
+
+### Testing
+
+- 79 Rust tests (workflow stage transitions, gate checks, checkpoint compile/validate)
+- Go CLI + orchestrator tests (stage transitions, migrate, checkpoint commands, API endpoints)
+- 136 React tests (stores, components, types, session health, restart, history, toast)
+
+---
+
 ## v5.1 - Quality of Life
 
 Improved developer experience, workflow management, and infrastructure.

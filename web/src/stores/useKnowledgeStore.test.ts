@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useKnowledgeStore } from './useKnowledgeStore'
-import type { TokenBudget, Finding, Handoff, WorkflowEvent } from '../types/workflow'
+import type { TokenBudget, Finding, Handoff, SessionStatus, SessionRecord, WorkflowEvent } from '../types/workflow'
 
 describe('useKnowledgeStore', () => {
   beforeEach(() => {
@@ -10,6 +10,8 @@ describe('useKnowledgeStore', () => {
       checkpoints: [],
       findings: [],
       recentHandoffs: [],
+      sessionStatus: null,
+      sessionHistory: [],
       loading: false,
       error: null
     })
@@ -191,6 +193,88 @@ describe('useKnowledgeStore', () => {
       useKnowledgeStore.getState().handleEvent(event)
 
       expect(useKnowledgeStore.getState().recentHandoffs).toHaveLength(1)
+    })
+  })
+
+  describe('Session status', () => {
+    const testStatus: SessionStatus = {
+      session_id: 'sess-abc123',
+      stage: 'implement',
+      session_start: Date.now() - 3600000,
+      duration_minutes: 60,
+      last_checkpoint: 'cp-001',
+      tasks_total: 10,
+      tasks_complete: 4,
+      health: 'green',
+      recommendation: 'Session is healthy'
+    }
+
+    it('should set session status', () => {
+      useKnowledgeStore.getState().setSessionStatus(testStatus)
+
+      const status = useKnowledgeStore.getState().sessionStatus
+      expect(status).toBeDefined()
+      expect(status!.session_id).toBe('sess-abc123')
+      expect(status!.health).toBe('green')
+      expect(status!.stage).toBe('implement')
+    })
+
+    it('should update session status', () => {
+      useKnowledgeStore.getState().setSessionStatus(testStatus)
+      useKnowledgeStore.getState().setSessionStatus({
+        ...testStatus,
+        health: 'yellow',
+        duration_minutes: 120,
+        recommendation: 'Consider creating a checkpoint'
+      })
+
+      const status = useKnowledgeStore.getState().sessionStatus
+      expect(status!.health).toBe('yellow')
+      expect(status!.duration_minutes).toBe(120)
+    })
+
+    it('should start with null session status', () => {
+      expect(useKnowledgeStore.getState().sessionStatus).toBeNull()
+    })
+  })
+
+  describe('Session history', () => {
+    const testSessions: SessionRecord[] = [
+      {
+        session_id: 'sess-001',
+        started_at: Date.now() - 7200000,
+        ended_at: Date.now() - 3600000,
+        checkpoint_id: 'cp-001',
+        stage: 'design',
+        reason: 'manual'
+      },
+      {
+        session_id: 'sess-002',
+        started_at: Date.now() - 3600000,
+        stage: 'implement'
+      }
+    ]
+
+    it('should set session history', () => {
+      useKnowledgeStore.getState().setSessionHistory(testSessions)
+
+      const history = useKnowledgeStore.getState().sessionHistory
+      expect(history).toHaveLength(2)
+      expect(history[0].session_id).toBe('sess-001')
+      expect(history[1].session_id).toBe('sess-002')
+    })
+
+    it('should identify current session (no ended_at)', () => {
+      useKnowledgeStore.getState().setSessionHistory(testSessions)
+
+      const history = useKnowledgeStore.getState().sessionHistory
+      const current = history.find(s => !s.ended_at)
+      expect(current).toBeDefined()
+      expect(current!.session_id).toBe('sess-002')
+    })
+
+    it('should start with empty session history', () => {
+      expect(useKnowledgeStore.getState().sessionHistory).toHaveLength(0)
     })
   })
 

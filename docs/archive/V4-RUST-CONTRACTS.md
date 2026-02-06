@@ -1,5 +1,7 @@
 # V4 Rust Contracts
 
+> **Superseded by v6**: The `Phase` enum has been replaced by a 10-variant `Stage` enum (Discovery, Goal, Requirements, Planning, Design, Implement, Verify, Validate, Document, Release). All `Phase` references below are historical. See `core/README.md` and `core/workflow/src/stage.rs` for current contracts.
+
 Struct and function signatures for the Rust core. Implementation details only - see `ARCHITECTURE-SPEC.md` for rationale.
 
 ---

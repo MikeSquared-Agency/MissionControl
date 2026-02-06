@@ -1,6 +1,6 @@
 # Architecture
 
-MissionControl is a visual multi-agent orchestration system where a **King** agent coordinates **worker** agents through a **6-phase workflow**.
+MissionControl is a visual multi-agent orchestration system where a **King** agent coordinates **worker** agents through a **10-stage workflow**.
 
 ## System Overview
 
@@ -83,34 +83,42 @@ King is a Claude Code session with `.mission/CLAUDE.md` as its system prompt. It
 ## Key Concepts
 
 ### King Agent
-The King is the only persistent agent. It talks to you, decides what to build, spawns workers, and approves phase gates. It never implements directly.
+The King is the only persistent agent. It talks to you, decides what to build, spawns workers, and approves stage gates. It never implements directly.
 
 ### Workers
 Workers are ephemeral. They receive a **briefing** (~300 tokens), do their task, output **findings**, and die. This keeps context lean and costs low.
 
-### 6-Phase Workflow
+### 10-Stage Workflow
 
 ```mermaid
 stateDiagram-v2
-    [*] --> IDEA
-    IDEA --> DESIGN : Gate Approved
-    DESIGN --> IMPLEMENT : Gate Approved
-    IMPLEMENT --> VERIFY : Gate Approved
-    VERIFY --> DOCUMENT : Gate Approved
-    DOCUMENT --> RELEASE : Gate Approved
-    RELEASE --> [*] : Complete
+    [*] --> Discovery
+    Discovery --> Goal : Gate Approved
+    Goal --> Requirements : Gate Approved
+    Requirements --> Planning : Gate Approved
+    Planning --> Design : Gate Approved
+    Design --> Implement : Gate Approved
+    Implement --> Verify : Gate Approved
+    Verify --> Validate : Gate Approved
+    Validate --> Document : Gate Approved
+    Document --> Release : Gate Approved
+    Release --> [*] : Complete
 ```
 
-Each phase has a **gate** requiring approval before proceeding.
+Each stage has a **gate** requiring approval before proceeding.
 
-| Phase | Purpose | Workers | Gate Criteria |
+| Stage | Purpose | Workers | Gate Criteria |
 |-------|---------|---------|---------------|
-| **Idea** | Research feasibility | Researcher | Spec drafted, feasibility assessed |
-| **Design** | UI mockups + system design | Designer, Architect | Mockups + API design approved |
+| **Discovery** | Research feasibility & prior art | Researcher | Spec drafted, feasibility assessed |
+| **Goal** | Define goals & success metrics | Analyst | Goals defined, metrics established |
+| **Requirements** | Document requirements & acceptance criteria | Requirements Engineer | Requirements documented, criteria defined |
+| **Planning** | API contracts, data models, system design | Architect | Architecture approved, contracts defined |
+| **Design** | UI mockups, wireframes, user flows | Designer | Mockups + design artifacts approved |
 | **Implement** | Build features | Developer, Debugger | Code complete, builds |
-| **Verify** | Quality checks | Reviewer, Security, Tester, QA | All checks pass |
+| **Verify** | Code review & quality checks | Reviewer, Security, Tester | All checks pass |
+| **Validate** | E2E validation, user acceptance | QA | User flows validated, E2E tests pass |
 | **Document** | README + docs | Docs | Docs complete |
-| **Release** | Deploy | DevOps | Deployed, verified |
+| **Release** | Deploy & verify | DevOps | Deployed, verified |
 
 ### Zones
 
@@ -186,8 +194,9 @@ graph TD
     MC --> WORKERS[workers]
     MC --> HANDOFF[handoff]
     MC --> GATE[gate]
-    MC --> PHASE[phase]
+    MC --> STAGE[stage]
     MC --> TASK[task]
+    MC --> CHECKPOINT[checkpoint]
     MC --> SERVE[serve]
 ```
 
@@ -199,21 +208,27 @@ graph TD
 | `mc status` | JSON dump of state |
 | `mc workers` | List active workers |
 | `mc handoff <file>` | Validate and store handoff |
-| `mc gate check <phase>` | Check gate criteria |
-| `mc gate approve <phase>` | Approve gate |
-| `mc phase` | Get current phase |
-| `mc phase next` | Transition to next phase |
-| `mc task create <n> --phase <p>` | Create task |
+| `mc gate check <stage>` | Check gate criteria |
+| `mc gate approve <stage>` | Approve gate |
+| `mc stage` | Get current stage |
+| `mc stage next` | Transition to next stage |
+| `mc task create <n> --stage <p>` | Create task |
 | `mc task list` | List tasks |
 | `mc task update <id> --status <s>` | Update task status |
+| `mc checkpoint` | Create checkpoint snapshot |
+| `mc checkpoint restart` | Restart session with briefing |
+| `mc checkpoint status` | Session health check |
+| `mc checkpoint history` | List past sessions |
 | `mc serve` | Start Go bridge + UI |
 
 ## mc-core (Rust)
 
 ```bash
-mc-core validate-handoff <file>   # Schema + semantic validation
-mc-core check-gate <phase>        # Gate criteria evaluation
-mc-core count-tokens <file>       # Fast token counting with tiktoken
+mc-core validate-handoff <file>      # Schema + semantic validation
+mc-core check-gate <stage>           # Gate criteria evaluation
+mc-core count-tokens <file>          # Fast token counting with tiktoken
+mc-core checkpoint-compile <file>    # Compile checkpoint → markdown briefing
+mc-core checkpoint-validate <file>   # Validate checkpoint JSON schema
 ```
 
 ## API Endpoints
@@ -245,8 +260,17 @@ POST   /api/king/message        # Send message to King
 
 ### Mission Gates
 ```
-GET    /api/mission/gates/:phase          # Check gate status
-POST   /api/mission/gates/:phase/approve  # Approve gate
+GET    /api/mission/gates/:stage          # Check gate status
+POST   /api/mission/gates/:stage/approve  # Approve gate
+```
+
+### Checkpoints
+```
+POST   /api/checkpoints                   # Create checkpoint
+GET    /api/checkpoints                   # List checkpoints
+GET    /api/checkpoint/status             # Session health
+GET    /api/checkpoint/history            # Session history
+POST   /api/checkpoint/restart            # Restart session with briefing
 ```
 
 ### WebSocket Events
@@ -275,13 +299,15 @@ flowchart LR
 |-------|-------------|
 | `mission_state` | Initial state sync |
 | `king_status` | King running status |
-| `phase_changed` | Phase transitioned |
+| `stage_changed` | Stage transitioned |
 | `task_created` | New task created |
 | `task_updated` | Task status changed |
 | `worker_spawned` | Worker started |
 | `worker_completed` | Worker finished |
 | `gate_ready` | Gate criteria met |
 | `gate_approved` | Gate approved |
+| `checkpoint_created` | Checkpoint auto-created |
+| `session_restarted` | Session restarted with briefing |
 | `findings_ready` | New findings available |
 | `king_output` | King process output |
 | `king_error` | King process error |
@@ -332,13 +358,21 @@ graph TB
         HAIKU[("Haiku<br/>Simple Tasks")]
     end
 
-    subgraph Personas["11 Worker Personas"]
-        subgraph Idea
+    subgraph Personas["13 Worker Personas"]
+        subgraph Discovery
             R[Researcher]
         end
-        subgraph Design
-            D[Designer]
+        subgraph Goal
+            AN[Analyst]
+        end
+        subgraph Requirements
+            RE[Requirements Engineer]
+        end
+        subgraph Planning
             A[Architect]
+        end
+        subgraph DesignStage[Design]
+            D[Designer]
         end
         subgraph Implement
             DEV[Developer]
@@ -348,6 +382,8 @@ graph TB
             REV[Reviewer]
             SEC[Security]
             TST[Tester]
+        end
+        subgraph Validate
             QA[QA]
         end
         subgraph Document
@@ -359,22 +395,24 @@ graph TB
     end
 
     OPUS -.->|King only| KING[King Agent]
-    SONNET --> R & D & A & DEV & DBG & SEC
+    SONNET --> R & AN & RE & A & D & DEV & DBG & SEC
     HAIKU --> REV & TST & QA & DOC & OPS
 ```
 
-| Persona | Phase | Model | Purpose |
+| Persona | Stage | Model | Purpose |
 |---------|-------|-------|---------|
 | **King** | All | **Opus** | Strategy, synthesis, user conversation |
-| Researcher | Idea | Sonnet | Feasibility research |
-| Designer | Design | Sonnet | UI mockups |
-| Architect | Design | Sonnet | System design |
+| Researcher | Discovery | Sonnet | Feasibility research, prior art |
+| Analyst | Goal | Sonnet | Goals, success metrics, scope |
+| Requirements Engineer | Requirements | Sonnet | Requirements & acceptance criteria |
+| Architect | Planning | Sonnet | API contracts, data models, system design |
+| Designer | Design | Sonnet | UI mockups, wireframes, user flows |
 | Developer | Implement | Sonnet | Build features |
 | Debugger | Implement | Sonnet | Fix issues |
 | Reviewer | Verify | Haiku | Code review |
 | Security | Verify | Sonnet | Vulnerability check |
 | Tester | Verify | Haiku | Write tests |
-| QA | Verify | Haiku | E2E validation |
+| QA | Validate | Haiku | E2E validation, user acceptance |
 | Docs | Document | Haiku | Documentation |
 | DevOps | Release | Haiku | Deployment |
 
@@ -401,7 +439,7 @@ graph TD
     MISSION --> CONFIG[config.json<br/>Project settings]
     
     MISSION --> STATE[state/]
-    STATE --> PHASE[phase.json]
+    STATE --> STAGE[stage.json]
     STATE --> TASKS[tasks.json]
     STATE --> WORKERS[workers.json]
     STATE --> GATES[gates.json]
@@ -409,7 +447,7 @@ graph TD
     MISSION --> SPECS[specs/<br/>Design documents]
     MISSION --> FINDINGS[findings/<br/>Compressed worker output]
     MISSION --> HANDOFFS[handoffs/<br/>Raw handoff JSONs]
-    MISSION --> CHECKPOINTS[checkpoints/<br/>State snapshots]
+    MISSION --> ORCH[orchestrator/<br/>Checkpoints & sessions]
     
     MISSION --> PROMPTS[prompts/]
     PROMPTS --> P1[researcher.md]
@@ -424,14 +462,17 @@ graph TD
 ├── CLAUDE.md              # King system prompt
 ├── config.json            # Project settings (zones, personas)
 ├── state/
-│   ├── phase.json         # Current workflow phase
+│   ├── stage.json         # Current workflow stage
 │   ├── tasks.json         # Task list with status
 │   ├── workers.json       # Active worker processes
-│   └── gates.json         # Gate approval status
+│   └── gates.json         # Gate approval status (10 gates)
 ├── specs/                 # Design documents, requirements
 ├── findings/              # Worker output (research, reviews, etc.)
 ├── handoffs/              # Validated worker handoff JSONs
-├── checkpoints/           # State snapshots for recovery
+├── orchestrator/          # Session management
+│   ├── checkpoints/       # Checkpoint JSON snapshots
+│   ├── current.json       # Current session state
+│   └── sessions.jsonl     # Session history log
 └── prompts/
     ├── researcher.md
     ├── designer.md
@@ -480,13 +521,22 @@ Project-specific configuration lives in `.mission/config.json`.
 - Token counting needs to be fast and accurate
 - Validation should be strict (JSON schemas)
 
-**Why 6 Phases?**
+**Why 10 Stages?**
 - Prevents rushing to implementation
-- Gates force quality checks
-- Each phase has clear entry/exit criteria
+- Gates force quality checks at each transition
+- Each stage has clear entry/exit criteria
+- Finer granularity separates research, goals, requirements, and planning into dedicated stages
+- Separates code verification (Verify) from user acceptance (Validate)
 
 **Why File-Based State?**
 - Claude Code reads/writes files naturally
 - No complex IPC or message passing
 - Easy to inspect and debug
 - Checkpoints are just file copies
+
+**Why Session Continuity?**
+- LLM context windows have finite capacity
+- Checkpoints capture state (stage, tasks, decisions, blockers)
+- Briefings compile checkpoints into ~500 token summaries
+- Sessions can restart with full context preserved via briefing injection
+- Auto-checkpoints fire on gate approvals and graceful shutdown
