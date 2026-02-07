@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 
 	"github.com/mike/mission-control/api"
-	"github.com/mike/mission-control/bridge"
 	"github.com/mike/mission-control/manager"
 	"github.com/mike/mission-control/terminal"
 	"github.com/mike/mission-control/v4"
@@ -35,7 +34,6 @@ func main() {
 
 	// Determine agents directory
 	if *agentsDir == "" {
-		// Default to ../agents relative to executable or current directory
 		execPath, err := os.Executable()
 		if err == nil {
 			*agentsDir = filepath.Join(filepath.Dir(execPath), "..", "agents")
@@ -46,7 +44,6 @@ func main() {
 
 	// Verify agents directory exists
 	if _, err := os.Stat(*agentsDir); os.IsNotExist(err) {
-		// Try relative to current working directory
 		cwd, _ := os.Getwd()
 		altPath := filepath.Join(cwd, "..", "agents")
 		if _, err := os.Stat(altPath); err == nil {
@@ -67,31 +64,15 @@ func main() {
 	hub := ws.NewHub(mgr)
 	go hub.Run()
 
-	// Create King bridge
-	king := bridge.NewKing(absWorkDir)
-	hub.SetKing(king)
-
-	// Start listening for King events and broadcast to WebSocket
-	go func() {
-		for event := range king.Events() {
-			data, _ := json.Marshal(event)
-			hub.Notify(json.RawMessage(data))
-		}
-	}()
-
 	// Create and start mission watcher if .mission/ exists
-	var missionWatcher *watcher.Watcher
 	if _, err := os.Stat(missionDir); err == nil {
-		missionWatcher = watcher.NewWatcher(missionDir)
+		missionWatcher := watcher.NewWatcher(missionDir)
 		if err := missionWatcher.Start(); err != nil {
 			log.Printf("Warning: failed to start mission watcher: %v", err)
 		} else {
-			// Set mission state provider
 			hub.SetMissionStateProvider(func() interface{} {
 				return missionWatcher.GetCurrentState()
 			})
-
-			// Broadcast watcher events to WebSocket
 			go func() {
 				for event := range missionWatcher.Events() {
 					data, _ := json.Marshal(event)
@@ -107,7 +88,6 @@ func main() {
 	v4Store := v4.NewStore()
 	v4Handler := v4.NewHandler(v4Store, hub)
 
-	// Set v4 state provider for WebSocket initial sync
 	hub.SetV4StateProvider(func() interface{} {
 		return map[string]interface{}{
 			"current_stage": v4Store.CurrentStage(),
@@ -117,139 +97,55 @@ func main() {
 		}
 	})
 
-	// Create API handler
+	// Create API handlers
 	apiHandler := api.NewHandler(mgr)
-
-	// Create King API handler
-	kingHandler := api.NewKingHandler(king, absWorkDir)
-
-	// Create Projects API handler
 	projectsHandler := api.NewProjectsHandler()
-
-	// Create Ollama API handler
 	ollamaHandler := api.NewOllamaHandler()
 
 	// Set up routes
 	mux := http.NewServeMux()
 
-	// Projects API routes (must be before generic /api/ handler)
 	projectsHandler.RegisterRoutes(mux)
-
-	// Ollama API routes (for offline mode)
 	ollamaHandler.RegisterRoutes(mux)
-
-	// King API routes (King and gates)
-	kingHandler.RegisterRoutes(mux)
-
-	// v4 API routes (register first for specificity)
 	v4Handler.RegisterRoutes(mux)
-
-	// Existing API routes
 	mux.Handle("/api/", apiHandler.Routes())
-
-	// WebSocket endpoint
 	mux.HandleFunc("/ws", hub.HandleWebSocket)
 
 	// Terminal PTY WebSocket endpoint
 	ptyHandler := terminal.NewPTYHandler()
 	mux.HandleFunc("/api/terminal", ptyHandler.HandleWebSocket)
 
-	// Simple status page
+	// Health check at root
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head><title>MissionControl</title></head>
-<body>
-<h1>MissionControl</h1>
-<p>Orchestrator is running.</p>
-
-<h2>Runtime Endpoints</h2>
-<ul>
-<li><a href="/api/health">GET /api/health</a> - Health check</li>
-<li><a href="/api/agents">GET /api/agents</a> - List agents</li>
-<li>POST /api/agents - Spawn agent</li>
-<li>DELETE /api/agents/:id - Kill agent</li>
-<li>POST /api/agents/:id/message - Send message</li>
-<li>WS /ws - WebSocket connection</li>
-</ul>
-
-<h2>v4 Workflow Endpoints</h2>
-<ul>
-<li><a href="/api/stages">GET /api/stages</a> - Current stage and all stages</li>
-<li><a href="/api/tasks">GET /api/tasks</a> - List tasks</li>
-<li>POST /api/tasks - Create task</li>
-<li>GET /api/tasks/:id - Get task</li>
-<li>PUT /api/tasks/:id/status - Update task status</li>
-</ul>
-
-<h2>v4 Knowledge Endpoints</h2>
-<ul>
-<li>POST /api/handoffs - Submit handoff</li>
-<li><a href="/api/checkpoints">GET /api/checkpoints</a> - List checkpoints</li>
-<li>POST /api/checkpoints - Create checkpoint</li>
-<li>GET /api/checkpoints/:id - Get checkpoint</li>
-<li>GET /api/budgets/:worker_id - Get token budget</li>
-</ul>
-
-<h2>v4 Strategy Endpoints</h2>
-<ul>
-<li>GET /api/gates/:id - Get gate status</li>
-<li>POST /api/gates/:id/approve - Approve gate</li>
-</ul>
-
-<h2>Ollama Endpoints</h2>
-<ul>
-<li><a href="/api/ollama/status">GET /api/ollama/status</a> - Ollama status and models</li>
-<li><a href="/api/ollama/models">GET /api/ollama/models</a> - List Ollama models</li>
-</ul>
-
-<h2>v5 King Endpoints</h2>
-<ul>
-<li>POST /api/king/start - Start King process</li>
-<li>POST /api/king/stop - Stop King process</li>
-<li><a href="/api/king/status">GET /api/king/status</a> - King status</li>
-<li>POST /api/king/message - Send message to King</li>
-<li>GET /api/mission/gates/:stage - Check gate status</li>
-<li>POST /api/mission/gates/:stage/approve - Approve gate</li>
-</ul>
-
-<h2>WebSocket Events (v5)</h2>
-<ul>
-<li>mission_state - Initial mission state sync</li>
-<li>king_status - King running status</li>
-<li>stage_changed - Stage transitioned</li>
-<li>task_created - New task created</li>
-<li>task_updated - Task status changed</li>
-<li>worker_spawned - Worker started</li>
-<li>worker_completed - Worker finished</li>
-<li>gate_ready - Gate criteria met</li>
-<li>gate_approved - Gate approved</li>
-<li>findings_ready - New findings available</li>
-</ul>
-
-<h2>WebSocket Commands (v5)</h2>
-<ul>
-<li>king_message - Send message to King</li>
-</ul>
-
-<h2>Spawn Example</h2>
-<pre>
-curl -X POST http://localhost:%d/api/agents \
-  -H "Content-Type: application/json" \
-  -d '{"type": "python", "task": "list files in current directory", "agent": "v0_minimal"}'
-</pre>
-</body>
-</html>`, *port)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"service": "mc-orchestrator",
+			"status":  "ok",
+		})
 	})
 
 	// Start server
 	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("Starting MissionControl on http://localhost%s", addr)
-	log.Printf("WebSocket available at ws://localhost%s/ws", addr)
+	log.Println("╔══════════════════════════════════════════╗")
+	log.Println("║       MissionControl Orchestrator        ║")
+	log.Println("║         Kai is the King now 👑           ║")
+	log.Println("╚══════════════════════════════════════════╝")
+	log.Printf("API endpoints:")
+	log.Printf("  GET  /api/health          - Health check")
+	log.Printf("  GET  /api/agents          - List agents")
+	log.Printf("  POST /api/agents          - Spawn agent")
+	log.Printf("  DEL  /api/agents/:id      - Kill agent")
+	log.Printf("  POST /api/agents/:id/message  - Message agent")
+	log.Printf("  POST /api/agents/:id/respond  - Respond to agent")
+	log.Printf("  GET  /api/zones           - List zones")
+	log.Printf("  GET  /api/stages          - v4 stages")
+	log.Printf("  GET  /api/tasks           - v4 tasks")
+	log.Printf("  WS   /ws                  - WebSocket events")
+	log.Printf("Listening on http://localhost%s", addr)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("Server error: %v", err)

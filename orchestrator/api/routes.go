@@ -366,3 +366,10 @@ func (h *Handler) deleteZone(w http.ResponseWriter, r *http.Request, id string) 
 
 // NOTE: King Mode handlers are in api/king.go via KingHandler
 // They use bridge.King which runs Claude in a tmux session
+
+// writeJSON writes a JSON response with the given status code
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
