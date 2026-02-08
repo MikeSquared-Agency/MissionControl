@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -137,19 +135,4 @@ func isValidStage(stage string) bool {
 		}
 	}
 	return false
-}
-
-func writeJSONAtomic(path string, v interface{}) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	// Write to temp file first, then rename (atomic)
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return err
-	}
-
-	return os.Rename(tmpPath, path)
 }

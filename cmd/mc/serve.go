@@ -109,7 +109,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Health endpoint
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","version":"` + version + `"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","version":"` + version + `"}`))
 	})
 
 	// Start server

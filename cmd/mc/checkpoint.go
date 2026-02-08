@@ -66,15 +66,15 @@ var checkpointRestartCmd = &cobra.Command{
 
 // CheckpointData is the JSON structure written to checkpoint files
 type CheckpointData struct {
-	ID        string            `json:"id"`
-	Stage     string            `json:"stage"`
-	CreatedAt string            `json:"created_at"`
-	SessionID string            `json:"session_id,omitempty"`
-	Tasks     []Task            `json:"tasks"`
-	Gates     map[string]Gate   `json:"gates"`
-	Decisions []string          `json:"decisions"`
-	Blockers  []string          `json:"blockers"`
-	Summary   string            `json:"summary,omitempty"`
+	ID        string          `json:"id"`
+	Stage     string          `json:"stage"`
+	CreatedAt string          `json:"created_at"`
+	SessionID string          `json:"session_id,omitempty"`
+	Tasks     []Task          `json:"tasks"`
+	Gates     map[string]Gate `json:"gates"`
+	Decisions []string        `json:"decisions"`
+	Blockers  []string        `json:"blockers"`
+	Summary   string          `json:"summary,omitempty"`
 }
 
 // SessionRecord is a line in sessions.jsonl
@@ -208,11 +208,6 @@ func getCurrentSessionID(missionDir string) string {
 		}
 	}
 	return uuid.New().String()[:8]
-}
-
-// gitCommitCheckpoint is kept for backward compatibility, delegates to gitAutoCommit.
-func gitCommitCheckpoint(missionDir string, checkpointID string) {
-	gitAutoCommit(missionDir, CommitCategoryCheckpoint, fmt.Sprintf("checkpoint %s", checkpointID))
 }
 
 func runCheckpointStatus(cmd *cobra.Command, args []string) error {
@@ -487,7 +482,7 @@ func compileBriefing(missionDir string, cp *CheckpointData) string {
 func generateFallbackBriefing(cp *CheckpointData) string {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("# Session Briefing\n\n"))
+	b.WriteString("# Session Briefing\n\n")
 	b.WriteString(fmt.Sprintf("**Stage:** %s\n", cp.Stage))
 	if cp.SessionID != "" {
 		b.WriteString(fmt.Sprintf("**Previous Session:** %s\n", cp.SessionID))
@@ -514,7 +509,7 @@ func generateFallbackBriefing(cp *CheckpointData) string {
 			pending++
 		}
 	}
-	b.WriteString(fmt.Sprintf("## Tasks\n"))
+	b.WriteString("## Tasks\n")
 	b.WriteString(fmt.Sprintf("- Total: %d, Done: %d, Pending: %d\n\n", total, done, pending))
 
 	if len(cp.Blockers) > 0 {
