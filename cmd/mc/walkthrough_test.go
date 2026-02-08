@@ -34,7 +34,7 @@ func TestFullWalkthrough_F6(t *testing.T) {
 
 	missionDir := filepath.Join(tmpDir, ".mission")
 	stagePath := filepath.Join(missionDir, "state", "stage.json")
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
+
 	gatesPath := filepath.Join(missionDir, "state", "gates.json")
 
 	// Verify initial stage
@@ -56,10 +56,10 @@ func TestFullWalkthrough_F6(t *testing.T) {
 			CreatedAt: "2026-02-08T00:00:00Z",
 			UpdatedAt: "2026-02-08T00:00:00Z",
 		}
-		addTask(t, tasksPath, task)
+		addTask(t, missionDir, task)
 
 		// --- Complete the task ---
-		completeTask(t, tasksPath, taskID)
+		completeTask(t, missionDir, taskID)
 
 		// --- Approve the gate ---
 		if err := runGateApprove(nil, []string{stage}); err != nil {
@@ -88,14 +88,13 @@ func TestFullWalkthrough_F6(t *testing.T) {
 	assertCurrentStage(t, stagePath, "release")
 
 	// 2. All tasks persist (10 total, one per stage)
-	var ts TasksState
-	readJSONFile(t, tasksPath, &ts)
-	if len(ts.Tasks) != len(allStages) {
-		t.Errorf("expected %d tasks to persist, got %d", len(allStages), len(ts.Tasks))
+	allTasks, _ := loadTasks(missionDir)
+	if len(allTasks) != len(allStages) {
+		t.Errorf("expected %d tasks to persist, got %d", len(allStages), len(allTasks))
 	}
 
 	// 3. All tasks are complete
-	for _, task := range ts.Tasks {
+	for _, task := range allTasks {
 		if task.Status != "complete" {
 			t.Errorf("task %q has status %q, want %q", task.ID, task.Status, "complete")
 		}
@@ -180,25 +179,22 @@ func readJSONFile(t *testing.T, path string, v interface{}) {
 	}
 }
 
-func addTask(t *testing.T, tasksPath string, task Task) {
+func addTask(t *testing.T, missionDir string, task Task) {
 	t.Helper()
-	var state TasksState
-	readJSONFile(t, tasksPath, &state)
-	state.Tasks = append(state.Tasks, task)
-	data, _ := json.MarshalIndent(state, "", "  ")
-	if err := os.WriteFile(tasksPath, data, 0644); err != nil {
+	tasks, _ := loadTasks(missionDir)
+	tasks = append(tasks, task)
+	if err := saveTasks(missionDir, tasks); err != nil {
 		t.Fatalf("failed to write task: %v", err)
 	}
 }
 
-func completeTask(t *testing.T, tasksPath, taskID string) {
+func completeTask(t *testing.T, missionDir, taskID string) {
 	t.Helper()
-	var state TasksState
-	readJSONFile(t, tasksPath, &state)
+	tasks, _ := loadTasks(missionDir)
 	found := false
-	for i := range state.Tasks {
-		if state.Tasks[i].ID == taskID {
-			state.Tasks[i].Status = "complete"
+	for i := range tasks {
+		if tasks[i].ID == taskID {
+			tasks[i].Status = "complete"
 			found = true
 			break
 		}
@@ -206,8 +202,7 @@ func completeTask(t *testing.T, tasksPath, taskID string) {
 	if !found {
 		t.Fatalf("task %q not found", taskID)
 	}
-	data, _ := json.MarshalIndent(state, "", "  ")
-	if err := os.WriteFile(tasksPath, data, 0644); err != nil {
+	if err := saveTasks(missionDir, tasks); err != nil {
 		t.Fatalf("failed to update task: %v", err)
 	}
 }
