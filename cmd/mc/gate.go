@@ -84,15 +84,14 @@ func runGateCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	// Read tasks to calculate summary
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	var tasksState TasksState
-	if err := readJSON(tasksPath, &tasksState); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
 	// Calculate task summary for this stage
 	var summary TasksSummary
-	for _, task := range tasksState.Tasks {
+	for _, task := range tasks {
 		if task.Stage == stage {
 			summary.Total++
 			switch task.Status {

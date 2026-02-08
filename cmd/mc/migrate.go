@@ -90,31 +90,50 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write gates.json: %w", err)
 	}
 
-	// Migrate tasks.json (change "phase" field to "stage")
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	if _, err := os.Stat(tasksPath); err == nil {
-		data, err := os.ReadFile(tasksPath)
-		if err == nil {
+	// Migrate tasks.json → tasks.jsonl (change "phase" field to "stage", convert to JSONL)
+	oldTasksPath := filepath.Join(missionDir, "state", "tasks.json")
+	newTasksPath := filepath.Join(missionDir, "state", "tasks.jsonl")
+	if _, err := os.Stat(oldTasksPath); err == nil {
+		data, readErr := os.ReadFile(oldTasksPath)
+		if readErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to read tasks.json for migration: %v\n", readErr)
+		} else {
 			var raw map[string]interface{}
-			if err := json.Unmarshal(data, &raw); err == nil {
+			if err := json.Unmarshal(data, &raw); err != nil {
+				return fmt.Errorf("failed to parse tasks.json during migration: %w", err)
+			}
+			var migratedTasks []Task
 				if tasks, ok := raw["tasks"].([]interface{}); ok {
 					for _, t := range tasks {
-						if task, ok := t.(map[string]interface{}); ok {
-							if phase, ok := task["phase"]; ok {
+						if taskMap, ok := t.(map[string]interface{}); ok {
+							if phase, ok := taskMap["phase"]; ok {
 								phaseStr, _ := phase.(string)
 								stage := stageMap[phaseStr]
 								if stage == "" {
 									stage = phaseStr
 								}
-								task["stage"] = stage
-								delete(task, "phase")
+								taskMap["stage"] = stage
+								delete(taskMap, "phase")
 							}
+							// Re-marshal/unmarshal to get proper Task struct
+							b, mErr := json.Marshal(taskMap)
+							if mErr != nil {
+								fmt.Fprintf(os.Stderr, "warning: failed to marshal task during migration: %v\n", mErr)
+								continue
+							}
+							var task Task
+							if uErr := json.Unmarshal(b, &task); uErr != nil {
+								fmt.Fprintf(os.Stderr, "warning: failed to unmarshal task during migration: %v\n", uErr)
+								continue
+							}
+							migratedTasks = append(migratedTasks, task)
 						}
 					}
 				}
-				if err := writeJSON(tasksPath, raw); err != nil {
-					fmt.Printf("Warning: failed to migrate tasks.json: %v\n", err)
-				}
+				if err := writeTasksJSONL(newTasksPath, migratedTasks); err != nil {
+				fmt.Printf("Warning: failed to migrate tasks to JSONL: %v\n", err)
+			} else {
+				os.Rename(oldTasksPath, oldTasksPath+".migrated")
 			}
 		}
 	}

@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -33,11 +34,6 @@ type Task struct {
 	WorkerID  string `json:"worker_id,omitempty"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
-}
-
-// TasksState represents the tasks.json structure
-type TasksState struct {
-	Tasks []Task `json:"tasks"`
 }
 
 // Worker represents a worker from workers.json
@@ -151,11 +147,9 @@ func (w *Watcher) loadInitialState() {
 		json.Unmarshal(data, &w.lastStage)
 	}
 
-	// Load tasks
-	var tasksState TasksState
-	if data, err := os.ReadFile(filepath.Join(stateDir, "tasks.json")); err == nil {
-		json.Unmarshal(data, &tasksState)
-		for _, t := range tasksState.Tasks {
+	// Load tasks (JSONL format, one task per line)
+	if tasks, err := readTasksJSONLFile(filepath.Join(stateDir, "tasks.jsonl")); err == nil {
+		for _, t := range tasks {
 			w.lastTasks[t.ID] = t
 		}
 	}
@@ -197,13 +191,10 @@ func (w *Watcher) checkForChanges() {
 	}
 
 	// Check tasks
-	var tasksState TasksState
-	if data, err := os.ReadFile(filepath.Join(stateDir, "tasks.json")); err == nil {
-		json.Unmarshal(data, &tasksState)
-
+	if tasks, err := readTasksJSONLFile(filepath.Join(stateDir, "tasks.jsonl")); err == nil {
 		w.mu.Lock()
 		currentTasks := make(map[string]Task)
-		for _, t := range tasksState.Tasks {
+		for _, t := range tasks {
 			currentTasks[t.ID] = t
 
 			// Check if new or updated
@@ -355,4 +346,29 @@ func (w *Watcher) GetCurrentState() map[string]interface{} {
 		"workers": workers,
 		"gates":   w.lastGates,
 	}
+}
+
+// readTasksJSONLFile reads tasks from a JSONL file (one JSON task per line).
+func readTasksJSONLFile(path string) ([]Task, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var tasks []Task
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var task Task
+		if err := json.Unmarshal(line, &task); err != nil {
+			continue // skip malformed lines in watcher
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, scanner.Err()
 }
