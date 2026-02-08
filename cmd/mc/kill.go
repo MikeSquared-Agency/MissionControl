@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -98,7 +99,9 @@ func runKill(cmd *cobra.Command, args []string) error {
 					break
 				}
 			}
-			saveTasks(missionDir, tasks)
+			if saveErr := saveTasks(missionDir, tasks); saveErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: failed to save task status update for %s: %v\n", worker.TaskID, saveErr)
+			}
 		}
 	}
 

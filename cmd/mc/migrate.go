@@ -94,11 +94,15 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	oldTasksPath := filepath.Join(missionDir, "state", "tasks.json")
 	newTasksPath := filepath.Join(missionDir, "state", "tasks.jsonl")
 	if _, err := os.Stat(oldTasksPath); err == nil {
-		data, err := os.ReadFile(oldTasksPath)
-		if err == nil {
+		data, readErr := os.ReadFile(oldTasksPath)
+		if readErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to read tasks.json for migration: %v\n", readErr)
+		} else {
 			var raw map[string]interface{}
-			if err := json.Unmarshal(data, &raw); err == nil {
-				var migratedTasks []Task
+			if err := json.Unmarshal(data, &raw); err != nil {
+				return fmt.Errorf("failed to parse tasks.json during migration: %w", err)
+			}
+			var migratedTasks []Task
 				if tasks, ok := raw["tasks"].([]interface{}); ok {
 					for _, t := range tasks {
 						if taskMap, ok := t.(map[string]interface{}); ok {
@@ -112,18 +116,24 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 								delete(taskMap, "phase")
 							}
 							// Re-marshal/unmarshal to get proper Task struct
-							b, _ := json.Marshal(taskMap)
+							b, mErr := json.Marshal(taskMap)
+							if mErr != nil {
+								fmt.Fprintf(os.Stderr, "warning: failed to marshal task during migration: %v\n", mErr)
+								continue
+							}
 							var task Task
-							json.Unmarshal(b, &task)
+							if uErr := json.Unmarshal(b, &task); uErr != nil {
+								fmt.Fprintf(os.Stderr, "warning: failed to unmarshal task during migration: %v\n", uErr)
+								continue
+							}
 							migratedTasks = append(migratedTasks, task)
 						}
 					}
 				}
 				if err := writeTasksJSONL(newTasksPath, migratedTasks); err != nil {
-					fmt.Printf("Warning: failed to migrate tasks to JSONL: %v\n", err)
-				} else {
-					os.Rename(oldTasksPath, oldTasksPath+".migrated")
-				}
+				fmt.Printf("Warning: failed to migrate tasks to JSONL: %v\n", err)
+			} else {
+				os.Rename(oldTasksPath, oldTasksPath+".migrated")
 			}
 		}
 	}

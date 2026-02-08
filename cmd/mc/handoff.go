@@ -123,7 +123,9 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 					break
 				}
 			}
-			saveTasks(missionDir, tasks)
+			if saveErr := saveTasks(missionDir, tasks); saveErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: failed to save task status update for %s: %v\n", handoff.TaskID, saveErr)
+			}
 		}
 
 		// Create status file for protocol completion detection

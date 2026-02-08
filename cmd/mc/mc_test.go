@@ -427,9 +427,11 @@ func TestCheckpointIncludesTasks(t *testing.T) {
 	missionDir := filepath.Join(tmpDir, ".mission")
 
 	// Create a task first
-	saveTasks(missionDir, []Task{
+	if err := saveTasks(missionDir, []Task{
 		{ID: "task-1", Name: "Test task", Stage: "discovery", Status: "complete"},
-	})
+	}); err != nil {
+		t.Fatalf("failed to save tasks: %v", err)
+	}
 
 	// Create checkpoint
 	cp, err := createCheckpoint(missionDir, "")
