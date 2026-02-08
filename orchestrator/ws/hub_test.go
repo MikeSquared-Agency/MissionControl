@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/DarlingtonDeveloper/MissionControl/manager"
+	"github.com/gorilla/websocket"
 )
 
 func TestNewHub(t *testing.T) {
@@ -82,37 +82,6 @@ func TestHubSetProviders(t *testing.T) {
 
 	if hub.missionStateProvider == nil {
 		t.Error("missionStateProvider should be set")
-	}
-}
-
-// MockKingSender implements KingSender for testing
-type MockKingSender struct {
-	running  bool
-	messages []string
-}
-
-func (m *MockKingSender) SendMessage(message string) error {
-	m.messages = append(m.messages, message)
-	return nil
-}
-
-func (m *MockKingSender) IsRunning() bool {
-	return m.running
-}
-
-func TestHubSetKing(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	king := &MockKingSender{running: true}
-	hub.SetKing(king)
-
-	if hub.king == nil {
-		t.Error("king should be set")
-	}
-
-	if !hub.king.IsRunning() {
-		t.Error("king should be running")
 	}
 }
 
@@ -297,78 +266,6 @@ func TestWebSocketCommandRequestSync(t *testing.T) {
 
 	if !foundAgentList {
 		t.Error("Did not receive agent_list event")
-	}
-}
-
-func TestWebSocketKingMessage(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	king := &MockKingSender{running: true}
-	hub.SetKing(king)
-
-	go hub.Run()
-	time.Sleep(10 * time.Millisecond)
-
-	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
-	defer server.Close()
-
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-	defer ws.Close()
-
-	// Send king_message command
-	payload, _ := json.Marshal(map[string]string{"content": "Hello King"})
-	cmd := Command{Type: "king_message", Payload: payload}
-	cmdData, _ := json.Marshal(cmd)
-	ws.WriteMessage(websocket.TextMessage, cmdData)
-
-	// Give time for message to be processed
-	time.Sleep(50 * time.Millisecond)
-
-	// Verify King received the message
-	if len(king.messages) != 1 {
-		t.Errorf("Expected 1 message to King, got %d", len(king.messages))
-	}
-	if len(king.messages) > 0 && king.messages[0] != "Hello King" {
-		t.Errorf("Expected 'Hello King', got '%s'", king.messages[0])
-	}
-}
-
-func TestWebSocketKingNotRunning(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	king := &MockKingSender{running: false}
-	hub.SetKing(king)
-
-	go hub.Run()
-	time.Sleep(10 * time.Millisecond)
-
-	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
-	defer server.Close()
-
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-	defer ws.Close()
-
-	// Send king_message when King is not running
-	payload, _ := json.Marshal(map[string]string{"content": "Hello"})
-	cmd := Command{Type: "king_message", Payload: payload}
-	cmdData, _ := json.Marshal(cmd)
-	ws.WriteMessage(websocket.TextMessage, cmdData)
-
-	time.Sleep(50 * time.Millisecond)
-
-	// Message should not be sent
-	if len(king.messages) != 0 {
-		t.Errorf("Expected no messages when King not running, got %d", len(king.messages))
 	}
 }
 

@@ -15,7 +15,6 @@ import (
 type FileProtocol struct {
 	missionDir  string
 	sessionName string
-	tmuxPath    string
 }
 
 // NewFileProtocol creates a new file-based protocol handler.
@@ -23,7 +22,6 @@ func NewFileProtocol(missionDir, sessionName string) *FileProtocol {
 	return &FileProtocol{
 		missionDir:  missionDir,
 		sessionName: sessionName,
-		tmuxPath:    findTmux(),
 	}
 }
 
@@ -219,16 +217,10 @@ func (p *FileProtocol) ParseResponse(path string, content []byte) (*ParsedRespon
 	return &result, nil
 }
 
-// NudgeAgent sends a message to the tmux session to prompt the agent to read files.
+// NudgeAgent is a no-op — previously sent keys to a tmux session.
+// Agent communication now happens via OpenClaw gateway.
 func (p *FileProtocol) NudgeAgent(message string) error {
-	cmd := exec.Command(p.tmuxPath, "send-keys", "-t", p.sessionName, "-l", message)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to send keys to tmux: %w", err)
-	}
-
-	// Send Enter to submit
-	cmd = exec.Command(p.tmuxPath, "send-keys", "-t", p.sessionName, "Enter")
-	return cmd.Run()
+	return nil
 }
 
 // findMCProtocol returns the path to the mc-protocol binary

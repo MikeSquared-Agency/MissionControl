@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DarlingtonDeveloper/MissionControl/hashid"
 	"github.com/google/uuid"
-	"github.com/mike/mission-control/hashid"
 )
 
 // Store manages v4 workflow state
@@ -671,4 +671,3 @@ func (s *Store) generateBriefing(cp *Checkpoint) string {
 	return fmt.Sprintf("# Session Briefing\n\n**Stage:** %s\n\n## Tasks\n- Total: %d, Done: %d, Pending: %d\n",
 		cp.Stage, total, done, pending)
 }
-
