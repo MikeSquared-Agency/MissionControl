@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/DarlingtonDeveloper/MissionControl/openclaw"
 	"github.com/spf13/cobra"
 )
 
@@ -21,8 +22,9 @@ import (
 var webUI embed.FS
 
 var (
-	servePort    int
-	serveWorkdir string
+	servePort            int
+	serveWorkdir         string
+	serveOpenClawGateway string
 )
 
 func init() {
@@ -30,6 +32,7 @@ func init() {
 
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 8080, "Port to serve on")
 	serveCmd.Flags().StringVarP(&serveWorkdir, "workdir", "w", "", "Working directory (default: current)")
+	serveCmd.Flags().StringVar(&serveOpenClawGateway, "openclaw-gateway", "ws://127.0.0.1:18789", "OpenClaw gateway WebSocket URL")
 }
 
 var serveCmd = &cobra.Command{
@@ -104,10 +107,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 		log.Printf("  UI: Embedded (serving at /)")
 	}
 
+	// OpenClaw bridge
+	ocToken := os.Getenv("OPENCLAW_TOKEN")
+	bridge := openclaw.NewBridge(serveOpenClawGateway, ocToken)
+	if err := bridge.Connect(); err != nil {
+		log.Printf("Warning: OpenClaw bridge failed to connect: %v", err)
+		log.Printf("Chat relay will be unavailable. Set --openclaw-gateway and OPENCLAW_TOKEN.")
+	} else {
+		log.Printf("  OpenClaw: Connected to %s", serveOpenClawGateway)
+	}
+	ocHandler := openclaw.NewHandler(bridge)
+	ocHandler.RegisterRoutes(mux)
+
 	// Health endpoint
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","version":"` + version + `"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","version":"` + version + `"}`))
 	})
 
 	// Start server
@@ -116,12 +131,19 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Handler: mux,
 	}
 
-	// Handle shutdown gracefully
+	// Handle shutdown gracefully with auto-checkpoint (G3.3)
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
 		log.Println("Shutting down...")
+		bridge.Close()
+
+		// Auto-checkpoint on shutdown
+		if cp, err := createCheckpoint(missionDir, ""); err == nil {
+			log.Printf("Shutdown checkpoint created: %s", cp.ID)
+		}
+
 		server.Close()
 	}()
 

@@ -1,7 +1,8 @@
 // Project types for MissionControl
 // Used by Project Wizard and global config management
 
-import type { Phase } from './workflow'
+import type { Stage } from './workflow'
+import { ALL_STAGES } from './workflow'
 
 // Project stored in ~/.mission-control/config.json
 export interface Project {
@@ -26,7 +27,7 @@ export type WizardStep = 'setup' | 'matrix'
 
 // Workflow matrix cell
 export interface MatrixCell {
-  phase: Phase
+  stage: Stage
   zone: string
   persona: string
   enabled: boolean
@@ -36,7 +37,7 @@ export interface MatrixCell {
 export interface WizardFormData {
   path: string
   initGit: boolean
-  enableKing: boolean
+  enableOpenClaw: boolean
   matrix: MatrixCell[]
   mode: 'online' | 'offline'
   ollamaModel?: string
@@ -45,12 +46,16 @@ export interface WizardFormData {
 // Audience type (UI-only, for matrix defaults)
 export type Audience = 'personal' | 'customers'
 
-// Personas organized by phase
-export const PHASE_PERSONAS: Record<Phase, string[]> = {
-  idea: ['researcher'],
-  design: ['designer', 'architect'],
+// Personas organized by stage
+export const STAGE_PERSONAS: Record<Stage, string[]> = {
+  discovery: ['researcher'],
+  goal: ['analyst'],
+  requirements: ['requirements-engineer'],
+  planning: ['architect'],
+  design: ['designer'],
   implement: ['developer', 'debugger'],
-  verify: ['reviewer', 'security', 'tester', 'qa'],
+  verify: ['reviewer', 'security', 'tester'],
+  validate: ['qa'],
   document: ['docs'],
   release: ['devops']
 }
@@ -64,13 +69,12 @@ export const PERSONAL_DISABLED_PERSONAS = ['security', 'qa', 'devops']
 // Build initial matrix based on audience
 export function buildInitialMatrix(audience: Audience): MatrixCell[] {
   const cells: MatrixCell[] = []
-  const phases: Phase[] = ['idea', 'design', 'implement', 'verify', 'document', 'release']
 
-  for (const phase of phases) {
+  for (const stage of ALL_STAGES) {
     for (const zone of DEFAULT_ZONES) {
-      for (const persona of PHASE_PERSONAS[phase]) {
+      for (const persona of STAGE_PERSONAS[stage]) {
         cells.push({
-          phase,
+          stage,
           zone,
           persona,
           enabled: audience === 'customers' || !PERSONAL_DISABLED_PERSONAS.includes(persona)

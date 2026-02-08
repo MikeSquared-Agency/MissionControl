@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useWorkflowStore } from './useWorkflowStore'
-import type { Task, Phase, WorkflowEvent } from '../types/workflow'
+import type { Task, Stage, WorkflowEvent } from '../types/workflow'
 
 describe('useWorkflowStore', () => {
   beforeEach(() => {
     // Reset store to initial state before each test
     useWorkflowStore.setState({
-      currentPhase: 'idea',
-      phases: [],
+      currentStage: 'discovery',
+      stages: [],
       tasks: [],
       gates: {},
       checkpoints: [],
@@ -16,16 +16,16 @@ describe('useWorkflowStore', () => {
     })
   })
 
-  describe('Phase actions', () => {
-    it('should set phases', () => {
-      const phases = [
-        { phase: 'idea' as Phase, status: 'current' as const },
-        { phase: 'design' as Phase, status: 'pending' as const }
+  describe('Stage actions', () => {
+    it('should set stages', () => {
+      const stages = [
+        { stage: 'discovery' as Stage, status: 'current' as const },
+        { stage: 'goal' as Stage, status: 'pending' as const }
       ]
-      useWorkflowStore.getState().setPhases('idea', phases)
+      useWorkflowStore.getState().setStages('discovery', stages)
 
-      expect(useWorkflowStore.getState().currentPhase).toBe('idea')
-      expect(useWorkflowStore.getState().phases).toHaveLength(2)
+      expect(useWorkflowStore.getState().currentStage).toBe('discovery')
+      expect(useWorkflowStore.getState().stages).toHaveLength(2)
     })
   })
 
@@ -33,7 +33,7 @@ describe('useWorkflowStore', () => {
     const testTask: Task = {
       id: 'task-1',
       name: 'Test Task',
-      phase: 'idea',
+      stage: 'discovery',
       zone: 'frontend',
       status: 'pending',
       persona: 'developer',
@@ -64,22 +64,22 @@ describe('useWorkflowStore', () => {
   describe('Gate actions', () => {
     it('should set a gate', () => {
       const gate = {
-        id: 'gate-idea',
-        phase: 'idea' as Phase,
+        id: 'gate-discovery',
+        stage: 'discovery' as Stage,
         status: 'closed' as const,
         criteria: [{ description: 'Test criterion', satisfied: false }]
       }
-      useWorkflowStore.getState().setGate('idea', gate)
+      useWorkflowStore.getState().setGate('discovery', gate)
 
-      expect(useWorkflowStore.getState().gates['idea']).toBeDefined()
-      expect(useWorkflowStore.getState().gates['idea'].status).toBe('closed')
+      expect(useWorkflowStore.getState().gates['discovery']).toBeDefined()
+      expect(useWorkflowStore.getState().gates['discovery'].status).toBe('closed')
     })
   })
 
   describe('Checkpoint actions', () => {
     it('should set checkpoints', () => {
       const checkpoints = [
-        { id: 'cp-1', phase: 'idea' as Phase, created_at: Date.now() }
+        { id: 'cp-1', stage: 'discovery' as Stage, created_at: Date.now() }
       ]
       useWorkflowStore.getState().setCheckpoints(checkpoints)
 
@@ -89,7 +89,7 @@ describe('useWorkflowStore', () => {
     it('should add a checkpoint', () => {
       useWorkflowStore.getState().addCheckpoint({
         id: 'cp-2',
-        phase: 'design',
+        stage: 'design',
         created_at: Date.now()
       })
 
@@ -102,15 +102,15 @@ describe('useWorkflowStore', () => {
       const event: WorkflowEvent = {
         type: 'v4_state',
         state: {
-          current_phase: 'design',
-          phases: [
-            { phase: 'idea', status: 'complete' },
-            { phase: 'design', status: 'current' }
+          current_stage: 'design',
+          stages: [
+            { stage: 'discovery', status: 'complete' },
+            { stage: 'design', status: 'current' }
           ],
           tasks: [{
             id: 'task-1',
             name: 'Test',
-            phase: 'design',
+            stage: 'design',
             zone: 'test',
             status: 'pending',
             persona: 'dev',
@@ -124,25 +124,25 @@ describe('useWorkflowStore', () => {
 
       useWorkflowStore.getState().handleEvent(event)
 
-      expect(useWorkflowStore.getState().currentPhase).toBe('design')
+      expect(useWorkflowStore.getState().currentStage).toBe('design')
       expect(useWorkflowStore.getState().tasks).toHaveLength(1)
     })
 
-    it('should handle phase_changed event', () => {
-      useWorkflowStore.getState().setPhases('idea', [
-        { phase: 'idea', status: 'current' },
-        { phase: 'design', status: 'pending' }
+    it('should handle stage_changed event', () => {
+      useWorkflowStore.getState().setStages('discovery', [
+        { stage: 'discovery', status: 'current' },
+        { stage: 'goal', status: 'pending' }
       ])
 
       const event: WorkflowEvent = {
-        type: 'phase_changed',
-        phase: 'design',
-        previous: 'idea'
+        type: 'stage_changed',
+        stage: 'goal',
+        previous: 'discovery'
       }
 
       useWorkflowStore.getState().handleEvent(event)
 
-      expect(useWorkflowStore.getState().currentPhase).toBe('design')
+      expect(useWorkflowStore.getState().currentStage).toBe('goal')
     })
 
     it('should handle task_created event', () => {
@@ -151,7 +151,7 @@ describe('useWorkflowStore', () => {
         task: {
           id: 'task-new',
           name: 'New Task',
-          phase: 'idea',
+          stage: 'discovery',
           zone: 'test',
           status: 'pending',
           persona: 'dev',
@@ -171,7 +171,7 @@ describe('useWorkflowStore', () => {
       useWorkflowStore.getState().addTask({
         id: 'task-1',
         name: 'Test',
-        phase: 'idea',
+        stage: 'discovery',
         zone: 'test',
         status: 'pending',
         persona: 'dev',
@@ -196,7 +196,7 @@ describe('useWorkflowStore', () => {
       const event: WorkflowEvent = {
         type: 'checkpoint_created',
         checkpoint_id: 'cp-new',
-        phase: 'idea'
+        stage: 'discovery'
       }
 
       useWorkflowStore.getState().handleEvent(event)

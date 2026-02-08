@@ -1,12 +1,12 @@
 import { create } from 'zustand'
 import type {
-  Phase,
-  PhaseInfo,
+  Stage,
+  StageInfo,
   Task,
   TaskStatus,
   Gate,
   CheckpointSummary,
-  PhasesResponse,
+  StagesResponse,
   TasksResponse,
   GateApprovalResponse,
   WorkflowEvent
@@ -14,8 +14,8 @@ import type {
 
 interface WorkflowState {
   // State
-  currentPhase: Phase
-  phases: PhaseInfo[]
+  currentStage: Stage
+  stages: StageInfo[]
   tasks: Task[]
   gates: Record<string, Gate>
   checkpoints: CheckpointSummary[]
@@ -23,11 +23,11 @@ interface WorkflowState {
   error: string | null
 
   // Actions
-  setPhases: (current: Phase, phases: PhaseInfo[]) => void
+  setStages: (current: Stage, stages: StageInfo[]) => void
   setTasks: (tasks: Task[]) => void
   addTask: (task: Task) => void
   updateTask: (id: string, updates: Partial<Task>) => void
-  setGate: (phase: Phase, gate: Gate) => void
+  setGate: (stage: Stage, gate: Gate) => void
   setCheckpoints: (checkpoints: CheckpointSummary[]) => void
   addCheckpoint: (checkpoint: CheckpointSummary) => void
   setLoading: (loading: boolean) => void
@@ -39,8 +39,8 @@ interface WorkflowState {
 
 export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
   // Initial state
-  currentPhase: 'idea',
-  phases: [],
+  currentStage: 'discovery',
+  stages: [],
   tasks: [],
   gates: {},
   checkpoints: [],
@@ -48,7 +48,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
   error: null,
 
   // Actions
-  setPhases: (current, phases) => set({ currentPhase: current, phases }),
+  setStages: (current, stages) => set({ currentStage: current, stages }),
 
   setTasks: (tasks) => set({ tasks }),
 
@@ -62,8 +62,8 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
     )
   })),
 
-  setGate: (phase, gate) => set((state) => ({
-    gates: { ...state.gates, [phase]: gate }
+  setGate: (stage, gate) => set((state) => ({
+    gates: { ...state.gates, [stage]: gate }
   })),
 
   setCheckpoints: (checkpoints) => set({ checkpoints }),
@@ -81,21 +81,21 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
     switch (event.type) {
       case 'v4_state':
         set({
-          currentPhase: event.state.current_phase,
-          phases: event.state.phases,
+          currentStage: event.state.current_stage,
+          stages: event.state.stages,
           tasks: event.state.tasks,
           checkpoints: event.state.checkpoints
         })
         break
 
-      case 'phase_changed':
+      case 'stage_changed':
         set((state) => ({
-          currentPhase: event.phase,
-          phases: state.phases.map((p) => ({
-            ...p,
-            status: p.phase === event.phase ? 'current' as const :
-                    p.phase === event.previous ? 'complete' as const :
-                    p.status
+          currentStage: event.stage,
+          stages: state.stages.map((s) => ({
+            ...s,
+            status: s.stage === event.stage ? 'current' as const :
+                    s.stage === event.previous ? 'complete' as const :
+                    s.status
           }))
         }))
         break
@@ -112,10 +112,10 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
         set((state) => ({
           gates: {
             ...state.gates,
-            [event.phase]: {
-              ...state.gates[event.phase],
+            [event.stage]: {
+              ...state.gates[event.stage],
               status: event.status,
-              criteria: event.criteria || state.gates[event.phase]?.criteria || []
+              criteria: event.criteria || state.gates[event.stage]?.criteria || []
             }
           }
         }))
@@ -124,7 +124,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       case 'checkpoint_created':
         get().addCheckpoint({
           id: event.checkpoint_id,
-          phase: event.phase,
+          stage: event.stage,
           created_at: Date.now()
         })
         break
@@ -135,8 +135,8 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
 // API functions
 const API_BASE = '/api'
 
-export async function fetchPhases(): Promise<PhasesResponse> {
-  const res = await fetch(`${API_BASE}/phases`)
+export async function fetchStages(): Promise<StagesResponse> {
+  const res = await fetch(`${API_BASE}/stages`)
   if (!res.ok) {
     throw new Error(await res.text())
   }
@@ -144,13 +144,13 @@ export async function fetchPhases(): Promise<PhasesResponse> {
 }
 
 export async function fetchTasks(filters?: {
-  phase?: Phase
+  stage?: Stage
   zone?: string
   status?: TaskStatus
   persona?: string
 }): Promise<Task[]> {
   const params = new URLSearchParams()
-  if (filters?.phase) params.set('phase', filters.phase)
+  if (filters?.stage) params.set('stage', filters.stage)
   if (filters?.zone) params.set('zone', filters.zone)
   if (filters?.status) params.set('status', filters.status)
   if (filters?.persona) params.set('persona', filters.persona)
@@ -166,7 +166,7 @@ export async function fetchTasks(filters?: {
 
 export async function createTask(task: {
   name: string
-  phase?: Phase
+  stage?: Stage
   zone: string
   persona: string
   dependencies?: string[]
@@ -198,8 +198,8 @@ export async function updateTaskStatus(
   return res.json()
 }
 
-export async function fetchGate(phase: Phase): Promise<Gate> {
-  const res = await fetch(`${API_BASE}/gates/gate-${phase}`)
+export async function fetchGate(stage: Stage): Promise<Gate> {
+  const res = await fetch(`${API_BASE}/gates/gate-${stage}`)
   if (!res.ok) {
     throw new Error(await res.text())
   }
@@ -207,10 +207,10 @@ export async function fetchGate(phase: Phase): Promise<Gate> {
 }
 
 export async function approveGate(
-  phase: Phase,
+  stage: Stage,
   approvedBy: string
 ): Promise<GateApprovalResponse> {
-  const res = await fetch(`${API_BASE}/gates/gate-${phase}/approve`, {
+  const res = await fetch(`${API_BASE}/gates/gate-${stage}/approve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ approved_by: approvedBy })
@@ -231,14 +231,14 @@ export async function fetchCheckpoints(): Promise<CheckpointSummary[]> {
 }
 
 // Selectors
-export const useCurrentPhase = () => useWorkflowStore((s) => s.currentPhase)
-export const usePhases = () => useWorkflowStore((s) => s.phases)
+export const useCurrentStage = () => useWorkflowStore((s) => s.currentStage)
+export const useStages = () => useWorkflowStore((s) => s.stages)
 export const useTasks = () => useWorkflowStore((s) => s.tasks)
-export const useTasksForPhase = (phase: Phase) => {
+export const useTasksForStage = (stage: Stage) => {
   const tasks = useWorkflowStore((s) => s.tasks)
-  return tasks.filter((t) => t.phase === phase)
+  return tasks.filter((t) => t.stage === stage)
 }
-export const useGate = (phase: Phase) => useWorkflowStore((s) => s.gates[phase])
+export const useGate = (stage: Stage) => useWorkflowStore((s) => s.gates[stage])
 export const useCheckpoints = () => useWorkflowStore((s) => s.checkpoints)
 export const useWorkflowLoading = () => useWorkflowStore((s) => s.loading)
 export const useWorkflowError = () => useWorkflowStore((s) => s.error)

@@ -1,42 +1,58 @@
 package v4
 
-// Phase represents a workflow phase
-type Phase string
+// Stage represents a workflow stage
+type Stage string
 
 const (
-	PhaseIdea      Phase = "idea"
-	PhaseDesign    Phase = "design"
-	PhaseImplement Phase = "implement"
-	PhaseVerify    Phase = "verify"
-	PhaseDocument  Phase = "document"
-	PhaseRelease   Phase = "release"
+	StageDiscovery Stage = "discovery"
+	StageGoal      Stage = "goal"
+	StageRequirements Stage = "requirements"
+	StagePlanning  Stage = "planning"
+	StageDesign    Stage = "design"
+	StageImplement Stage = "implement"
+	StageVerify    Stage = "verify"
+	StageValidate  Stage = "validate"
+	StageDocument  Stage = "document"
+	StageRelease   Stage = "release"
 )
 
-// AllPhases returns all phases in order
-func AllPhases() []Phase {
-	return []Phase{
-		PhaseIdea,
-		PhaseDesign,
-		PhaseImplement,
-		PhaseVerify,
-		PhaseDocument,
-		PhaseRelease,
+// AllStages returns all stages in order
+func AllStages() []Stage {
+	return []Stage{
+		StageDiscovery,
+		StageGoal,
+		StageRequirements,
+		StagePlanning,
+		StageDesign,
+		StageImplement,
+		StageVerify,
+		StageValidate,
+		StageDocument,
+		StageRelease,
 	}
 }
 
-// Next returns the next phase, or empty string if at end
-func (p Phase) Next() Phase {
-	switch p {
-	case PhaseIdea:
-		return PhaseDesign
-	case PhaseDesign:
-		return PhaseImplement
-	case PhaseImplement:
-		return PhaseVerify
-	case PhaseVerify:
-		return PhaseDocument
-	case PhaseDocument:
-		return PhaseRelease
+// Next returns the next stage, or empty string if at end
+func (s Stage) Next() Stage {
+	switch s {
+	case StageDiscovery:
+		return StageGoal
+	case StageGoal:
+		return StageRequirements
+	case StageRequirements:
+		return StagePlanning
+	case StagePlanning:
+		return StageDesign
+	case StageDesign:
+		return StageImplement
+	case StageImplement:
+		return StageVerify
+	case StageVerify:
+		return StageValidate
+	case StageValidate:
+		return StageDocument
+	case StageDocument:
+		return StageRelease
 	default:
 		return ""
 	}
@@ -57,7 +73,7 @@ const (
 type Task struct {
 	ID            string     `json:"id"`
 	Name          string     `json:"name"`
-	Phase         Phase      `json:"phase"`
+	Stage         Stage      `json:"stage"`
 	Zone          string     `json:"zone"`
 	Status        TaskStatus `json:"status"`
 	BlockedReason string     `json:"blocked_reason,omitempty"`
@@ -67,7 +83,7 @@ type Task struct {
 	UpdatedAt     int64      `json:"updated_at"`
 }
 
-// GateStatus represents the status of a phase gate
+// GateStatus represents the status of a stage gate
 type GateStatus string
 
 const (
@@ -82,10 +98,10 @@ type GateCriterion struct {
 	Satisfied   bool   `json:"satisfied"`
 }
 
-// Gate represents a phase gate
+// Gate represents a stage gate
 type Gate struct {
 	ID         string          `json:"id"`
-	Phase      Phase           `json:"phase"`
+	Stage      Stage           `json:"stage"`
 	Status     GateStatus      `json:"status"`
 	Criteria   []GateCriterion `json:"criteria"`
 	ApprovedAt *int64          `json:"approved_at,omitempty"`
@@ -161,17 +177,19 @@ type TokenBudget struct {
 // Checkpoint represents a project state snapshot
 type Checkpoint struct {
 	ID               string    `json:"id"`
-	Phase            Phase     `json:"phase"`
+	Stage            Stage     `json:"stage"`
+	SessionID        string    `json:"session_id"`
 	CreatedAt        int64     `json:"created_at"`
 	TasksSnapshot    []Task    `json:"tasks_snapshot"`
 	FindingsSnapshot []Finding `json:"findings_snapshot"`
 	Decisions        []string  `json:"decisions"`
+	Blockers         []string  `json:"blockers"`
 }
 
 // CheckpointSummary is a lightweight checkpoint reference
 type CheckpointSummary struct {
 	ID        string `json:"id"`
-	Phase     Phase  `json:"phase"`
+	Stage     Stage  `json:"stage"`
 	CreatedAt int64  `json:"created_at"`
 }
 
@@ -193,8 +211,18 @@ type WorkerHealth struct {
 	SinceMs  int64        `json:"since_ms,omitempty"`
 }
 
-// PhaseInfo provides phase status information
-type PhaseInfo struct {
-	Phase  Phase  `json:"phase"`
+// StageInfo provides stage status information
+type StageInfo struct {
+	Stage  Stage  `json:"stage"`
 	Status string `json:"status"` // "complete", "current", "pending"
+}
+
+// SessionRecord tracks session lifecycle
+type SessionRecord struct {
+	SessionID    string `json:"session_id"`
+	StartedAt    int64  `json:"started_at"`
+	EndedAt      int64  `json:"ended_at,omitempty"`
+	CheckpointID string `json:"checkpoint_id,omitempty"`
+	Stage        Stage  `json:"stage"`
+	Reason       string `json:"reason,omitempty"`
 }

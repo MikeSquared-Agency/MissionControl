@@ -1,5 +1,7 @@
 # V4 Implementation Guide
 
+> **Superseded by v6**: The 6-phase workflow described here has been replaced by a 10-stage workflow. `Phase` → `Stage`, `phase.json` → `stage.json`. See `ARCHITECTURE.md` and `CHANGELOG.md` for current state.
+
 The actionable roadmap for v4 (Architecture Foundation). References existing specs rather than duplicating them.
 
 ---

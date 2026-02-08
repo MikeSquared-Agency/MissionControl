@@ -14,10 +14,10 @@ import (
 
 // CLI flags for init command
 var (
-	initPath   string
-	initGit    bool
-	initKing   bool
-	initConfig string
+	initPath     string
+	initGit      bool
+	initOpenClaw bool
+	initConfig   string
 )
 
 func init() {
@@ -25,7 +25,7 @@ func init() {
 
 	initCmd.Flags().StringVar(&initPath, "path", "", "Project path (default: current directory)")
 	initCmd.Flags().BoolVar(&initGit, "git", false, "Initialize git repository")
-	initCmd.Flags().BoolVar(&initKing, "king", true, "Enable King mode")
+	initCmd.Flags().BoolVar(&initOpenClaw, "openclaw", true, "Enable OpenClaw mode")
 	initCmd.Flags().StringVar(&initConfig, "config", "", "Path to JSON config file with workflow matrix")
 }
 
@@ -73,6 +73,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 		"handoffs",
 		"checkpoints",
 		"prompts",
+		"orchestrator",
+		"orchestrator/checkpoints",
 	}
 
 	for _, dir := range dirs {
@@ -83,16 +85,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create initial state files
-	if err := writeJSON(filepath.Join(missionDir, "state", "phase.json"), PhaseState{
-		Current:   "idea",
+	if err := writeJSON(filepath.Join(missionDir, "state", "stage.json"), StageState{
+		Current:   "discovery",
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
 		return err
 	}
 
-	if err := writeJSON(filepath.Join(missionDir, "state", "tasks.json"), TasksState{
-		Tasks: []Task{},
-	}); err != nil {
+	if err := writeTasksJSONL(filepath.Join(missionDir, "state", "tasks.jsonl"), []Task{}); err != nil {
 		return err
 	}
 
@@ -104,12 +104,16 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	if err := writeJSON(filepath.Join(missionDir, "state", "gates.json"), GatesState{
 		Gates: map[string]Gate{
-			"idea":      {Phase: "idea", Status: "pending", Criteria: []string{"Research complete", "Feasibility assessed"}},
-			"design":    {Phase: "design", Status: "pending", Criteria: []string{"Spec written", "API contracts defined"}},
-			"implement": {Phase: "implement", Status: "pending", Criteria: []string{"Code complete", "Tests pass"}},
-			"verify":    {Phase: "verify", Status: "pending", Criteria: []string{"Review done", "Security checked"}},
-			"document":  {Phase: "document", Status: "pending", Criteria: []string{"README written", "Docs complete"}},
-			"release":   {Phase: "release", Status: "pending", Criteria: []string{"Deployed", "Smoke tests pass"}},
+			"discovery":    {Stage: "discovery", Status: "pending", Criteria: []string{"Problem space explored", "Stakeholders identified"}},
+			"goal":         {Stage: "goal", Status: "pending", Criteria: []string{"Goal statement defined", "Success metrics established"}},
+			"requirements": {Stage: "requirements", Status: "pending", Criteria: []string{"Requirements documented", "Acceptance criteria defined"}},
+			"planning":     {Stage: "planning", Status: "pending", Criteria: []string{"Tasks broken down", "Dependencies mapped"}},
+			"design":       {Stage: "design", Status: "pending", Criteria: []string{"Spec document complete", "Technical approach approved"}},
+			"implement":    {Stage: "implement", Status: "pending", Criteria: []string{"All tasks complete", "Code compiles"}},
+			"verify":       {Stage: "verify", Status: "pending", Criteria: []string{"Tests passing", "Review complete"}},
+			"validate":     {Stage: "validate", Status: "pending", Criteria: []string{"Acceptance criteria met", "Stakeholder sign-off"}},
+			"document":     {Stage: "document", Status: "pending", Criteria: []string{"README updated", "API documented"}},
+			"release":      {Stage: "release", Status: "pending", Criteria: []string{"Deployed successfully", "Smoke tests pass"}},
 		},
 	}); err != nil {
 		return err
@@ -132,7 +136,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		Version:  "1.0.0",
 		Audience: "personal",
 		Zones:    []string{"frontend", "backend", "database", "infra", "shared"},
-		King:     initKing,
+		OpenClaw: initOpenClaw,
 	}
 
 	// If matrix provided, include it in config
@@ -144,24 +148,26 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create CLAUDE.md (King prompt)
-	if err := os.WriteFile(filepath.Join(missionDir, "CLAUDE.md"), []byte(kingPrompt), 0644); err != nil {
+	// Create CLAUDE.md (OpenClaw prompt)
+	if err := os.WriteFile(filepath.Join(missionDir, "CLAUDE.md"), []byte(openClawPrompt), 0644); err != nil {
 		return fmt.Errorf("failed to write CLAUDE.md: %w", err)
 	}
 
 	// Create worker prompts
 	prompts := map[string]string{
-		"researcher.md": researcherPrompt,
-		"designer.md":   designerPrompt,
-		"architect.md":  architectPrompt,
-		"developer.md":  developerPrompt,
-		"reviewer.md":   reviewerPrompt,
-		"security.md":   securityPrompt,
-		"tester.md":     testerPrompt,
-		"qa.md":         qaPrompt,
-		"docs.md":       docsPrompt,
-		"devops.md":     devopsPrompt,
-		"debugger.md":   debuggerPrompt,
+		"researcher.md":            researcherPrompt,
+		"analyst.md":               analystPrompt,
+		"requirements-engineer.md": requirementsEngineerPrompt,
+		"designer.md":              designerPrompt,
+		"architect.md":             architectPrompt,
+		"developer.md":             developerPrompt,
+		"reviewer.md":              reviewerPrompt,
+		"security.md":              securityPrompt,
+		"tester.md":                testerPrompt,
+		"qa.md":                    qaPrompt,
+		"docs.md":                  docsPrompt,
+		"devops.md":                devopsPrompt,
+		"debugger.md":              debuggerPrompt,
 	}
 
 	for name, content := range prompts {
@@ -185,10 +191,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	writeAuditLog(missionDir, AuditProjectInitialized, "cli", map[string]interface{}{
+		"path":     workDir,
+		"openclaw": initOpenClaw,
+	})
+
 	fmt.Printf("Initialized .mission/ directory at %s\n", workDir)
 	fmt.Println("")
 	fmt.Println("Created:")
-	fmt.Println("  .mission/CLAUDE.md           # King system prompt")
+	fmt.Println("  .mission/CLAUDE.md           # OpenClaw system prompt")
 	fmt.Println("  .mission/config.json         # Project settings")
 	fmt.Println("  .mission/state/              # Runtime state")
 	fmt.Println("  .mission/specs/              # Feature specifications")
@@ -196,11 +207,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("  .mission/handoffs/           # Raw handoff records")
 	fmt.Println("  .mission/checkpoints/        # State checkpoints")
 	fmt.Println("  .mission/prompts/            # Worker system prompts")
+	fmt.Println("  .mission/orchestrator/       # Orchestrator state")
 	fmt.Println("")
-	if initKing {
-		fmt.Println("Next: Run 'claude' in this directory to start King")
+	if initOpenClaw {
+		fmt.Println("Next: Run 'claude' in this directory to start OpenClaw")
 	} else {
-		fmt.Println("King mode disabled. Run individual agents with 'mc spawn'")
+		fmt.Println("OpenClaw mode disabled. Run individual agents with 'mc spawn'")
 	}
 
 	return nil
@@ -219,21 +231,22 @@ func writeJSON(path string, v interface{}) error {
 
 // State types
 
-type PhaseState struct {
+type StageState struct {
 	Current   string `json:"current"`
 	UpdatedAt string `json:"updated_at"`
 }
 
 type Task struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Phase     string `json:"phase"`
-	Zone      string `json:"zone"`
-	Persona   string `json:"persona"`
-	Status    string `json:"status"` // pending, in_progress, complete, blocked
-	WorkerID  string `json:"worker_id,omitempty"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Stage     string   `json:"stage"`
+	Zone      string   `json:"zone"`
+	Persona   string   `json:"persona"`
+	Status    string   `json:"status"` // pending, in_progress, complete, blocked
+	DependsOn []string `json:"depends_on,omitempty"`
+	WorkerID  string   `json:"worker_id,omitempty"`
+	CreatedAt string   `json:"created_at"`
+	UpdatedAt string   `json:"updated_at"`
 }
 
 type TasksState struct {
@@ -255,7 +268,7 @@ type WorkersState struct {
 }
 
 type Gate struct {
-	Phase      string   `json:"phase"`
+	Stage      string   `json:"stage"`
 	Status     string   `json:"status"` // pending, ready, approved
 	Criteria   []string `json:"criteria"`
 	ApprovedAt string   `json:"approved_at,omitempty"`
@@ -265,10 +278,30 @@ type GatesState struct {
 	Gates map[string]Gate `json:"gates"`
 }
 
+type Team struct {
+	Personas []string `json:"personas"`
+	Zone     string   `json:"zone,omitempty"`
+}
+
 type Config struct {
-	Version  string      `json:"version"`
-	Audience string      `json:"audience"` // personal, external
-	Zones    []string    `json:"zones"`
-	King     bool        `json:"king"`
-	Matrix   interface{} `json:"matrix,omitempty"`
+	Version        string            `json:"version"`
+	Audience       string            `json:"audience"` // personal, external
+	Zones          []string          `json:"zones"`
+	OpenClaw       bool              `json:"openclaw"`
+	Matrix         interface{}       `json:"matrix,omitempty"`
+	AutoCommit     *AutoCommitConfig `json:"auto_commit,omitempty"`
+	TokenThreshold int               `json:"token_threshold,omitempty"`
+	Teams          map[string]Team   `json:"teams,omitempty"`
+}
+
+const defaultTokenThreshold = 150000
+
+// getTokenThreshold returns the configured token threshold or the default (150k).
+func getTokenThreshold(missionDir string) int {
+	configPath := filepath.Join(missionDir, "config.json")
+	var cfg Config
+	if err := readJSON(configPath, &cfg); err == nil && cfg.TokenThreshold > 0 {
+		return cfg.TokenThreshold
+	}
+	return defaultTokenThreshold
 }

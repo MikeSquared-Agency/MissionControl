@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/mike/mission-control/manager"
+	"github.com/DarlingtonDeveloper/MissionControl/manager"
 )
 
 var upgrader = websocket.Upgrader{
@@ -21,12 +21,6 @@ type Client struct {
 	hub  *Hub
 	conn *websocket.Conn
 	send chan []byte
-}
-
-// KingSender interface for sending messages to King
-type KingSender interface {
-	SendMessage(message string) error
-	IsRunning() bool
 }
 
 // Hub maintains the set of active clients and broadcasts events
@@ -43,9 +37,6 @@ type Hub struct {
 
 	// missionStateProvider provides mission state for initial sync
 	missionStateProvider func() interface{}
-
-	// king is the King process sender
-	king KingSender
 }
 
 // NewHub creates a new Hub
@@ -157,15 +148,6 @@ func (h *Hub) sendInitialState(client *Client) {
 		}
 	}
 
-	// Send King status
-	if h.king != nil {
-		kingEvent := map[string]interface{}{
-			"type":       "king_status",
-			"is_running": h.king.IsRunning(),
-		}
-		kingData, _ := json.Marshal(kingEvent)
-		client.send <- kingData
-	}
 }
 
 // Notify broadcasts an event to all connected clients (implements v4.EventNotifier)
@@ -188,10 +170,6 @@ func (h *Hub) SetMissionStateProvider(provider func() interface{}) {
 	h.missionStateProvider = provider
 }
 
-// SetKing sets the King process sender
-func (h *Hub) SetKing(king KingSender) {
-	h.king = king
-}
 
 // HandleWebSocket handles WebSocket connections
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -373,30 +351,6 @@ func (c *Client) handleCommand(message []byte) {
 		// Send full state to this client
 		c.hub.sendInitialState(c)
 
-	case "king_message":
-		// Send a message to King
-		var payload struct {
-			Content string `json:"content"`
-		}
-		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
-			log.Printf("Invalid king_message command: %v", err)
-			return
-		}
-		if c.hub.king == nil {
-			log.Printf("King not configured")
-			return
-		}
-		if !c.hub.king.IsRunning() {
-			log.Printf("King is not running")
-			return
-		}
-		if err := c.hub.king.SendMessage(payload.Content); err != nil {
-			log.Printf("Failed to send message to King: %v", err)
-		}
-
-	case "start_king":
-		// Request to start King - handled by API endpoint
-		log.Printf("start_king command received - use POST /api/king/start instead")
 
 	default:
 		log.Printf("Unknown command type: %s", cmd.Type)

@@ -1,20 +1,20 @@
 // Workflow Types for MissionControl
-// Matches Go types in orchestrator/v4/types.go and Rust types in core/
+// Matches Go types in orchestrator/v6/types.go and Rust types in core/
 
 // ============================================================================
 // Workflow Domain
 // ============================================================================
 
-export type Phase = 'idea' | 'design' | 'implement' | 'verify' | 'document' | 'release'
+export type Stage = 'discovery' | 'goal' | 'requirements' | 'planning' | 'design' | 'implement' | 'verify' | 'validate' | 'document' | 'release'
 
-export const ALL_PHASES: Phase[] = ['idea', 'design', 'implement', 'verify', 'document', 'release']
+export const ALL_STAGES: Stage[] = ['discovery', 'goal', 'requirements', 'planning', 'design', 'implement', 'verify', 'validate', 'document', 'release']
 
 export type TaskStatus = 'pending' | 'ready' | 'in_progress' | 'blocked' | 'done'
 
 export interface Task {
   id: string
   name: string
-  phase: Phase
+  stage: Stage
   zone: string
   status: TaskStatus
   blocked_reason?: string
@@ -33,15 +33,15 @@ export interface GateCriterion {
 
 export interface Gate {
   id: string
-  phase: Phase
+  stage: Stage
   status: GateStatus
   criteria: GateCriterion[]
   approved_at?: number
   approved_by?: string
 }
 
-export interface PhaseInfo {
-  phase: Phase
+export interface StageInfo {
+  stage: Stage
   status: 'complete' | 'current' | 'pending'
 }
 
@@ -90,16 +90,18 @@ export interface Handoff {
 
 export interface Checkpoint {
   id: string
-  phase: Phase
+  stage: Stage
   created_at: number
   tasks_snapshot: Task[]
   findings_snapshot: Finding[]
   decisions: string[]
+  session_id?: string
+  blockers?: string[]
 }
 
 export interface CheckpointSummary {
   id: string
-  phase: Phase
+  stage: Stage
   created_at: number
 }
 
@@ -116,13 +118,48 @@ export interface WorkerHealth {
 }
 
 // ============================================================================
+// Session Domain
+// ============================================================================
+
+export type SessionHealth = 'green' | 'yellow' | 'red'
+
+export interface SessionStatus {
+  session_id: string
+  stage: Stage
+  session_start: number
+  duration_minutes: number
+  last_checkpoint?: string
+  tasks_total: number
+  tasks_complete: number
+  health: SessionHealth
+  recommendation: string
+}
+
+export interface SessionRecord {
+  session_id: string
+  started_at: number
+  ended_at?: number
+  checkpoint_id?: string
+  stage: Stage
+  reason?: string
+}
+
+export interface SessionRestartResponse {
+  old_session_id: string
+  new_session_id: string
+  checkpoint_id: string
+  stage: Stage
+  briefing: string
+}
+
+// ============================================================================
 // API Request/Response Types
 // ============================================================================
 
-// GET /api/phases
-export interface PhasesResponse {
-  current: Phase
-  phases: PhaseInfo[]
+// GET /api/stages
+export interface StagesResponse {
+  current: Stage
+  stages: StageInfo[]
 }
 
 // GET /api/tasks
@@ -133,7 +170,7 @@ export interface TasksResponse {
 // POST /api/tasks
 export interface CreateTaskRequest {
   name: string
-  phase?: Phase
+  stage?: Stage
   zone: string
   persona: string
   dependencies?: string[]
@@ -184,10 +221,10 @@ export interface GateApprovalResponse {
 // ============================================================================
 
 // Workflow events
-export interface PhaseChangedEvent {
-  type: 'phase_changed'
-  phase: Phase
-  previous: Phase
+export interface StageChangedEvent {
+  type: 'stage_changed'
+  stage: Stage
+  previous: Stage
 }
 
 export interface TaskCreatedEvent {
@@ -204,7 +241,7 @@ export interface TaskUpdatedEvent {
 
 export interface GateStatusEvent {
   type: 'gate_status'
-  phase: Phase
+  stage: Stage
   status: GateStatus
   criteria?: GateCriterion[]
 }
@@ -222,7 +259,7 @@ export interface TokenWarningEvent {
 export interface CheckpointCreatedEvent {
   type: 'checkpoint_created'
   checkpoint_id: string
-  phase: Phase
+  stage: Stage
 }
 
 export interface HandoffReceivedEvent {
@@ -252,12 +289,21 @@ export interface AgentStuckEvent {
   since_ms: number
 }
 
+// Session events
+export interface SessionRestartedEvent {
+  type: 'session_restarted'
+  old_session: string
+  new_session: string
+  checkpoint: string
+  stage: Stage
+}
+
 // Initial state event
 export interface WorkflowStateEvent {
   type: 'v4_state'
   state: {
-    current_phase: Phase
-    phases: PhaseInfo[]
+    current_stage: Stage
+    stages: StageInfo[]
     tasks: Task[]
     checkpoints: CheckpointSummary[]
   }
@@ -265,7 +311,7 @@ export interface WorkflowStateEvent {
 
 // Union type for all workflow events
 export type WorkflowEvent =
-  | PhaseChangedEvent
+  | StageChangedEvent
   | TaskCreatedEvent
   | TaskUpdatedEvent
   | GateStatusEvent
@@ -275,30 +321,31 @@ export type WorkflowEvent =
   | HandoffValidatedEvent
   | AgentHealthEvent
   | AgentStuckEvent
+  | SessionRestartedEvent
   | WorkflowStateEvent
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-export function getNextPhase(phase: Phase): Phase | null {
-  const index = ALL_PHASES.indexOf(phase)
-  if (index === -1 || index === ALL_PHASES.length - 1) {
+export function getNextStage(stage: Stage): Stage | null {
+  const index = ALL_STAGES.indexOf(stage)
+  if (index === -1 || index === ALL_STAGES.length - 1) {
     return null
   }
-  return ALL_PHASES[index + 1]
+  return ALL_STAGES[index + 1]
 }
 
-export function getPreviousPhase(phase: Phase): Phase | null {
-  const index = ALL_PHASES.indexOf(phase)
+export function getPreviousStage(stage: Stage): Stage | null {
+  const index = ALL_STAGES.indexOf(stage)
   if (index <= 0) {
     return null
   }
-  return ALL_PHASES[index - 1]
+  return ALL_STAGES[index - 1]
 }
 
-export function getPhaseLabel(phase: Phase): string {
-  return phase.charAt(0).toUpperCase() + phase.slice(1)
+export function getStageLabel(stage: Stage): string {
+  return stage.charAt(0).toUpperCase() + stage.slice(1)
 }
 
 export function getTaskStatusColor(status: TaskStatus): string {

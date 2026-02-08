@@ -128,12 +128,12 @@ func TestCheckGate(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	t.Run("check gate without state file", func(t *testing.T) {
-		result, err := CheckGate("idea", tmpDir)
+		result, err := CheckGate("discovery", tmpDir)
 		if err != nil {
 			t.Fatalf("CheckGate() error = %v", err)
 		}
-		if result.Phase != "idea" {
-			t.Errorf("CheckGate() phase = %v, want idea", result.Phase)
+		if result.Stage != "discovery" {
+			t.Errorf("CheckGate() stage = %v, want discovery", result.Stage)
 		}
 		// Default gate status is "closed" when no state file exists
 		if result.Status != "closed" {

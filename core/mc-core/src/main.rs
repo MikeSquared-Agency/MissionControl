@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use knowledge::{Handoff, HandoffStatus, TokenCounter};
+use knowledge::{Handoff, HandoffStatus, TokenCounter, Checkpoint};
+use knowledge::checkpoint::CheckpointCompiler;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Read};
-use std::path::PathBuf;
-use workflow::{Gate, GateStatus, Phase};
+use std::path::{Path, PathBuf};
+use workflow::{Gate, GateStatus, Stage};
 
 #[derive(Parser)]
 #[command(name = "mc-core")]
@@ -22,10 +23,10 @@ enum Commands {
         /// Path to the handoff JSON file
         file: PathBuf,
     },
-    /// Check gate criteria for a phase
+    /// Check gate criteria for a stage
     CheckGate {
-        /// Phase to check (idea, design, implement, verify, document, release)
-        phase: String,
+        /// Stage to check (discovery, goal, requirements, planning, design, implement, verify, validate, document, release)
+        stage: String,
         /// Path to the .mission directory
         #[arg(long, default_value = ".mission")]
         mission_dir: PathBuf,
@@ -35,6 +36,16 @@ enum Commands {
         /// Path to file, or "-" for stdin (default: stdin)
         #[arg(default_value = "-")]
         source: String,
+    },
+    /// Compile a checkpoint JSON file into a markdown briefing
+    CheckpointCompile {
+        /// Path to the checkpoint JSON file
+        file: PathBuf,
+    },
+    /// Validate a checkpoint JSON file schema
+    CheckpointValidate {
+        /// Path to the checkpoint JSON file
+        file: PathBuf,
     },
 }
 
@@ -47,7 +58,7 @@ struct ValidationResult {
 
 #[derive(Debug, Serialize)]
 struct GateCheckResult {
-    phase: String,
+    stage: String,
     status: String,
     criteria: Vec<CriterionResult>,
     can_approve: bool,
@@ -75,13 +86,28 @@ fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
-        Commands::CheckGate { phase, mission_dir } => {
-            let result = check_gate(&phase, &mission_dir)?;
+        Commands::CheckGate { stage, mission_dir } => {
+            let result = check_gate(&stage, &mission_dir)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         Commands::CountTokens { source } => {
             let result = count_tokens(&source)?;
             println!("{}", serde_json::to_string(&result)?);
+        }
+        Commands::CheckpointCompile { file } => {
+            let content = fs::read_to_string(&file)
+                .with_context(|| format!("Failed to read checkpoint file: {}", file.display()))?;
+            let checkpoint: Checkpoint = serde_json::from_str(&content)
+                .with_context(|| "Failed to parse checkpoint JSON")?;
+            let briefing = CheckpointCompiler::compile(&checkpoint);
+            println!("{}", briefing);
+        }
+        Commands::CheckpointValidate { file } => {
+            let result = validate_checkpoint(&file)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            if !result.valid {
+                std::process::exit(1);
+            }
         }
     }
 
@@ -154,10 +180,10 @@ fn validate_handoff(file: &PathBuf) -> Result<ValidationResult> {
     })
 }
 
-fn check_gate(phase_str: &str, mission_dir: &PathBuf) -> Result<GateCheckResult> {
-    // Parse phase
-    let phase: Phase = serde_json::from_str(&format!("\"{}\"", phase_str))
-        .with_context(|| format!("Invalid phase: {}. Valid: idea, design, implement, verify, document, release", phase_str))?;
+fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
+    // Parse stage
+    let stage: Stage = serde_json::from_str(&format!("\"{}\"", stage_str))
+        .with_context(|| format!("Invalid stage: {}. Valid: discovery, goal, requirements, planning, design, implement, verify, validate, document, release", stage_str))?;
 
     // Try to read existing gate state
     let gates_file = mission_dir.join("state/gates.json");
@@ -179,9 +205,9 @@ fn check_gate(phase_str: &str, mission_dir: &PathBuf) -> Result<GateCheckResult>
 
         let gates: GatesFile = serde_json::from_str(&content)?;
 
-        if let Some(state) = gates.gates.get(phase_str) {
+        if let Some(state) = gates.gates.get(stage_str) {
             // Build gate from state
-            let mut gate = Gate::new(phase);
+            let mut gate = Gate::new(stage);
             // Map criteria - mark as satisfied if status indicates completion
             for (i, criterion) in gate.criteria.iter_mut().enumerate() {
                 // Check if we have enough criteria in state
@@ -197,10 +223,10 @@ fn check_gate(phase_str: &str, mission_dir: &PathBuf) -> Result<GateCheckResult>
             }
             gate
         } else {
-            Gate::new(phase)
+            Gate::new(stage)
         }
     } else {
-        Gate::new(phase)
+        Gate::new(stage)
     };
 
     let criteria: Vec<CriterionResult> = gate
@@ -219,7 +245,7 @@ fn check_gate(phase_str: &str, mission_dir: &PathBuf) -> Result<GateCheckResult>
     };
 
     Ok(GateCheckResult {
-        phase: phase_str.to_string(),
+        stage: stage_str.to_string(),
         status: status.to_string(),
         criteria,
         can_approve: gate.all_criteria_satisfied() && gate.approved_at.is_none(),
@@ -244,6 +270,42 @@ fn count_tokens(source: &str) -> Result<TokenCountResult> {
     let tokens = counter.count(&content);
 
     Ok(TokenCountResult { tokens })
+}
+
+fn validate_checkpoint(file: &PathBuf) -> Result<ValidationResult> {
+    let mut errors = Vec::new();
+    let warnings = Vec::new();
+
+    let content = fs::read_to_string(file)
+        .with_context(|| format!("Failed to read file: {}", file.display()))?;
+
+    // Try to parse as checkpoint
+    let checkpoint: Checkpoint = match serde_json::from_str(&content) {
+        Ok(cp) => cp,
+        Err(e) => {
+            errors.push(format!("Invalid checkpoint JSON: {}", e));
+            return Ok(ValidationResult {
+                valid: false,
+                errors,
+                warnings,
+            });
+        }
+    };
+
+    // Validate required fields
+    if checkpoint.id.is_empty() {
+        errors.push("id is required".to_string());
+    }
+
+    if checkpoint.created_at == 0 {
+        errors.push("created_at must be non-zero".to_string());
+    }
+
+    Ok(ValidationResult {
+        valid: errors.is_empty(),
+        errors,
+        warnings,
+    })
 }
 
 #[cfg(test)]
@@ -306,5 +368,59 @@ mod tests {
 
         let result = count_tokens(file.path().to_str().unwrap()).unwrap();
         assert!(result.tokens > 0);
+    }
+
+    #[test]
+    fn test_validate_checkpoint_valid() {
+        let checkpoint = r#"{
+            "id": "cp-1",
+            "stage": "design",
+            "created_at": 1234567890,
+            "tasks_snapshot": [],
+            "findings_snapshot": [],
+            "decisions": []
+        }"#;
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(checkpoint.as_bytes()).unwrap();
+
+        let result = validate_checkpoint(&file.path().to_path_buf()).unwrap();
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_validate_checkpoint_invalid() {
+        let checkpoint = r#"{ "not": "a checkpoint" }"#;
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(checkpoint.as_bytes()).unwrap();
+
+        let result = validate_checkpoint(&file.path().to_path_buf()).unwrap();
+        assert!(!result.valid);
+    }
+
+    #[test]
+    fn test_checkpoint_compile() {
+        let checkpoint = r#"{
+            "id": "cp-test",
+            "stage": "implement",
+            "created_at": 1234567890,
+            "tasks_snapshot": [],
+            "findings_snapshot": [],
+            "decisions": ["Use Rust for core"],
+            "session_id": "session-001",
+            "blockers": ["CI failing"]
+        }"#;
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(checkpoint.as_bytes()).unwrap();
+
+        let content = fs::read_to_string(file.path()).unwrap();
+        let cp: Checkpoint = serde_json::from_str(&content).unwrap();
+        let briefing = CheckpointCompiler::compile(&cp);
+
+        assert!(briefing.contains("implement"));
+        assert!(briefing.contains("Use Rust for core"));
+        assert!(briefing.contains("CI failing"));
     }
 }

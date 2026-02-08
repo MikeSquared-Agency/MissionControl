@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   useKnowledgeStore,
   useBudgets,
@@ -6,11 +6,17 @@ import {
   useTotalTokenUsage,
   useCheckpoints,
   useRecentHandoffs,
+  useSessionStatus,
+  useSessionHistory,
   createBudget,
-  createCheckpoint
+  createCheckpoint,
+  fetchSessionStatus,
+  fetchSessionHistory,
+  restartSession
 } from '../../stores/useKnowledgeStore'
-import type { TokenBudget, BudgetStatus, CheckpointSummary, Handoff } from '../../types/workflow'
-import { getBudgetStatusColor } from '../../types/workflow'
+import type { TokenBudget, BudgetStatus, CheckpointSummary, Handoff, SessionStatus, SessionRecord } from '../../types/workflow'
+import { getBudgetStatusColor, getStageLabel } from '../../types/workflow'
+import { toast } from '../../stores/useToast'
 
 export function TokenUsage() {
   const budgets = useBudgets()
@@ -18,7 +24,33 @@ export function TokenUsage() {
   const totals = useTotalTokenUsage()
   const checkpoints = useCheckpoints()
   const handoffs = useRecentHandoffs()
+  const sessionStatus = useSessionStatus()
+  const sessionHistory = useSessionHistory()
+  const setSessionStatus = useKnowledgeStore((s) => s.setSessionStatus)
+  const setSessionHistory = useKnowledgeStore((s) => s.setSessionHistory)
   const [showNewBudget, setShowNewBudget] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+
+  // Fetch session status on mount and periodically
+  useEffect(() => {
+    const load = () => {
+      fetchSessionStatus()
+        .then(setSessionStatus)
+        .catch(() => {}) // Silently fail if endpoint unavailable
+    }
+    load()
+    const interval = setInterval(load, 30000)
+    return () => clearInterval(interval)
+  }, [setSessionStatus])
+
+  // Fetch session history when expanded
+  useEffect(() => {
+    if (showHistory) {
+      fetchSessionHistory()
+        .then(setSessionHistory)
+        .catch(() => {})
+    }
+  }, [showHistory, setSessionHistory])
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
@@ -50,6 +82,11 @@ export function TokenUsage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-3 space-y-4">
+        {/* Session health indicator (G5.1) */}
+        {sessionStatus && (
+          <SessionHealthCard status={sessionStatus} />
+        )}
+
         {/* New budget form */}
         {showNewBudget && (
           <NewBudgetForm onClose={() => setShowNewBudget(false)} />
@@ -73,13 +110,21 @@ export function TokenUsage() {
           )}
         </section>
 
-        {/* Checkpoints */}
+        {/* Checkpoints (G5.3) */}
         <section>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">
               Checkpoints
             </h3>
-            <CreateCheckpointButton />
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="px-2 py-0.5 text-[10px] font-medium text-gray-500 hover:text-gray-400 hover:bg-gray-800 rounded transition-colors"
+              >
+                {showHistory ? 'Hide History' : 'Session History'}
+              </button>
+              <CreateCheckpointButton />
+            </div>
           </div>
           {checkpoints.length === 0 ? (
             <div className="text-sm text-gray-600 py-4 text-center">
@@ -93,6 +138,26 @@ export function TokenUsage() {
             </div>
           )}
         </section>
+
+        {/* Session history (G5.3) */}
+        {showHistory && (
+          <section>
+            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+              Session History
+            </h3>
+            {sessionHistory.length === 0 ? (
+              <div className="text-sm text-gray-600 py-4 text-center">
+                No previous sessions
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {sessionHistory.slice().reverse().map((s) => (
+                  <SessionRow key={s.session_id} session={s} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Recent handoffs */}
         <section>
@@ -115,6 +180,162 @@ export function TokenUsage() {
     </div>
   )
 }
+
+// ============================================================================
+// Session Health Card (G5.1)
+// ============================================================================
+
+interface SessionHealthCardProps {
+  status: SessionStatus
+}
+
+function SessionHealthCard({ status }: SessionHealthCardProps) {
+  const [confirmRestart, setConfirmRestart] = useState(false)
+  const [restarting, setRestarting] = useState(false)
+  const setSessionStatus = useKnowledgeStore((s) => s.setSessionStatus)
+
+  const healthColors: Record<string, { bg: string; border: string; dot: string; text: string }> = {
+    green: { bg: 'bg-green-500/5', border: 'border-green-500/20', dot: 'bg-green-500', text: 'text-green-400' },
+    yellow: { bg: 'bg-amber-500/5', border: 'border-amber-500/20', dot: 'bg-amber-500', text: 'text-amber-400' },
+    red: { bg: 'bg-red-500/5', border: 'border-red-500/20', dot: 'bg-red-500', text: 'text-red-400' },
+  }
+
+  const colors = healthColors[status.health] || healthColors.green
+
+  const handleRestart = async () => {
+    setRestarting(true)
+    try {
+      const result = await restartSession()
+      toast.success(`Session restarted. New session: ${result.new_session_id.slice(0, 8)}...`)
+      // Refresh session status
+      fetchSessionStatus()
+        .then(setSessionStatus)
+        .catch(() => {})
+    } catch (err) {
+      toast.error('Failed to restart session')
+      console.error('Failed to restart session:', err)
+    } finally {
+      setRestarting(false)
+      setConfirmRestart(false)
+    }
+  }
+
+  return (
+    <section>
+      <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+        Session Health
+      </h3>
+      <div className={`p-3 rounded-lg border ${colors.bg} ${colors.border}`}>
+        {/* Health row */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${colors.dot} ${status.health !== 'green' ? 'animate-pulse' : ''}`} />
+            <span className="text-sm font-medium text-gray-200">
+              {getStageLabel(status.stage)}
+            </span>
+          </div>
+          <span className={`text-xs font-medium ${colors.text}`}>
+            {status.health === 'green' ? 'Healthy' : status.health === 'yellow' ? 'Caution' : 'Critical'}
+          </span>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2 mb-2 text-[10px]">
+          <div>
+            <span className="text-gray-500 block">Duration</span>
+            <span className="text-gray-300 font-mono">{formatDuration(status.duration_minutes)}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block">Tasks</span>
+            <span className="text-gray-300 font-mono">{status.tasks_complete}/{status.tasks_total}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block">Session</span>
+            <span className="text-gray-300 font-mono">{status.session_id.slice(0, 8)}</span>
+          </div>
+        </div>
+
+        {/* Recommendation */}
+        {status.recommendation && (
+          <p className="text-[10px] text-gray-500 mb-2">{status.recommendation}</p>
+        )}
+
+        {/* Restart button (G5.2) */}
+        {!confirmRestart ? (
+          <button
+            onClick={() => setConfirmRestart(true)}
+            className="w-full py-1.5 text-xs font-medium text-gray-400 hover:text-gray-300 bg-gray-800/50 hover:bg-gray-800 border border-gray-700 rounded transition-colors"
+          >
+            Restart Session
+          </button>
+        ) : (
+          <div className="space-y-1.5">
+            <p className="text-[10px] text-amber-400">
+              This will create a final checkpoint and start a new session with a compiled briefing.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleRestart}
+                disabled={restarting}
+                className="flex-1 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 disabled:text-gray-500 rounded transition-colors"
+              >
+                {restarting ? 'Restarting...' : 'Confirm Restart'}
+              </button>
+              <button
+                onClick={() => setConfirmRestart(false)}
+                disabled={restarting}
+                className="px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-gray-300 bg-gray-800 rounded transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ============================================================================
+// Session History Row (G5.3)
+// ============================================================================
+
+interface SessionRowProps {
+  session: SessionRecord
+}
+
+function SessionRow({ session }: SessionRowProps) {
+  const isCurrent = !session.ended_at
+  const duration = session.ended_at
+    ? Math.floor((session.ended_at - session.started_at) / 60000)
+    : Math.floor((Date.now() - session.started_at) / 60000)
+
+  return (
+    <div className={`flex items-center justify-between px-2 py-1.5 rounded text-xs ${
+      isCurrent ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-gray-800/30'
+    }`}>
+      <div className="flex items-center gap-2">
+        {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
+        <span className="font-mono text-gray-400">{session.session_id.slice(0, 8)}</span>
+        {session.reason && (
+          <span className="text-[10px] text-gray-600">{session.reason}</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="px-1.5 py-0.5 text-[10px] font-medium text-gray-500 bg-gray-800 rounded">
+          {session.stage}
+        </span>
+        <span className="text-[10px] text-gray-600 font-mono">
+          {formatDuration(duration)}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Original Components
+// ============================================================================
 
 interface TotalUsageBarProps {
   used: number
@@ -334,7 +555,7 @@ function CheckpointRow({ checkpoint }: CheckpointRowProps) {
       </div>
       <div className="flex items-center gap-2">
         <span className="px-1.5 py-0.5 text-[10px] font-medium text-gray-500 bg-gray-800 rounded">
-          {checkpoint.phase}
+          {checkpoint.stage}
         </span>
         <span className="text-[10px] text-gray-600">
           {formatTime(checkpoint.created_at)}
@@ -373,6 +594,10 @@ function HandoffRow({ handoff }: HandoffRowProps) {
   )
 }
 
+// ============================================================================
+// Formatters
+// ============================================================================
+
 function formatTokens(tokens: number): string {
   if (tokens >= 1000000) {
     return `${(tokens / 1000000).toFixed(1)}M`
@@ -397,4 +622,13 @@ function formatTime(timestamp: number): string {
   if (diffHours < 24) return `${diffHours}h ago`
 
   return date.toLocaleDateString()
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes < 1) return '<1m'
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (mins === 0) return `${hours}h`
+  return `${hours}h ${mins}m`
 }

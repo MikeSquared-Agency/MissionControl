@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -16,8 +17,8 @@ type Event struct {
 	Data interface{} `json:"data,omitempty"`
 }
 
-// PhaseState represents the phase.json structure
-type PhaseState struct {
+// StageState represents the stage.json structure
+type StageState struct {
 	Current   string `json:"current"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -26,18 +27,13 @@ type PhaseState struct {
 type Task struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
-	Phase     string `json:"phase"`
+	Stage     string `json:"stage"`
 	Zone      string `json:"zone"`
 	Persona   string `json:"persona"`
 	Status    string `json:"status"`
 	WorkerID  string `json:"worker_id,omitempty"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
-}
-
-// TasksState represents the tasks.json structure
-type TasksState struct {
-	Tasks []Task `json:"tasks"`
 }
 
 // Worker represents a worker from workers.json
@@ -58,7 +54,7 @@ type WorkersState struct {
 
 // Gate represents a gate from gates.json
 type Gate struct {
-	Phase      string   `json:"phase"`
+	Stage      string   `json:"stage"`
 	Status     string   `json:"status"`
 	Criteria   []string `json:"criteria"`
 	ApprovedAt string   `json:"approved_at,omitempty"`
@@ -77,7 +73,7 @@ type Watcher struct {
 	mu         sync.RWMutex
 
 	// Last known state for diffing
-	lastPhase   PhaseState
+	lastStage   StageState
 	lastTasks   map[string]Task
 	lastWorkers map[string]Worker
 	lastGates   map[string]Gate
@@ -146,16 +142,14 @@ func (w *Watcher) loadInitialState() {
 
 	stateDir := filepath.Join(w.missionDir, "state")
 
-	// Load phase
-	if data, err := os.ReadFile(filepath.Join(stateDir, "phase.json")); err == nil {
-		json.Unmarshal(data, &w.lastPhase)
+	// Load stage
+	if data, err := os.ReadFile(filepath.Join(stateDir, "stage.json")); err == nil {
+		_ = json.Unmarshal(data, &w.lastStage)
 	}
 
-	// Load tasks
-	var tasksState TasksState
-	if data, err := os.ReadFile(filepath.Join(stateDir, "tasks.json")); err == nil {
-		json.Unmarshal(data, &tasksState)
-		for _, t := range tasksState.Tasks {
+	// Load tasks (JSONL format, one task per line)
+	if tasks, err := readTasksJSONLFile(filepath.Join(stateDir, "tasks.jsonl")); err == nil {
+		for _, t := range tasks {
 			w.lastTasks[t.ID] = t
 		}
 	}
@@ -163,7 +157,7 @@ func (w *Watcher) loadInitialState() {
 	// Load workers
 	var workersState WorkersState
 	if data, err := os.ReadFile(filepath.Join(stateDir, "workers.json")); err == nil {
-		json.Unmarshal(data, &workersState)
+		_ = json.Unmarshal(data, &workersState)
 		for _, wr := range workersState.Workers {
 			w.lastWorkers[wr.ID] = wr
 		}
@@ -172,7 +166,7 @@ func (w *Watcher) loadInitialState() {
 	// Load gates
 	var gatesState GatesState
 	if data, err := os.ReadFile(filepath.Join(stateDir, "gates.json")); err == nil {
-		json.Unmarshal(data, &gatesState)
+		_ = json.Unmarshal(data, &gatesState)
 		w.lastGates = gatesState.Gates
 	}
 }
@@ -181,29 +175,26 @@ func (w *Watcher) loadInitialState() {
 func (w *Watcher) checkForChanges() {
 	stateDir := filepath.Join(w.missionDir, "state")
 
-	// Check phase
-	var currentPhase PhaseState
-	if data, err := os.ReadFile(filepath.Join(stateDir, "phase.json")); err == nil {
-		json.Unmarshal(data, &currentPhase)
+	// Check stage
+	var currentStage StageState
+	if data, err := os.ReadFile(filepath.Join(stateDir, "stage.json")); err == nil {
+		_ = json.Unmarshal(data, &currentStage)
 		w.mu.Lock()
-		if currentPhase.Current != w.lastPhase.Current {
-			w.emitEvent("phase_changed", map[string]interface{}{
-				"previous": w.lastPhase.Current,
-				"current":  currentPhase.Current,
+		if currentStage.Current != w.lastStage.Current {
+			w.emitEvent("stage_changed", map[string]interface{}{
+				"previous": w.lastStage.Current,
+				"current":  currentStage.Current,
 			})
-			w.lastPhase = currentPhase
+			w.lastStage = currentStage
 		}
 		w.mu.Unlock()
 	}
 
 	// Check tasks
-	var tasksState TasksState
-	if data, err := os.ReadFile(filepath.Join(stateDir, "tasks.json")); err == nil {
-		json.Unmarshal(data, &tasksState)
-
+	if tasks, err := readTasksJSONLFile(filepath.Join(stateDir, "tasks.jsonl")); err == nil {
 		w.mu.Lock()
 		currentTasks := make(map[string]Task)
-		for _, t := range tasksState.Tasks {
+		for _, t := range tasks {
 			currentTasks[t.ID] = t
 
 			// Check if new or updated
@@ -224,7 +215,7 @@ func (w *Watcher) checkForChanges() {
 	// Check workers
 	var workersState WorkersState
 	if data, err := os.ReadFile(filepath.Join(stateDir, "workers.json")); err == nil {
-		json.Unmarshal(data, &workersState)
+		_ = json.Unmarshal(data, &workersState)
 
 		w.mu.Lock()
 		currentWorkers := make(map[string]Worker)
@@ -260,20 +251,20 @@ func (w *Watcher) checkForChanges() {
 	// Check gates
 	var gatesState GatesState
 	if data, err := os.ReadFile(filepath.Join(stateDir, "gates.json")); err == nil {
-		json.Unmarshal(data, &gatesState)
+		_ = json.Unmarshal(data, &gatesState)
 
 		w.mu.Lock()
-		for phase, gate := range gatesState.Gates {
-			if lastGate, exists := w.lastGates[phase]; exists {
+		for stage, gate := range gatesState.Gates {
+			if lastGate, exists := w.lastGates[stage]; exists {
 				if gate.Status != lastGate.Status {
 					if gate.Status == "approved" {
 						w.emitEvent("gate_approved", map[string]interface{}{
-							"phase":      phase,
+							"stage":       stage,
 							"approved_at": gate.ApprovedAt,
 						})
 					} else if gate.Status == "ready" {
 						w.emitEvent("gate_ready", map[string]interface{}{
-							"phase":    phase,
+							"stage":    stage,
 							"criteria": gate.Criteria,
 						})
 					}
@@ -350,9 +341,34 @@ func (w *Watcher) GetCurrentState() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"phase":   w.lastPhase,
+		"stage":   w.lastStage,
 		"tasks":   tasks,
 		"workers": workers,
 		"gates":   w.lastGates,
 	}
+}
+
+// readTasksJSONLFile reads tasks from a JSONL file (one JSON task per line).
+func readTasksJSONLFile(path string) ([]Task, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var tasks []Task
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var task Task
+		if err := json.Unmarshal(line, &task); err != nil {
+			continue // skip malformed lines in watcher
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, scanner.Err()
 }

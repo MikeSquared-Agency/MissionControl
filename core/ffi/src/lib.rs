@@ -1,7 +1,9 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
-use workflow::{WorkflowEngine, Task, TaskStatus, Phase, GateStatus};
+use workflow::{WorkflowEngine, Task, TaskStatus, Stage, GateStatus};
 use knowledge::{KnowledgeManager, Handoff, BudgetStatus};
 use runtime::{HealthMonitor, HealthStatus};
 
@@ -59,17 +61,17 @@ pub extern "C" fn workflow_engine_free(ptr: *mut WorkflowEngine) {
     }
 }
 
-/// Get current phase as JSON string
+/// Get current stage as JSON string
 #[no_mangle]
-pub extern "C" fn workflow_engine_current_phase(ptr: *const WorkflowEngine) -> *mut c_char {
+pub extern "C" fn workflow_engine_current_stage(ptr: *const WorkflowEngine) -> *mut c_char {
     if ptr.is_null() {
         return std::ptr::null_mut();
     }
 
     let engine = unsafe { &*ptr };
-    let phase = engine.current_phase();
+    let stage = engine.current_stage();
     let json = serde_json::json!({
-        "phase": phase.as_str()
+        "stage": stage.as_str()
     });
 
     to_c_string(&json.to_string())
@@ -166,28 +168,28 @@ pub extern "C" fn workflow_engine_update_task_status(
     }
 }
 
-/// Check gate status for a phase
+/// Check gate status for a stage
 #[no_mangle]
 pub extern "C" fn workflow_engine_check_gate(
     ptr: *const WorkflowEngine,
-    phase_str: *const c_char,
+    stage_str: *const c_char,
 ) -> *mut c_char {
     if ptr.is_null() {
         return to_c_string(r#"{"error": "null engine pointer"}"#);
     }
 
-    let phase_name = match from_c_string(phase_str) {
+    let stage_name = match from_c_string(stage_str) {
         Some(s) => s,
-        None => return to_c_string(r#"{"error": "invalid phase"}"#),
+        None => return to_c_string(r#"{"error": "invalid stage"}"#),
     };
 
-    let phase: Phase = match serde_json::from_str(&format!(r#""{}""#, phase_name)) {
+    let stage: Stage = match serde_json::from_str(&format!(r#""{}""#, stage_name)) {
         Ok(p) => p,
-        Err(_) => return to_c_string(r#"{"error": "unknown phase"}"#),
+        Err(_) => return to_c_string(r#"{"error": "unknown stage"}"#),
     };
 
     let engine = unsafe { &*ptr };
-    let status = engine.check_gate(phase);
+    let status = engine.check_gate(stage);
 
     let status_str = match status {
         GateStatus::Open => "open",
@@ -202,16 +204,16 @@ pub extern "C" fn workflow_engine_check_gate(
 #[no_mangle]
 pub extern "C" fn workflow_engine_approve_gate(
     ptr: *mut WorkflowEngine,
-    phase_str: *const c_char,
+    stage_str: *const c_char,
     approved_by: *const c_char,
 ) -> *mut c_char {
     if ptr.is_null() {
         return to_c_string(r#"{"error": "null engine pointer"}"#);
     }
 
-    let phase_name = match from_c_string(phase_str) {
+    let stage_name = match from_c_string(stage_str) {
         Some(s) => s,
-        None => return to_c_string(r#"{"error": "invalid phase"}"#),
+        None => return to_c_string(r#"{"error": "invalid stage"}"#),
     };
 
     let by = match from_c_string(approved_by) {
@@ -219,13 +221,13 @@ pub extern "C" fn workflow_engine_approve_gate(
         None => return to_c_string(r#"{"error": "invalid approver"}"#),
     };
 
-    let phase: Phase = match serde_json::from_str(&format!(r#""{}""#, phase_name)) {
+    let stage: Stage = match serde_json::from_str(&format!(r#""{}""#, stage_name)) {
         Ok(p) => p,
-        Err(_) => return to_c_string(r#"{"error": "unknown phase"}"#),
+        Err(_) => return to_c_string(r#"{"error": "unknown stage"}"#),
     };
 
     let engine = unsafe { &mut *ptr };
-    match engine.approve_gate(phase, &by) {
+    match engine.approve_gate(stage, &by) {
         Ok(()) => to_c_string(r#"{"success": true}"#),
         Err(e) => to_c_string(&format!(r#"{{"error": "{}"}}"#, e)),
     }
@@ -535,11 +537,11 @@ mod tests {
         let engine = workflow_engine_new();
         assert!(!engine.is_null());
 
-        let phase = workflow_engine_current_phase(engine);
-        assert!(!phase.is_null());
+        let stage = workflow_engine_current_stage(engine);
+        assert!(!stage.is_null());
 
         // Clean up
-        missioncontrol_free_string(phase);
+        missioncontrol_free_string(stage);
         workflow_engine_free(engine);
     }
 

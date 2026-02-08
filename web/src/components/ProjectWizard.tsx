@@ -30,7 +30,7 @@ export function ProjectWizard() {
   const [path, setPath] = useState('')
   const [audience, setAudience] = useState<Audience>('personal')
   const [initGit, setInitGit] = useState(true)
-  const [enableKing, setEnableKing] = useState(true)
+  const [enableOpenClaw, setEnableOpenClaw] = useState(true)
   const [matrix, setMatrix] = useState<MatrixCell[]>([])
   const [folderPickerOpen, setFolderPickerOpen] = useState(false)
 
@@ -47,7 +47,7 @@ export function ProjectWizard() {
       setPath('')
       setAudience('personal')
       setInitGit(true)
-      setEnableKing(true)
+      setEnableOpenClaw(true)
       setMatrix(buildInitialMatrix('personal'))
       setError('')
       setPathStatus({ exists: false, hasGit: false, hasMission: false })
@@ -130,7 +130,7 @@ export function ProjectWizard() {
       const project = await createProject({
         path,
         initGit: !pathStatus.hasGit && initGit,
-        enableKing,
+        enableOpenClaw,
         matrix,
         mode,
         ollamaModel: mode === 'offline' ? ollamaModel : undefined
@@ -139,8 +139,8 @@ export function ProjectWizard() {
       setCurrentProject(project.path)
       closeWizard()
 
-      // Auto-enable King mode if enableKing was checked
-      if (enableKing) {
+      // Auto-enable King mode if enableOpenClaw was checked
+      if (enableOpenClaw) {
         setKingMode(true)
       }
 
@@ -314,11 +314,11 @@ export function ProjectWizard() {
                 <label className="flex items-center gap-3">
                   <input
                     type="checkbox"
-                    checked={enableKing}
-                    onChange={(e) => setEnableKing(e.target.checked)}
+                    checked={enableOpenClaw}
+                    onChange={(e) => setEnableOpenClaw(e.target.checked)}
                     className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
                   />
-                  <span className="text-sm text-gray-300">Enable King (recommended)</span>
+                  <span className="text-sm text-gray-300">Enable OpenClaw (recommended)</span>
                 </label>
               </div>
             </>

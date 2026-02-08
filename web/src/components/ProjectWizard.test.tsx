@@ -38,7 +38,7 @@ describe('ProjectWizard', () => {
       expect(screen.getByText('Personal')).toBeInTheDocument()
       expect(screen.getByText('Customers')).toBeInTheDocument()
       expect(screen.getByText(/Initialize git/i)).toBeInTheDocument()
-      expect(screen.getByText(/Enable King/i)).toBeInTheDocument()
+      expect(screen.getByText(/Enable OpenClaw/i)).toBeInTheDocument()
     })
 
     it('should disable continue button when path is empty', () => {
@@ -88,8 +88,8 @@ describe('ProjectWizard', () => {
       })
 
       await waitFor(() => {
-        expect(screen.getByText(/Project already exists/i)).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: /Open Project/i })).toBeInTheDocument()
+        expect(screen.getByText(/Found existing MissionControl project/i)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /Import Project/i })).toBeInTheDocument()
       })
     })
 

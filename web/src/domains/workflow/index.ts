@@ -1,1 +1,1 @@
-export { PhaseView } from './PhaseView'
+export { StageView } from './StageView'

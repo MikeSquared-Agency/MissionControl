@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum HealthStatus {
+    #[default]
     Healthy,
     Idle { since_ms: u64 },
     Stuck { since_ms: u64 },
@@ -11,11 +12,6 @@ pub enum HealthStatus {
     Dead,
 }
 
-impl Default for HealthStatus {
-    fn default() -> Self {
-        HealthStatus::Healthy
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct WorkerHealth {

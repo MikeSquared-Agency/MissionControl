@@ -174,7 +174,7 @@ func (h *ProjectsHandler) listProjects(w http.ResponseWriter, r *http.Request) {
 // CreateProjectRequest is the request body for creating a project
 type CreateProjectRequest struct {
 	Path        string       `json:"path"`
-	Import      bool         `json:"import"`     // If true, import existing .mission project without running mc init
+	Import      bool         `json:"import"` // If true, import existing .mission project without running mc init
 	InitGit     bool         `json:"initGit"`
 	EnableKing  bool         `json:"enableKing"`
 	Matrix      []MatrixCell `json:"matrix"`
@@ -184,7 +184,7 @@ type CreateProjectRequest struct {
 
 // MatrixCell represents a cell in the workflow matrix
 type MatrixCell struct {
-	Phase   string `json:"phase"`
+	Stage   string `json:"stage"`
 	Zone    string `json:"zone"`
 	Persona string `json:"persona"`
 	Enabled bool   `json:"enabled"`
@@ -209,9 +209,9 @@ type ProjectConfig struct {
 
 // PersonaResponse represents persona data returned by API
 type PersonaResponse struct {
-	ID          string `json:"id"`
-	Enabled     bool   `json:"enabled"`
-	HasPrompt   bool   `json:"hasPrompt"`
+	ID        string `json:"id"`
+	Enabled   bool   `json:"enabled"`
+	HasPrompt bool   `json:"hasPrompt"`
 }
 
 // UpdatePersonaRequest is the request body for updating a persona
@@ -269,7 +269,7 @@ func (h *ProjectsHandler) createProject(w http.ResponseWriter, r *http.Request) 
 		matrixConfig := map[string]interface{}{
 			"matrix": req.Matrix,
 		}
-		json.NewEncoder(configFile).Encode(matrixConfig)
+		_ = json.NewEncoder(configFile).Encode(matrixConfig)
 		configFile.Close()
 
 		// Build mc init command
@@ -305,7 +305,7 @@ func (h *ProjectsHandler) createProject(w http.ResponseWriter, r *http.Request) 
 				if req.OllamaModel != "" {
 					projectConfig.OllamaModel = req.OllamaModel
 				}
-				h.saveProjectConfig(path, projectConfig)
+				_ = h.saveProjectConfig(path, projectConfig)
 			}
 		}
 	}

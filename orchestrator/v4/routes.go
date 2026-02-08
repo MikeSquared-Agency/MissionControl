@@ -28,7 +28,7 @@ func NewHandler(store *Store, notifier EventNotifier) *Handler {
 // RegisterRoutes registers v4 routes on the given mux
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Workflow routes
-	mux.HandleFunc("/api/phases", h.handlePhases)
+	mux.HandleFunc("/api/stages", h.handleStages)
 	mux.HandleFunc("/api/tasks", h.handleTasks)
 	mux.HandleFunc("/api/tasks/", h.handleTask)
 
@@ -38,6 +38,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/checkpoints/", h.handleCheckpoint)
 	mux.HandleFunc("/api/budgets/", h.handleBudget)
 
+	// Session/checkpoint management routes
+	mux.HandleFunc("/api/checkpoint/status", h.handleCheckpointStatus)
+	mux.HandleFunc("/api/checkpoint/history", h.handleCheckpointHistory)
+	mux.HandleFunc("/api/checkpoint/restart", h.handleCheckpointRestart)
+
 	// Strategy routes
 	mux.HandleFunc("/api/gates/", h.handleGate)
 }
@@ -46,31 +51,31 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 // Workflow Domain
 // ============================================================================
 
-// PhasesResponse is the response for GET /api/phases
-type PhasesResponse struct {
-	Current Phase       `json:"current"`
-	Phases  []PhaseInfo `json:"phases"`
+// StagesResponse is the response for GET /api/stages
+type StagesResponse struct {
+	Current Stage       `json:"current"`
+	Stages  []StageInfo `json:"stages"`
 }
 
-func (h *Handler) handlePhases(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleStages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	response := PhasesResponse{
-		Current: h.Store.CurrentPhase(),
-		Phases:  h.Store.GetPhases(),
+	response := StagesResponse{
+		Current: h.Store.CurrentStage(),
+		Stages:  h.Store.GetStages(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // CreateTaskRequest is the request for POST /api/tasks
 type CreateTaskRequest struct {
 	Name         string   `json:"name"`
-	Phase        Phase    `json:"phase"`
+	Stage        Stage    `json:"stage"`
 	Zone         string   `json:"zone"`
 	Persona      string   `json:"persona"`
 	Dependencies []string `json:"dependencies,omitempty"`
@@ -95,10 +100,10 @@ func (h *Handler) handleTasks(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
-	var phase *Phase
-	if p := query.Get("phase"); p != "" {
-		ph := Phase(p)
-		phase = &ph
+	var stage *Stage
+	if s := query.Get("stage"); s != "" {
+		st := Stage(s)
+		stage = &st
 	}
 
 	var zone *string
@@ -116,10 +121,10 @@ func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 		persona = &p
 	}
 
-	tasks := h.Store.ListTasks(phase, zone, status, persona)
+	tasks := h.Store.ListTasks(stage, zone, status, persona)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TasksResponse{Tasks: tasks})
+	_ = json.NewEncoder(w).Encode(TasksResponse{Tasks: tasks})
 }
 
 func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
@@ -134,11 +139,11 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Phase == "" {
-		req.Phase = h.Store.CurrentPhase()
+	if req.Stage == "" {
+		req.Stage = h.Store.CurrentStage()
 	}
 
-	task := h.Store.CreateTask(req.Name, req.Phase, req.Zone, req.Persona, req.Dependencies)
+	task := h.Store.CreateTask(req.Name, req.Stage, req.Zone, req.Persona, req.Dependencies)
 
 	// Notify via WebSocket
 	if h.Notifier != nil {
@@ -150,7 +155,7 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(task)
+	_ = json.NewEncoder(w).Encode(task)
 }
 
 // UpdateTaskStatusRequest is the request for PUT /api/tasks/:id/status
@@ -196,7 +201,7 @@ func (h *Handler) getTask(w http.ResponseWriter, r *http.Request, id string) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(task)
+	_ = json.NewEncoder(w).Encode(task)
 }
 
 func (h *Handler) updateTaskStatus(w http.ResponseWriter, r *http.Request, id string) {
@@ -237,7 +242,7 @@ func (h *Handler) updateTaskStatus(w http.ResponseWriter, r *http.Request, id st
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(task)
+	_ = json.NewEncoder(w).Encode(task)
 }
 
 // ============================================================================
@@ -300,7 +305,7 @@ func (h *Handler) handleHandoffs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(HandoffResponse{
+		_ = json.NewEncoder(w).Encode(HandoffResponse{
 			Valid:  false,
 			Errors: errors,
 		})
@@ -326,7 +331,7 @@ func (h *Handler) handleHandoffs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(HandoffResponse{
+	_ = json.NewEncoder(w).Encode(HandoffResponse{
 		Valid:   true,
 		DeltaID: "", // TODO: implement delta computation
 	})
@@ -342,7 +347,7 @@ func (h *Handler) handleCheckpoints(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		checkpoints := h.Store.ListCheckpoints()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(CheckpointsResponse{Checkpoints: checkpoints})
+		_ = json.NewEncoder(w).Encode(CheckpointsResponse{Checkpoints: checkpoints})
 
 	case "POST":
 		summary := h.Store.CreateCheckpoint()
@@ -352,13 +357,13 @@ func (h *Handler) handleCheckpoints(w http.ResponseWriter, r *http.Request) {
 			h.Notifier.Notify(map[string]interface{}{
 				"type":          "checkpoint_created",
 				"checkpoint_id": summary.ID,
-				"phase":         summary.Phase,
+				"stage":         summary.Stage,
 			})
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(summary)
+		_ = json.NewEncoder(w).Encode(summary)
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -384,7 +389,7 @@ func (h *Handler) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(checkpoint)
+	_ = json.NewEncoder(w).Encode(checkpoint)
 }
 
 func (h *Handler) handleBudget(w http.ResponseWriter, r *http.Request) {
@@ -402,7 +407,7 @@ func (h *Handler) handleBudget(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(budget)
+		_ = json.NewEncoder(w).Encode(budget)
 
 	case "POST":
 		var req struct {
@@ -416,7 +421,7 @@ func (h *Handler) handleBudget(w http.ResponseWriter, r *http.Request) {
 		budget, _ := h.Store.GetBudget(workerID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(budget)
+		_ = json.NewEncoder(w).Encode(budget)
 
 	case "PUT":
 		var req struct {
@@ -451,7 +456,7 @@ func (h *Handler) handleBudget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(budget)
+		_ = json.NewEncoder(w).Encode(budget)
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -482,14 +487,14 @@ func (h *Handler) handleGate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Gate ID is "gate-{phase}", extract phase
+	// Gate ID is "gate-{stage}", extract stage
 	gateID := parts[0]
-	phase := Phase(strings.TrimPrefix(gateID, "gate-"))
+	stage := Stage(strings.TrimPrefix(gateID, "gate-"))
 
 	// Check for /approve subpath
 	if len(parts) > 1 && parts[1] == "approve" {
 		if r.Method == "POST" {
-			h.approveGate(w, r, phase)
+			h.approveGate(w, r, stage)
 			return
 		}
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -498,20 +503,20 @@ func (h *Handler) handleGate(w http.ResponseWriter, r *http.Request) {
 
 	// GET /api/gates/:id
 	if r.Method == "GET" {
-		gate, ok := h.Store.GetGate(phase)
+		gate, ok := h.Store.GetGate(stage)
 		if !ok {
 			http.Error(w, "Gate not found", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(gate)
+		_ = json.NewEncoder(w).Encode(gate)
 		return
 	}
 
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
-func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, phase Phase) {
+func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, stage Stage) {
 	var req GateApprovalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
@@ -522,37 +527,127 @@ func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, phase Phas
 		req.ApprovedBy = "user"
 	}
 
-	gate, ok := h.Store.GetGate(phase)
-	if !ok {
+	if _, ok := h.Store.GetGate(stage); !ok {
 		http.Error(w, "Gate not found", http.StatusNotFound)
 		return
 	}
 
-	// Check if gate is ready for approval
-	if gate.Status != GateStatusAwaitingApproval && gate.Status != GateStatusClosed {
-		// Allow approval even if closed (manual override)
-	}
+	// Gate approval is allowed for awaiting_approval and closed (manual override) states.
 
-	if err := h.Store.ApproveGate(phase, req.ApprovedBy); err != nil {
+	if err := h.Store.ApproveGate(stage, req.ApprovedBy); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	gate, _ = h.Store.GetGate(phase)
-	canProceed := h.Store.CanTransition(phase.Next())
+	gate, _ := h.Store.GetGate(stage)
+	canProceed := h.Store.CanTransition(stage.Next())
 
-	// Notify
+	// Notify gate approval
 	if h.Notifier != nil {
 		h.Notifier.Notify(map[string]interface{}{
 			"type":   "gate_status",
-			"phase":  phase,
+			"stage":  stage,
 			"status": gate.Status,
 		})
 	}
 
+	// Auto-create checkpoint on gate approval (G3.1)
+	cpSummary := h.Store.CreateCheckpoint()
+	if h.Notifier != nil {
+		h.Notifier.Notify(map[string]interface{}{
+			"type":          "checkpoint_created",
+			"checkpoint_id": cpSummary.ID,
+			"stage":         cpSummary.Stage,
+			"trigger":       "gate_approval",
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(GateApprovalResponse{
+	_ = json.NewEncoder(w).Encode(GateApprovalResponse{
 		Gate:       gate,
 		CanProceed: canProceed,
 	})
+}
+
+// ============================================================================
+// Session / Checkpoint Management
+// ============================================================================
+
+// CheckpointStatusResponse is the response for GET /api/checkpoint/status
+type CheckpointStatusResponse struct {
+	SessionID      string `json:"session_id"`
+	Stage          Stage  `json:"stage"`
+	SessionStart   int64  `json:"session_start"`
+	DurationMin    int    `json:"duration_minutes"`
+	LastCheckpoint string `json:"last_checkpoint,omitempty"`
+	TasksTotal     int    `json:"tasks_total"`
+	TasksComplete  int    `json:"tasks_complete"`
+	Health         string `json:"health"`
+	Recommendation string `json:"recommendation"`
+}
+
+func (h *Handler) handleCheckpointStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	status := h.Store.GetSessionStatus()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(status)
+}
+
+func (h *Handler) handleCheckpointHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessions := h.Store.GetSessionHistory()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"sessions": sessions,
+	})
+}
+
+// CheckpointRestartRequest is the request for POST /api/checkpoint/restart
+type CheckpointRestartRequest struct {
+	FromCheckpointID string `json:"from_checkpoint_id,omitempty"`
+}
+
+// CheckpointRestartResponse is the response for POST /api/checkpoint/restart
+type CheckpointRestartResponse struct {
+	OldSessionID string `json:"old_session_id"`
+	NewSessionID string `json:"new_session_id"`
+	CheckpointID string `json:"checkpoint_id"`
+	Stage        Stage  `json:"stage"`
+	Briefing     string `json:"briefing"`
+}
+
+func (h *Handler) handleCheckpointRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CheckpointRestartRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	result := h.Store.RestartSession(req.FromCheckpointID)
+
+	// Notify via WebSocket
+	if h.Notifier != nil {
+		h.Notifier.Notify(map[string]interface{}{
+			"type":        "session_restarted",
+			"old_session": result.OldSessionID,
+			"new_session": result.NewSessionID,
+			"checkpoint":  result.CheckpointID,
+			"stage":       result.Stage,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
 }

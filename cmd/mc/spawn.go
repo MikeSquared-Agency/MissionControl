@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/DarlingtonDeveloper/MissionControl/hashid"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +61,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	}
 
 	// Generate worker ID
-	workerID := uuid.New().String()[:8]
+	workerID := hashid.Generate("worker", taskID, persona, zone)
 
 	// Create worker prompt from template
 	promptPath := filepath.Join(missionDir, "prompts", persona+".md")
@@ -129,6 +129,17 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	if err := writeJSON(workersPath, state); err != nil {
 		return fmt.Errorf("failed to update workers state: %w", err)
 	}
+
+	writeAuditLog(missionDir, AuditWorkerSpawned, "cli", map[string]interface{}{
+		"worker_id": workerID,
+		"persona":   persona,
+		"task_id":   taskID,
+		"zone":      zone,
+		"pid":       claudeCmd.Process.Pid,
+	})
+
+	// Auto-commit
+	gitAutoCommit(missionDir, CommitCategoryWorker, fmt.Sprintf("spawn %s (%s)", shortID(workerID), persona))
 
 	// Output worker info
 	output, _ := json.MarshalIndent(worker, "", "  ")

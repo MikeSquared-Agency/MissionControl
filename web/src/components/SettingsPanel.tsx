@@ -4,6 +4,7 @@ import { useStore, fetchPersonaPrompt, updatePersonaPrompt } from '../stores/use
 import { useProjectStore } from '../stores/useProjectStore'
 import { KEYBOARD_SHORTCUTS } from '../hooks/useKeyboardShortcuts'
 import type { Persona } from '../types'
+import type { Stage } from '../types/workflow'
 
 interface SettingsPanelProps {
   open: boolean
@@ -117,11 +118,11 @@ function GeneralTab() {
         />
       </div>
 
-      {/* King Mode */}
+      {/* OpenClaw Mode */}
       <div>
         <label className="flex items-center justify-between">
           <div>
-            <span className="text-xs text-gray-300">King Mode</span>
+            <span className="text-xs text-gray-300">OpenClaw Mode</span>
             <p className="text-[10px] text-gray-600 mt-0.5">
               Let an AI orchestrator manage your agent team
             </p>
@@ -230,7 +231,7 @@ function PersonasTab() {
       name: 'New Persona',
       description: 'Description here',
       color: '#6b7280',
-      phase: 'implement',
+      stage: 'implement',
       enabled: true,
       tools: ['read', 'write', 'edit', 'bash', 'grep'],
       skills: [],
@@ -246,13 +247,17 @@ function PersonasTab() {
     updatePersona(persona.id, { enabled: !persona.enabled })
   }
 
-  // Group personas by phase
-  const phases = ['idea', 'design', 'implement', 'verify', 'document', 'release'] as const
-  const phaseLabels: Record<string, string> = {
-    idea: 'Idea',
+  // Group personas by stage
+  const stages: Stage[] = ['discovery', 'goal', 'requirements', 'planning', 'design', 'implement', 'verify', 'validate', 'document', 'release']
+  const stageLabels: Record<string, string> = {
+    discovery: 'Discovery',
+    goal: 'Goal',
+    requirements: 'Requirements',
+    planning: 'Planning',
     design: 'Design',
     implement: 'Implement',
     verify: 'Verify',
+    validate: 'Validate',
     document: 'Document',
     release: 'Release'
   }
@@ -285,17 +290,17 @@ function PersonasTab() {
           />
         </div>
 
-        {/* Phase */}
+        {/* Stage */}
         <div>
-          <label className="block text-[11px] text-gray-500 mb-1">Phase</label>
+          <label className="block text-[11px] text-gray-500 mb-1">Stage</label>
           <select
-            value={editForm.phase || 'implement'}
-            onChange={(e) => setEditForm({ ...editForm, phase: e.target.value as Persona['phase'] })}
+            value={editForm.stage || 'implement'}
+            onChange={(e) => setEditForm({ ...editForm, stage: e.target.value as Persona['stage'] })}
             disabled={isBuiltin}
             className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {phases.map(p => (
-              <option key={p} value={p}>{phaseLabels[p]}</option>
+            {stages.map(s => (
+              <option key={s} value={s}>{stageLabels[s]}</option>
             ))}
           </select>
         </div>
@@ -495,7 +500,7 @@ function PersonasTab() {
     )
   }
 
-  // Group personas by phase for display
+  // Group personas by stage for display
   const builtinPersonas = personas.filter(p => p.isBuiltin)
   const customPersonas = personas.filter(p => !p.isBuiltin)
 
@@ -509,18 +514,18 @@ function PersonasTab() {
         Toggle personas on/off to control which workers are available in your workflow.
       </p>
 
-      {/* Builtin personas grouped by phase */}
+      {/* Builtin personas grouped by stage */}
       <div className="space-y-3">
-        {phases.map(phase => {
-          const phasePersonas = builtinPersonas.filter(p => p.phase === phase)
-          if (phasePersonas.length === 0) return null
+        {stages.map(stage => {
+          const stagePersonas = builtinPersonas.filter(p => p.stage === stage)
+          if (stagePersonas.length === 0) return null
           return (
-            <div key={phase}>
+            <div key={stage}>
               <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1.5">
-                {phaseLabels[phase]}
+                {stageLabels[stage]}
               </div>
               <div className="space-y-1">
-                {phasePersonas.map((persona) => (
+                {stagePersonas.map((persona) => (
                   <div
                     key={persona.id}
                     className={`flex items-center gap-3 p-2.5 rounded transition-colors ${

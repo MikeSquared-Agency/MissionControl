@@ -1,7 +1,7 @@
 mod tokens;
 mod budget;
 mod handoff;
-mod checkpoint;
+pub mod checkpoint;
 mod delta;
 mod manager;
 

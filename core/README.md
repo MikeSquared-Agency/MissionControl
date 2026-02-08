@@ -13,8 +13,8 @@ flowchart TB
     end
 
     subgraph Crates["Rust Crates"]
-        WF[workflow<br/>Phase state machine]
-        KN[knowledge<br/>Token management]
+        WF[workflow<br/>Stage state machine]
+        KN[knowledge<br/>Token management & checkpoints]
         PR[mc-protocol<br/>Data structures]
     end
 
@@ -39,10 +39,11 @@ flowchart TB
 
 ```
 core/
-├── workflow/       # Phase state machine, gates, tasks
-├── knowledge/      # Token counting, budgets, handoffs
+├── workflow/       # Stage state machine, gates, tasks
+├── knowledge/      # Token counting, budgets, handoffs, checkpoints
 ├── mc-protocol/    # Shared data structures
 ├── mc-core/        # CLI binary
+├── ffi/            # C-compatible FFI bindings
 └── Cargo.toml      # Workspace manifest
 ```
 
@@ -59,6 +60,12 @@ mc-core check-gate design
 
 # Count tokens in a file
 mc-core count-tokens spec.md
+
+# Compile checkpoint into markdown briefing
+mc-core checkpoint-compile checkpoint.json
+
+# Validate checkpoint JSON schema
+mc-core checkpoint-validate checkpoint.json
 ```
 
 ### validate-handoff
@@ -84,9 +91,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[Input: phase name] --> B[Read gates.json]
+    A[Input: stage name] --> B[Read gates.json]
     B --> C[Read tasks.json]
-    C --> D[Get phase tasks]
+    C --> D[Get stage tasks]
     D --> E{All tasks complete?}
     E -->|No| F[Return not_ready]
     E -->|Yes| G[Check criteria]
@@ -108,15 +115,19 @@ flowchart TD
 
 ## workflow Crate
 
-Phase state machine and task management.
+Stage state machine and task management.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Idea
-    Idea --> Design : approve_gate()
+    [*] --> Discovery
+    Discovery --> Goal : approve_gate()
+    Goal --> Requirements : approve_gate()
+    Requirements --> Planning : approve_gate()
+    Planning --> Design : approve_gate()
     Design --> Implement : approve_gate()
     Implement --> Verify : approve_gate()
-    Verify --> Document : approve_gate()
+    Verify --> Validate : approve_gate()
+    Validate --> Document : approve_gate()
     Document --> Release : approve_gate()
     Release --> [*]
 ```
@@ -124,11 +135,15 @@ stateDiagram-v2
 ### Key Types
 
 ```rust
-pub enum Phase {
-    Idea,
+pub enum Stage {
+    Discovery,
+    Goal,
+    Requirements,
+    Planning,
     Design,
     Implement,
     Verify,
+    Validate,
     Document,
     Release,
 }
@@ -144,22 +159,22 @@ pub enum TaskStatus {
 pub struct Task {
     pub id: String,
     pub description: String,
-    pub phase: Phase,
+    pub stage: Stage,
     pub status: TaskStatus,
     pub zone: String,
     pub dependencies: Vec<String>,
 }
 
 pub struct Gate {
-    pub phase: Phase,
+    pub stage: Stage,
     pub status: GateStatus,
     pub criteria: Vec<GateCriterion>,
 }
 
 pub struct WorkflowEngine {
-    phase: Phase,
+    current_stage: Stage,
     tasks: HashMap<String, Task>,
-    gates: HashMap<Phase, Gate>,
+    gates: HashMap<String, Gate>,
 }
 ```
 
@@ -167,16 +182,16 @@ pub struct WorkflowEngine {
 
 ```rust
 impl WorkflowEngine {
-    pub fn current_phase(&self) -> Phase;
-    pub fn can_transition(&self, to: Phase) -> bool;
-    pub fn transition(&mut self, to: Phase) -> Result<()>;
-    
+    pub fn current_stage(&self) -> Stage;
+    pub fn can_transition(&self, to: Stage) -> bool;
+    pub fn transition(&mut self, to: Stage) -> Result<()>;
+
     pub fn create_task(&mut self, task: Task) -> Result<String>;
     pub fn update_task_status(&mut self, id: &str, status: TaskStatus) -> Result<()>;
     pub fn get_ready_tasks(&self) -> Vec<&Task>;
-    
-    pub fn check_gate(&self, phase: Phase) -> GateCheckResult;
-    pub fn approve_gate(&mut self, phase: Phase) -> Result<()>;
+
+    pub fn check_gate(&self, stage: Stage) -> GateCheckResult;
+    pub fn approve_gate(&mut self, stage: Stage) -> Result<()>;
 }
 ```
 
@@ -258,7 +273,7 @@ Shared data structures and file watching.
 
 ```mermaid
 classDiagram
-    class PhaseState {
+    class StageState {
         +String current
         +String updated_at
     }
@@ -276,13 +291,13 @@ classDiagram
     }
 
     class MissionState {
-        +PhaseState phase
+        +StageState stage
         +TasksState tasks
         +WorkersState workers
         +GatesState gates
     }
 
-    MissionState --> PhaseState
+    MissionState --> StageState
     MissionState --> TasksState
     MissionState --> WorkersState
     MissionState --> GatesState
@@ -322,10 +337,10 @@ cargo fmt
 ## Testing
 
 ```mermaid
-pie title Test Distribution
-    "workflow" : 24
-    "knowledge" : 20
-    "mc-protocol" : 12
+pie title Test Distribution (79 total)
+    "workflow" : 35
+    "knowledge" : 30
+    "mc-protocol" : 14
 ```
 
 ```bash
@@ -360,6 +375,11 @@ sequenceDiagram
     Rust->>FS: Read state files
     Rust->>Rust: Check criteria
     Rust-->>Go: JSON result
+
+    Go->>Rust: mc-core checkpoint-compile checkpoint.json
+    Rust->>FS: Read checkpoint
+    Rust->>Rust: Compile briefing
+    Rust-->>Go: Markdown briefing
 
     Go->>Rust: mc-core count-tokens file.md
     Rust->>FS: Read file

@@ -9,6 +9,17 @@ pub enum FindingType {
     Concern,
 }
 
+impl FindingType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FindingType::Discovery => "discovery",
+            FindingType::Blocker => "blocker",
+            FindingType::Decision => "decision",
+            FindingType::Concern => "concern",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Finding {
     pub finding_type: FindingType,

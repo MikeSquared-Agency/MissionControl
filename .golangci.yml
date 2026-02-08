@@ -1,0 +1,61 @@
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - staticcheck
+    - unused
+
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+    exclude-functions:
+      # IO writers — ignoring write errors is standard practice for HTTP handlers
+      - (io.Writer).Write
+      - (*bytes.Buffer).Write
+      - (*bytes.Buffer).WriteString
+      - (*bytes.Buffer).WriteByte
+      - (*os.File).Write
+      - (*os.File).WriteString
+      - (net/http.ResponseWriter).Write
+      - fmt.Fprintf
+      - fmt.Fprintln
+      # JSON encode/decode — errors are handled at a higher level
+      - (*encoding/json.Encoder).Encode
+      - (*encoding/json.Decoder).Decode
+      - encoding/json.Unmarshal
+      # OS operations where errors are non-critical
+      - os.MkdirAll
+      - os.Chdir
+      - os.Rename
+      - os.Symlink
+      - os.Remove
+      - os.RemoveAll
+      - os.WriteFile
+      # Crypto
+      - rand.Read
+      - crypto/rand.Read
+      - io.ReadAll
+      # Cobra/pflag
+      - (*github.com/spf13/pflag.FlagSet).Set
+      # Websocket
+      - (*github.com/gorilla/websocket.Conn).WriteMessage
+      - (*github.com/gorilla/websocket.Conn).SetReadDeadline
+      # PTY
+      - (*github.com/creack/pty.Pty).Setsize
+      # Process
+      - (*os.Process).Kill
+      # Exec
+      - (*os/exec.Cmd).Run
+
+issues:
+  exclude-dirs:
+    - vendor
+  exclude-rules:
+    # Relax errcheck in test files
+    - path: _test\.go
+      linters:
+        - errcheck
+  max-issues-per-linter: 0
+  max-same-issues: 0

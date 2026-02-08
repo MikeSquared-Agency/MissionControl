@@ -1,0 +1,138 @@
+package main
+
+import (
+	"fmt"
+	"path/filepath"
+	"time"
+
+	"github.com/spf13/cobra"
+)
+
+func init() {
+	rootCmd.AddCommand(stageCmd)
+	rootCmd.AddCommand(phaseCmd)
+}
+
+// phaseCmd is a deprecated alias for stageCmd
+var phaseCmd = &cobra.Command{
+	Use:        "phase [next]",
+	Short:      "Deprecated: use 'mc stage' instead",
+	Deprecated: "use 'mc stage' instead",
+	RunE:       runStage,
+}
+
+var stageCmd = &cobra.Command{
+	Use:   "stage [next]",
+	Short: "Get or set the current stage",
+	Long: `Get the current stage, or use 'mc stage next' to transition.
+
+Examples:
+  mc stage         # Show current stage
+  mc stage next    # Transition to next stage`,
+	RunE: runStage,
+}
+
+var stages = []string{"discovery", "goal", "requirements", "planning", "design", "implement", "verify", "validate", "document", "release"}
+
+func runStage(cmd *cobra.Command, args []string) error {
+	missionDir, err := findMissionDir()
+	if err != nil {
+		return err
+	}
+
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+
+	if len(args) == 0 {
+		// Just show current stage
+		var state StageState
+		if err := readJSON(stagePath, &state); err != nil {
+			return fmt.Errorf("failed to read stage: %w", err)
+		}
+		fmt.Println(state.Current)
+		return nil
+	}
+
+	if args[0] == "next" {
+		// Transition to next stage
+		var state StageState
+		if err := readJSON(stagePath, &state); err != nil {
+			return fmt.Errorf("failed to read stage: %w", err)
+		}
+
+		nextStage, err := getNextStage(state.Current)
+		if err != nil {
+			return err
+		}
+
+		state.Current = nextStage
+		state.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+
+		if err := writeJSON(stagePath, state); err != nil {
+			return fmt.Errorf("failed to write stage: %w", err)
+		}
+
+		writeAuditLog(missionDir, AuditStageAdvanced, "cli", map[string]interface{}{
+			"from_stage": getPrevStage(nextStage),
+			"to_stage":   nextStage,
+		})
+
+		gitAutoCommit(missionDir, CommitCategoryStage, fmt.Sprintf("advance %s → %s", getPrevStage(nextStage), nextStage))
+
+		fmt.Printf("Stage transitioned: %s → %s\n", getPrevStage(nextStage), nextStage)
+		return nil
+	}
+
+	// Set specific stage
+	targetStage := args[0]
+	if !isValidStage(targetStage) {
+		return fmt.Errorf("invalid stage: %s (valid: %v)", targetStage, stages)
+	}
+
+	state := StageState{
+		Current:   targetStage,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if err := writeJSON(stagePath, state); err != nil {
+		return fmt.Errorf("failed to write stage: %w", err)
+	}
+
+	writeAuditLog(missionDir, AuditStageSet, "cli", map[string]interface{}{
+		"stage": targetStage,
+	})
+
+	gitAutoCommit(missionDir, CommitCategoryStage, fmt.Sprintf("set %s", targetStage))
+
+	fmt.Printf("Stage set to: %s\n", targetStage)
+	return nil
+}
+
+func getNextStage(current string) (string, error) {
+	for i, stage := range stages {
+		if stage == current {
+			if i == len(stages)-1 {
+				return "", fmt.Errorf("already at final stage: %s", current)
+			}
+			return stages[i+1], nil
+		}
+	}
+	return "", fmt.Errorf("unknown stage: %s", current)
+}
+
+func getPrevStage(current string) string {
+	for i, stage := range stages {
+		if stage == current && i > 0 {
+			return stages[i-1]
+		}
+	}
+	return ""
+}
+
+func isValidStage(stage string) bool {
+	for _, s := range stages {
+		if s == stage {
+			return true
+		}
+	}
+	return false
+}

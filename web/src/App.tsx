@@ -19,7 +19,7 @@ import { KingPanel } from './components/KingPanel'
 import { ProjectWizard } from './components/ProjectWizard'
 import { ToastContainer } from './components/Toast'
 import { toast } from './stores/useToast'
-import { PhaseView } from './domains/workflow/PhaseView'
+import { StageView } from './domains/workflow/StageView'
 import { TokenUsage } from './domains/knowledge/TokenUsage'
 import { GateApproval } from './domains/strategy/GateApproval'
 import { FindingsViewer } from './components/FindingsViewer'
@@ -264,7 +264,7 @@ function App() {
             ) : viewMode === 'agents' ? (
               <AgentPanel />
             ) : viewMode === 'workflow' ? (
-              <PhaseView />
+              <StageView />
             ) : viewMode === 'tokens' ? (
               <TokenUsage />
             ) : viewMode === 'gates' ? (

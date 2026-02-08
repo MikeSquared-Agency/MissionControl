@@ -1,8 +1,8 @@
 import { Fragment } from 'react'
-import type { Phase } from '../types/workflow'
+import type { Stage } from '../types/workflow'
 import type { MatrixCell } from '../types/project'
-import { PHASE_PERSONAS, DEFAULT_ZONES } from '../types/project'
-import { ALL_PHASES, getPhaseLabel } from '../types/workflow'
+import { STAGE_PERSONAS, DEFAULT_ZONES } from '../types/project'
+import { ALL_STAGES, getStageLabel } from '../types/workflow'
 import { useStore } from '../stores/useStore'
 
 interface WorkflowMatrixProps {
@@ -24,18 +24,18 @@ export function WorkflowMatrix({ cells, onChange, respectPersonaSettings = false
   }
 
   // Get cell state
-  const getCell = (phase: Phase, zone: string, persona: string): boolean => {
+  const getCell = (stage: Stage, zone: string, persona: string): boolean => {
     const cell = cells.find(
-      (c) => c.phase === phase && c.zone === zone && c.persona === persona
+      (c) => c.stage === stage && c.zone === zone && c.persona === persona
     )
     return cell?.enabled ?? true
   }
 
   // Toggle single cell (only if persona is enabled in settings)
-  const toggleCell = (phase: Phase, zone: string, persona: string) => {
+  const toggleCell = (stage: Stage, zone: string, persona: string) => {
     if (!isPersonaEnabled(persona)) return // Can't toggle disabled personas
     const updated = cells.map((c) => {
-      if (c.phase === phase && c.zone === zone && c.persona === persona) {
+      if (c.stage === stage && c.zone === zone && c.persona === persona) {
         return { ...c, enabled: !c.enabled }
       }
       return c
@@ -43,16 +43,16 @@ export function WorkflowMatrix({ cells, onChange, respectPersonaSettings = false
     onChange(updated)
   }
 
-  // Toggle entire phase row (only toggles enabled personas)
-  const togglePhase = (phase: Phase) => {
-    const phasePersonas = PHASE_PERSONAS[phase].filter(isPersonaEnabled)
-    if (phasePersonas.length === 0) return // All personas disabled
+  // Toggle entire stage row (only toggles enabled personas)
+  const toggleStage = (stage: Stage) => {
+    const stagePersonas = STAGE_PERSONAS[stage].filter(isPersonaEnabled)
+    if (stagePersonas.length === 0) return // All personas disabled
 
     const allEnabled = zones.every((zone) =>
-      phasePersonas.every((persona) => getCell(phase, zone, persona))
+      stagePersonas.every((persona) => getCell(stage, zone, persona))
     )
     const updated = cells.map((c) => {
-      if (c.phase === phase && isPersonaEnabled(c.persona)) {
+      if (c.stage === stage && isPersonaEnabled(c.persona)) {
         return { ...c, enabled: !allEnabled }
       }
       return c
@@ -62,10 +62,10 @@ export function WorkflowMatrix({ cells, onChange, respectPersonaSettings = false
 
   // Toggle entire zone column (only toggles enabled personas)
   const toggleZone = (zone: string) => {
-    const allEnabled = ALL_PHASES.every((phase) =>
-      PHASE_PERSONAS[phase]
+    const allEnabled = ALL_STAGES.every((stage) =>
+      STAGE_PERSONAS[stage]
         .filter(isPersonaEnabled)
-        .every((persona) => getCell(phase, zone, persona))
+        .every((persona) => getCell(stage, zone, persona))
     )
     const updated = cells.map((c) => {
       if (c.zone === zone && isPersonaEnabled(c.persona)) {
@@ -76,16 +76,16 @@ export function WorkflowMatrix({ cells, onChange, respectPersonaSettings = false
     onChange(updated)
   }
 
-  // Phase header state (all, some, none) - only considers enabled personas
-  const getPhaseState = (phase: Phase): 'all' | 'some' | 'none' => {
-    const phasePersonas = PHASE_PERSONAS[phase].filter(isPersonaEnabled)
-    if (phasePersonas.length === 0) return 'none' // All personas disabled
+  // Stage header state (all, some, none) - only considers enabled personas
+  const getStageState = (stage: Stage): 'all' | 'some' | 'none' => {
+    const stagePersonas = STAGE_PERSONAS[stage].filter(isPersonaEnabled)
+    if (stagePersonas.length === 0) return 'none' // All personas disabled
 
     const enabledCount = zones.reduce(
-      (sum, zone) => sum + phasePersonas.filter((p) => getCell(phase, zone, p)).length,
+      (sum, zone) => sum + stagePersonas.filter((p) => getCell(stage, zone, p)).length,
       0
     )
-    const total = zones.length * phasePersonas.length
+    const total = zones.length * stagePersonas.length
     if (enabledCount === total) return 'all'
     if (enabledCount === 0) return 'none'
     return 'some'
@@ -109,27 +109,27 @@ export function WorkflowMatrix({ cells, onChange, respectPersonaSettings = false
           </tr>
         </thead>
         <tbody>
-          {ALL_PHASES.map((phase) => (
-            <Fragment key={phase}>
-              {/* Phase header row */}
+          {ALL_STAGES.map((stage) => (
+            <Fragment key={stage}>
+              {/* Stage header row */}
               <tr className="bg-gray-800/50">
                 <td
                   colSpan={zones.length + 1}
-                  onClick={() => togglePhase(phase)}
+                  onClick={() => toggleStage(stage)}
                   className="p-2 text-xs font-medium text-gray-300 uppercase cursor-pointer hover:bg-gray-800 transition-colors"
                 >
                   <span className="mr-2 inline-block w-4 text-center">
-                    {getPhaseState(phase) === 'all'
-                      ? '✓'
-                      : getPhaseState(phase) === 'some'
-                        ? '◐'
-                        : '○'}
+                    {getStageState(stage) === 'all'
+                      ? '\u2713'
+                      : getStageState(stage) === 'some'
+                        ? '\u25D0'
+                        : '\u25CB'}
                   </span>
-                  {getPhaseLabel(phase)}
+                  {getStageLabel(stage)}
                 </td>
               </tr>
-              {/* Persona rows within phase */}
-              {PHASE_PERSONAS[phase].map((persona) => {
+              {/* Persona rows within stage */}
+              {STAGE_PERSONAS[stage].map((persona) => {
                 const personaDisabled = !isPersonaEnabled(persona)
                 return (
                   <tr key={persona} className={personaDisabled ? 'opacity-40' : ''}>
@@ -142,11 +142,11 @@ export function WorkflowMatrix({ cells, onChange, respectPersonaSettings = false
                       )}
                     </td>
                     {zones.map((zone) => {
-                      const enabled = getCell(phase, zone, persona)
+                      const enabled = getCell(stage, zone, persona)
                       return (
                         <td
-                          key={`${phase}-${zone}-${persona}`}
-                          onClick={() => toggleCell(phase, zone, persona)}
+                          key={`${stage}-${zone}-${persona}`}
+                          onClick={() => toggleCell(stage, zone, persona)}
                           className={`p-2 text-center border-b border-gray-800 transition-colors ${
                             personaDisabled
                               ? 'cursor-not-allowed'
@@ -160,7 +160,7 @@ export function WorkflowMatrix({ cells, onChange, respectPersonaSettings = false
                                 ? 'text-green-500'
                                 : 'text-gray-600'
                           }>
-                            {enabled && !personaDisabled ? '✓' : '○'}
+                            {enabled && !personaDisabled ? '\u2713' : '\u25CB'}
                           </span>
                         </td>
                       )
@@ -173,7 +173,7 @@ export function WorkflowMatrix({ cells, onChange, respectPersonaSettings = false
         </tbody>
       </table>
       <p className="mt-2 text-[10px] text-gray-600">
-        ✓ = enabled &nbsp; ○ = disabled &nbsp; Click any cell, row header, or column header
+        {'\u2713'} = enabled &nbsp; {'\u25CB'} = disabled &nbsp; Click any cell, row header, or column header
         to toggle
       </p>
     </div>

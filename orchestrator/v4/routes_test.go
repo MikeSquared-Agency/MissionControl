@@ -31,10 +31,10 @@ func newTestMux(h *Handler) *http.ServeMux {
 }
 
 // ============================================================================
-// Phase 5 Integration Tests
+// Stage 5 Integration Tests
 // ============================================================================
 
-// Test 1: Create task via API → verify response
+// Test 1: Create task via API -> verify response
 func TestCreateTaskViaAPI(t *testing.T) {
 	h, notifier := newTestHandler()
 	mux := newTestMux(h)
@@ -42,7 +42,7 @@ func TestCreateTaskViaAPI(t *testing.T) {
 	// Create a task
 	body := bytes.NewBufferString(`{
 		"name": "Build login page",
-		"phase": "implement",
+		"stage": "implement",
 		"zone": "frontend",
 		"persona": "developer"
 	}`)
@@ -65,8 +65,8 @@ func TestCreateTaskViaAPI(t *testing.T) {
 	if task.Name != "Build login page" {
 		t.Errorf("Expected name 'Build login page', got %s", task.Name)
 	}
-	if task.Phase != "implement" {
-		t.Errorf("Expected phase 'implement', got %s", task.Phase)
+	if task.Stage != "implement" {
+		t.Errorf("Expected stage 'implement', got %s", task.Stage)
 	}
 	if task.Zone != "frontend" {
 		t.Errorf("Expected zone 'frontend', got %s", task.Zone)
@@ -87,7 +87,7 @@ func TestCreateTaskViaAPI(t *testing.T) {
 	}
 }
 
-// Test 2: Update task status → verify WebSocket event
+// Test 2: Update task status -> verify WebSocket event
 func TestUpdateTaskStatusEmitsEvent(t *testing.T) {
 	h, notifier := newTestHandler()
 	mux := newTestMux(h)
@@ -95,7 +95,7 @@ func TestUpdateTaskStatusEmitsEvent(t *testing.T) {
 	// First create a task
 	createBody := bytes.NewBufferString(`{
 		"name": "Test task",
-		"phase": "idea",
+		"stage": "discovery",
 		"zone": "system",
 		"persona": "researcher"
 	}`)
@@ -105,7 +105,7 @@ func TestUpdateTaskStatusEmitsEvent(t *testing.T) {
 	mux.ServeHTTP(createW, createReq)
 
 	var created Task
-	json.Unmarshal(createW.Body.Bytes(), &created)
+	_ = json.Unmarshal(createW.Body.Bytes(), &created)
 
 	// Clear events from creation
 	notifier.events = nil
@@ -142,30 +142,30 @@ func TestUpdateTaskStatusEmitsEvent(t *testing.T) {
 	}
 }
 
-// Test 3: Phase transition → verify gate status
-func TestPhaseTransitionRequiresGateApproval(t *testing.T) {
+// Test 3: Stage transition -> verify gate status
+func TestStageTransitionRequiresGateApproval(t *testing.T) {
 	h, _ := newTestHandler()
 	mux := newTestMux(h)
 
-	// Get current phase - should be 'idea'
-	phasesReq := httptest.NewRequest("GET", "/api/phases", nil)
-	phasesW := httptest.NewRecorder()
-	mux.ServeHTTP(phasesW, phasesReq)
+	// Get current stage - should be 'discovery'
+	stagesReq := httptest.NewRequest("GET", "/api/stages", nil)
+	stagesW := httptest.NewRecorder()
+	mux.ServeHTTP(stagesW, stagesReq)
 
-	var phasesResp PhasesResponse
-	json.Unmarshal(phasesW.Body.Bytes(), &phasesResp)
+	var stagesResp StagesResponse
+	_ = json.Unmarshal(stagesW.Body.Bytes(), &stagesResp)
 
-	if phasesResp.Current != PhaseIdea {
-		t.Errorf("Expected current phase 'idea', got %s", phasesResp.Current)
+	if stagesResp.Current != StageDiscovery {
+		t.Errorf("Expected current stage 'discovery', got %s", stagesResp.Current)
 	}
 
 	// Check gate status - should be closed
-	gateReq := httptest.NewRequest("GET", "/api/gates/gate-idea", nil)
+	gateReq := httptest.NewRequest("GET", "/api/gates/gate-discovery", nil)
 	gateW := httptest.NewRecorder()
 	mux.ServeHTTP(gateW, gateReq)
 
 	var gate Gate
-	json.Unmarshal(gateW.Body.Bytes(), &gate)
+	_ = json.Unmarshal(gateW.Body.Bytes(), &gate)
 
 	if gate.Status != GateStatusClosed {
 		t.Errorf("Expected gate status 'closed', got %s", gate.Status)
@@ -173,7 +173,7 @@ func TestPhaseTransitionRequiresGateApproval(t *testing.T) {
 
 	// Approve the gate
 	approveBody := bytes.NewBufferString(`{"approved_by": "user"}`)
-	approveReq := httptest.NewRequest("POST", "/api/gates/gate-idea/approve", approveBody)
+	approveReq := httptest.NewRequest("POST", "/api/gates/gate-discovery/approve", approveBody)
 	approveReq.Header.Set("Content-Type", "application/json")
 	approveW := httptest.NewRecorder()
 	mux.ServeHTTP(approveW, approveReq)
@@ -183,7 +183,7 @@ func TestPhaseTransitionRequiresGateApproval(t *testing.T) {
 	}
 
 	var approvalResp GateApprovalResponse
-	json.Unmarshal(approveW.Body.Bytes(), &approvalResp)
+	_ = json.Unmarshal(approveW.Body.Bytes(), &approvalResp)
 
 	if approvalResp.Gate.Status != GateStatusOpen {
 		t.Errorf("Expected approved gate status 'open', got %s", approvalResp.Gate.Status)
@@ -212,7 +212,7 @@ func TestTokenWarningFlow(t *testing.T) {
 	}
 
 	var budget TokenBudget
-	json.Unmarshal(createW.Body.Bytes(), &budget)
+	_ = json.Unmarshal(createW.Body.Bytes(), &budget)
 
 	if budget.Status != BudgetStatusHealthy {
 		t.Errorf("Expected status 'healthy', got %s", budget.Status)
@@ -232,7 +232,7 @@ func TestTokenWarningFlow(t *testing.T) {
 		t.Errorf("Expected status 200, got %d: %s", usageW.Code, usageW.Body.String())
 	}
 
-	json.Unmarshal(usageW.Body.Bytes(), &budget)
+	_ = json.Unmarshal(usageW.Body.Bytes(), &budget)
 
 	if budget.Status != BudgetStatusWarning {
 		t.Errorf("Expected status 'warning' at 60%%, got %s", budget.Status)
@@ -267,7 +267,7 @@ func TestTokenWarningFlow(t *testing.T) {
 	criticalW := httptest.NewRecorder()
 	mux.ServeHTTP(criticalW, criticalReq)
 
-	json.Unmarshal(criticalW.Body.Bytes(), &budget)
+	_ = json.Unmarshal(criticalW.Body.Bytes(), &budget)
 
 	if budget.Status != BudgetStatusCritical {
 		t.Errorf("Expected status 'critical' at 80%%, got %s", budget.Status)
@@ -292,7 +292,7 @@ func TestHandoffValidationFlow(t *testing.T) {
 	// First create a task to handoff
 	taskBody := bytes.NewBufferString(`{
 		"name": "Research task",
-		"phase": "idea",
+		"stage": "discovery",
 		"zone": "research",
 		"persona": "researcher"
 	}`)
@@ -302,7 +302,7 @@ func TestHandoffValidationFlow(t *testing.T) {
 	mux.ServeHTTP(taskW, taskReq)
 
 	var task Task
-	json.Unmarshal(taskW.Body.Bytes(), &task)
+	_ = json.Unmarshal(taskW.Body.Bytes(), &task)
 
 	// Clear events
 	notifier.events = nil
@@ -328,7 +328,7 @@ func TestHandoffValidationFlow(t *testing.T) {
 	}
 
 	var resp HandoffResponse
-	json.Unmarshal(handoffW.Body.Bytes(), &resp)
+	_ = json.Unmarshal(handoffW.Body.Bytes(), &resp)
 
 	if !resp.Valid {
 		t.Errorf("Expected valid handoff, got errors: %v", resp.Errors)
@@ -351,7 +351,7 @@ func TestHandoffValidationFlow(t *testing.T) {
 	mux.ServeHTTP(invalidW, invalidReq)
 
 	var invalidResp HandoffResponse
-	json.Unmarshal(invalidW.Body.Bytes(), &invalidResp)
+	_ = json.Unmarshal(invalidW.Body.Bytes(), &invalidResp)
 
 	if invalidResp.Valid {
 		t.Error("Expected invalid handoff due to missing task_id")
@@ -379,7 +379,7 @@ func TestHandoffBlockedRequiresReason(t *testing.T) {
 	mux.ServeHTTP(handoffW, handoffReq)
 
 	var resp HandoffResponse
-	json.Unmarshal(handoffW.Body.Bytes(), &resp)
+	_ = json.Unmarshal(handoffW.Body.Bytes(), &resp)
 
 	if resp.Valid {
 		t.Error("Expected invalid handoff due to missing blocked_reason")
@@ -398,7 +398,7 @@ func TestHandoffBlockedRequiresReason(t *testing.T) {
 	validW := httptest.NewRecorder()
 	mux.ServeHTTP(validW, validReq)
 
-	json.Unmarshal(validW.Body.Bytes(), &resp)
+	_ = json.Unmarshal(validW.Body.Bytes(), &resp)
 
 	if !resp.Valid {
 		t.Errorf("Expected valid handoff with blocked_reason, got errors: %v", resp.Errors)
@@ -409,11 +409,11 @@ func TestHandoffBlockedRequiresReason(t *testing.T) {
 // Additional API Tests
 // ============================================================================
 
-func TestGetPhasesEndpoint(t *testing.T) {
+func TestGetStagesEndpoint(t *testing.T) {
 	h, _ := newTestHandler()
 	mux := newTestMux(h)
 
-	req := httptest.NewRequest("GET", "/api/phases", nil)
+	req := httptest.NewRequest("GET", "/api/stages", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -421,14 +421,14 @@ func TestGetPhasesEndpoint(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	var resp PhasesResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	var resp StagesResponse
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
-	if resp.Current != PhaseIdea {
-		t.Errorf("Expected current phase 'idea', got %s", resp.Current)
+	if resp.Current != StageDiscovery {
+		t.Errorf("Expected current stage 'discovery', got %s", resp.Current)
 	}
-	if len(resp.Phases) != 6 {
-		t.Errorf("Expected 6 phases, got %d", len(resp.Phases))
+	if len(resp.Stages) != 10 {
+		t.Errorf("Expected 10 stages, got %d", len(resp.Stages))
 	}
 }
 
@@ -455,7 +455,7 @@ func TestListTasksEndpoint(t *testing.T) {
 	}
 
 	var resp TasksResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	if len(resp.Tasks) != 2 {
 		t.Errorf("Expected 2 tasks, got %d", len(resp.Tasks))
@@ -466,29 +466,29 @@ func TestListTasksWithFilter(t *testing.T) {
 	h, _ := newTestHandler()
 	mux := newTestMux(h)
 
-	// Create tasks in different phases
-	phases := []string{"idea", "design"}
-	for i, phase := range phases {
-		body := bytes.NewBufferString(`{"name":"Task ` + string(rune('A'+i)) + `","phase":"` + phase + `","zone":"test","persona":"dev"}`)
+	// Create tasks in different stages
+	stages := []string{"discovery", "design"}
+	for i, stage := range stages {
+		body := bytes.NewBufferString(`{"name":"Task ` + string(rune('A'+i)) + `","stage":"` + stage + `","zone":"test","persona":"dev"}`)
 		req := httptest.NewRequest("POST", "/api/tasks", body)
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
 	}
 
-	// Filter by phase
-	req := httptest.NewRequest("GET", "/api/tasks?phase=idea", nil)
+	// Filter by stage
+	req := httptest.NewRequest("GET", "/api/tasks?stage=discovery", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
 	var resp TasksResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	if len(resp.Tasks) != 1 {
-		t.Errorf("Expected 1 task in idea phase, got %d", len(resp.Tasks))
+		t.Errorf("Expected 1 task in discovery stage, got %d", len(resp.Tasks))
 	}
-	if resp.Tasks[0].Phase != PhaseIdea {
-		t.Errorf("Expected phase 'idea', got %s", resp.Tasks[0].Phase)
+	if resp.Tasks[0].Stage != StageDiscovery {
+		t.Errorf("Expected stage 'discovery', got %s", resp.Tasks[0].Stage)
 	}
 }
 
@@ -504,7 +504,7 @@ func TestGetTaskEndpoint(t *testing.T) {
 	mux.ServeHTTP(createW, createReq)
 
 	var created Task
-	json.Unmarshal(createW.Body.Bytes(), &created)
+	_ = json.Unmarshal(createW.Body.Bytes(), &created)
 
 	// Get the task
 	getReq := httptest.NewRequest("GET", "/api/tasks/"+created.ID, nil)
@@ -516,7 +516,7 @@ func TestGetTaskEndpoint(t *testing.T) {
 	}
 
 	var task Task
-	json.Unmarshal(getW.Body.Bytes(), &task)
+	_ = json.Unmarshal(getW.Body.Bytes(), &task)
 
 	if task.ID != created.ID {
 		t.Errorf("Expected task ID %s, got %s", created.ID, task.ID)
@@ -550,13 +550,13 @@ func TestCheckpointCreation(t *testing.T) {
 	}
 
 	var summary CheckpointSummary
-	json.Unmarshal(w.Body.Bytes(), &summary)
+	_ = json.Unmarshal(w.Body.Bytes(), &summary)
 
 	if summary.ID == "" {
 		t.Error("Checkpoint ID should not be empty")
 	}
-	if summary.Phase != PhaseIdea {
-		t.Errorf("Expected phase 'idea', got %s", summary.Phase)
+	if summary.Stage != StageDiscovery {
+		t.Errorf("Expected stage 'discovery', got %s", summary.Stage)
 	}
 
 	// Verify event was emitted
@@ -593,7 +593,7 @@ func TestListCheckpoints(t *testing.T) {
 	}
 
 	var resp CheckpointsResponse
-	json.Unmarshal(listW.Body.Bytes(), &resp)
+	_ = json.Unmarshal(listW.Body.Bytes(), &resp)
 
 	if len(resp.Checkpoints) < 1 {
 		t.Error("Expected at least 1 checkpoint")
@@ -622,7 +622,7 @@ func TestFindingSummaryTooLong(t *testing.T) {
 	mux.ServeHTTP(w, req)
 
 	var resp HandoffResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	if resp.Valid {
 		t.Error("Expected invalid handoff due to summary too long")

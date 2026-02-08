@@ -17,35 +17,35 @@ func init() {
 
 var gateCmd = &cobra.Command{
 	Use:   "gate",
-	Short: "Manage phase gates",
-	Long:  `Check gate criteria or approve gates to transition phases.`,
+	Short: "Manage stage gates",
+	Long:  `Check gate criteria or approve gates to transition stages.`,
 }
 
 var gateCheckCmd = &cobra.Command{
-	Use:   "check <phase>",
-	Short: "Check if gate criteria are met",
+	Use:   "check <stage>",
+	Short: "Check if gate criteria are met for a stage",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runGateCheck,
 }
 
 var gateApproveCmd = &cobra.Command{
-	Use:   "approve <phase>",
-	Short: "Approve a gate and transition to next phase",
+	Use:   "approve <stage>",
+	Short: "Approve a gate and transition to next stage",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runGateApprove,
 }
 
 type GateCheckResult struct {
-	Phase    string              `json:"phase"`
-	Status   string              `json:"status"`
-	Ready    bool                `json:"ready"`
-	Criteria []CriterionStatus   `json:"criteria"`
-	Tasks    TasksSummary        `json:"tasks"`
+	Stage    string            `json:"stage"`
+	Status   string            `json:"status"`
+	Ready    bool              `json:"ready"`
+	Criteria []CriterionStatus `json:"criteria"`
+	Tasks    TasksSummary      `json:"tasks"`
 }
 
 type CriterionStatus struct {
-	Name   string `json:"name"`
-	Met    bool   `json:"met"`
+	Name string `json:"name"`
+	Met  bool   `json:"met"`
 }
 
 type TasksSummary struct {
@@ -56,14 +56,18 @@ type TasksSummary struct {
 }
 
 func runGateCheck(cmd *cobra.Command, args []string) error {
-	phase := args[0]
+	stage := args[0]
 
-	if !isValidPhase(phase) {
-		return fmt.Errorf("invalid phase: %s", phase)
+	if !isValidStage(stage) {
+		return fmt.Errorf("invalid stage: %s", stage)
 	}
 
 	missionDir, err := findMissionDir()
 	if err != nil {
+		return err
+	}
+
+	if err := requireV6(missionDir); err != nil {
 		return err
 	}
 
@@ -74,22 +78,21 @@ func runGateCheck(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read gates: %w", err)
 	}
 
-	gate, ok := gatesState.Gates[phase]
+	gate, ok := gatesState.Gates[stage]
 	if !ok {
-		return fmt.Errorf("gate not found: %s", phase)
+		return fmt.Errorf("gate not found: %s", stage)
 	}
 
 	// Read tasks to calculate summary
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	var tasksState TasksState
-	if err := readJSON(tasksPath, &tasksState); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
-	// Calculate task summary for this phase
+	// Calculate task summary for this stage
 	var summary TasksSummary
-	for _, task := range tasksState.Tasks {
-		if task.Phase == phase {
+	for _, task := range tasks {
+		if task.Stage == stage {
 			summary.Total++
 			switch task.Status {
 			case "complete":
@@ -123,7 +126,7 @@ func runGateCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	result := GateCheckResult{
-		Phase:    phase,
+		Stage:    stage,
 		Status:   gate.Status,
 		Ready:    ready,
 		Criteria: criteria,
@@ -137,15 +140,30 @@ func runGateCheck(cmd *cobra.Command, args []string) error {
 }
 
 func runGateApprove(cmd *cobra.Command, args []string) error {
-	phase := args[0]
+	stage := args[0]
 
-	if !isValidPhase(phase) {
-		return fmt.Errorf("invalid phase: %s", phase)
+	if !isValidStage(stage) {
+		return fmt.Errorf("invalid stage: %s", stage)
 	}
 
 	missionDir, err := findMissionDir()
 	if err != nil {
 		return err
+	}
+
+	if err := requireV6(missionDir); err != nil {
+		return err
+	}
+
+	// Read current stage — only allow approving the gate for the CURRENT stage
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	var currentStage StageState
+	if err := readJSON(stagePath, &currentStage); err != nil {
+		return fmt.Errorf("failed to read current stage: %w", err)
+	}
+
+	if currentStage.Current != stage {
+		return fmt.Errorf("cannot approve gate for %q: current stage is %q (gate approval only allowed for the current stage)", stage, currentStage.Current)
 	}
 
 	// Update gate status
@@ -155,37 +173,60 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read gates: %w", err)
 	}
 
-	gate, ok := gatesState.Gates[phase]
+	gate, ok := gatesState.Gates[stage]
 	if !ok {
-		return fmt.Errorf("gate not found: %s", phase)
+		return fmt.Errorf("gate not found: %s", stage)
+	}
+
+	// Prevent re-approving an already-approved gate (which would trigger duplicate transitions)
+	if gate.Status == "approved" {
+		return fmt.Errorf("gate for %q is already approved", stage)
 	}
 
 	gate.Status = "approved"
 	gate.ApprovedAt = time.Now().UTC().Format(time.RFC3339)
-	gatesState.Gates[phase] = gate
+	gatesState.Gates[stage] = gate
 
 	if err := writeJSON(gatesPath, gatesState); err != nil {
 		return fmt.Errorf("failed to update gate: %w", err)
 	}
 
-	// Transition to next phase
-	nextPhase, err := getNextPhase(phase)
+	writeAuditLog(missionDir, AuditGateApproved, "cli", map[string]interface{}{
+		"stage": stage,
+	})
+
+	// Auto-commit gate approval
+	gitAutoCommit(missionDir, CommitCategoryGate, fmt.Sprintf("approve %s", stage))
+
+	// Auto-checkpoint on gate approval (G3.1)
+	if cp, err := createCheckpoint(missionDir, ""); err == nil {
+		fmt.Printf("Checkpoint created: %s\n", cp.ID)
+	}
+
+	// Transition to next stage — only ONE stage forward
+	nextStage, err := getNextStage(stage)
 	if err != nil {
-		fmt.Printf("Gate approved: %s (final phase)\n", phase)
+		fmt.Printf("Gate approved: %s (final stage)\n", stage)
 		return nil
 	}
 
-	phasePath := filepath.Join(missionDir, "state", "phase.json")
-	phaseState := PhaseState{
-		Current:   nextPhase,
+	stageState := StageState{
+		Current:   nextStage,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	if err := writeJSON(phasePath, phaseState); err != nil {
-		return fmt.Errorf("failed to update phase: %w", err)
+	if err := writeJSON(stagePath, stageState); err != nil {
+		return fmt.Errorf("failed to update stage: %w", err)
 	}
 
-	fmt.Printf("Gate approved: %s → %s\n", phase, nextPhase)
+	writeAuditLog(missionDir, AuditStageAdvanced, "cli", map[string]interface{}{
+		"from_stage": stage,
+		"to_stage":   nextStage,
+	})
+
+	gitAutoCommit(missionDir, CommitCategoryStage, fmt.Sprintf("advance %s → %s (gate approved)", stage, nextStage))
+
+	fmt.Printf("Gate approved: %s → %s\n", stage, nextStage)
 
 	return nil
 }

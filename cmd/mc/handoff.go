@@ -100,7 +100,7 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 		// Read existing findings or create new
 		var existingFindings []Finding
 		if existingData, err := os.ReadFile(findingsPath); err == nil {
-			json.Unmarshal(existingData, &existingFindings)
+			_ = json.Unmarshal(existingData, &existingFindings)
 		}
 
 		// Append new findings
@@ -114,17 +114,18 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 
 	// Update task status
 	if handoff.TaskID != "" {
-		tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-		var tasksState TasksState
-		if err := readJSON(tasksPath, &tasksState); err == nil {
-			for i := range tasksState.Tasks {
-				if tasksState.Tasks[i].ID == handoff.TaskID {
-					tasksState.Tasks[i].Status = handoff.Status
-					tasksState.Tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		tasks, loadErr := loadTasks(missionDir)
+		if loadErr == nil {
+			for i := range tasks {
+				if tasks[i].ID == handoff.TaskID {
+					tasks[i].Status = handoff.Status
+					tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 					break
 				}
 			}
-			writeJSON(tasksPath, tasksState)
+			if saveErr := saveTasks(missionDir, tasks); saveErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: failed to save task status update for %s: %v\n", handoff.TaskID, saveErr)
+			}
 		}
 
 		// Create status file for protocol completion detection
@@ -133,7 +134,7 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 			statusDir := filepath.Join(missionDir, "status")
 			if err := os.MkdirAll(statusDir, 0755); err == nil {
 				statusPath := filepath.Join(statusDir, fmt.Sprintf("task-%s.status", handoff.TaskID))
-				os.WriteFile(statusPath, []byte("DONE\n"), 0644)
+				_ = os.WriteFile(statusPath, []byte("DONE\n"), 0644)
 			}
 		}
 	}
@@ -149,9 +150,26 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 					break
 				}
 			}
-			writeJSON(workersPath, workersState)
+			_ = writeJSON(workersPath, workersState)
 		}
 	}
+
+	writeAuditLog(missionDir, AuditHandoffReceived, "worker", map[string]interface{}{
+		"task_id":   handoff.TaskID,
+		"worker_id": handoff.WorkerID,
+		"status":    handoff.Status,
+		"findings":  len(handoff.Findings),
+	})
+
+	if handoff.Status == "complete" && handoff.WorkerID != "" {
+		writeAuditLog(missionDir, AuditWorkerCompleted, "worker", map[string]interface{}{
+			"worker_id": handoff.WorkerID,
+			"task_id":   handoff.TaskID,
+		})
+	}
+
+	// Auto-commit handoff
+	gitAutoCommit(missionDir, CommitCategoryHandoff, fmt.Sprintf("worker %s task %s (%s)", shortID(handoff.WorkerID), shortID(handoff.TaskID), handoff.Status))
 
 	fmt.Printf("Handoff stored: %s\n", handoffPath)
 	fmt.Printf("Findings updated: %s\n", filepath.Join(missionDir, "findings", handoff.TaskID+".json"))
