@@ -1,10 +1,49 @@
-## Agent Context Management
+# MissionControl — Development Guide
 
-CRITICAL: When running multi-agent/swarm tasks, proactively manage context windows:
+## Overview
+Multi-agent orchestration system. King agent (Kai/OpenClaw) coordinates ephemeral workers through a 10-stage workflow. State lives in `.mission/` files.
 
-- Run /compact when any agent reaches ~60% context usage - do NOT wait for the limit
-- Before spawning sub-agents, instruct each one to self-compact at 60% capacity
-- If a sub-agent's task is large, break it into smaller sequential steps rather than one massive operation
-- After each sub-agent completes, summarize its results concisely before passing to the next task
-- Never let more than 4 agents run concurrently to avoid simultaneous context blowouts
-- When delegating to teammates, include in their instructions: "Compact your context proactively at 60% usage. Do not wait for context limit warnings."
+## Architecture
+- **Go**: `cmd/mc/` (CLI), `orchestrator/` (bridge, API, WebSocket)
+- **Rust**: `core/` (workflow engine, validation, token counting, checkpoint compilation)
+- **React**: `web/` (legacy UI, now on darlington.dev)
+- **State**: `.mission/` directory per project (stage, tasks, gates, findings, checkpoints)
+
+## Key Commands
+```bash
+make build          # Build all (Go + Rust)
+make test           # Run all tests
+make lint           # golangci-lint + clippy + eslint
+make fmt            # Format all code
+
+# Go tests
+cd cmd/mc && go test -v
+cd orchestrator && go test ./...
+
+# Rust tests
+cd core && cargo test
+
+# React tests
+cd web && npm test
+```
+
+## Conventions
+- Go module: `github.com/DarlingtonDeveloper/MissionControl`
+- `cmd/mc` uses `replace` directive for cross-module hashid import
+- Tasks stored in JSONL format (one JSON object per line)
+- Task IDs are hash-based: `mc-xxxxx` (SHA256 truncated)
+- All state mutations auto-commit to git with `[mc:{category}]` prefix
+- Tests must use `saveTasks(missionDir, tasks)` / `loadTasks(missionDir)` — not direct file I/O
+- Pre-commit hooks run `gofmt` + `go vet`
+- CI requires `build-and-test` check to pass before merge
+
+## 10 Stages
+discovery → goal → requirements → planning → design → implement → verify → validate → document → release
+
+## Context Management
+When running multi-agent tasks:
+- Compact at ~60% context usage — don't wait for the limit
+- Instruct sub-agents to self-compact at 60%
+- Break large tasks into smaller sequential steps
+- Max 4 concurrent agents
+- Summarize sub-agent results concisely before passing to next task

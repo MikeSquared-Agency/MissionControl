@@ -2,216 +2,114 @@
 
 All notable changes to MissionControl are documented in this file.
 
-## v6 - 10-Stage Workflow & Session Continuity
+## v6 — State Management & OpenClaw Integration (2026-02-08)
 
-Major release: expanded workflow from 6 phases to 10 stages, added session continuity with checkpoints and briefings.
+Major release: 10-stage workflow, JSONL storage, task dependencies, OpenClaw bridge, auto-checkpoint, CI pipeline. Merged to main 2026-02-08.
 
-### 10-Stage Workflow (Phase → Stage Migration)
+### 10-Stage Workflow
+- **Phase → Stage rename** across entire stack (Rust, Go, React)
+- **10 stages**: Discovery → Goal → Requirements → Planning → Design → Implement → Verify → Validate → Document → Release
+- New personas: Analyst (Goal), Requirements Engineer (Requirements)
+- `mc stage` replaces `mc phase` (deprecated alias kept)
+- `mc migrate` converts v5 projects (phase.json → stage.json, `idea` → `discovery`)
+- Gate auto-advance fix: prevents skipping stages
 
-- **Renamed Phase → Stage** across entire stack (Rust, Go, React)
-- **10 stages**: Discovery, Goal, Requirements, Planning, Design, Implement, Verify, Validate, Document, Release
-- **New personas**: Analyst (Goal), Requirements Engineer (Requirements); Architect moved to Planning; QA moved to Validate
-- `mc stage` replaces `mc phase` (deprecated alias retained)
-- `mc task create --stage` replaces `--phase`
-- `mc gate check/approve` accepts all 10 stage names
-- `mc migrate` command converts v5 `.mission/` to v6 (phase.json → stage.json, remaps `idea` → `discovery`)
-- `.mission/state/stage.json` replaces `phase.json`
-- `.mission/state/gates.json` now has 10 entries with stage-specific criteria
-- WebSocket event `stage_changed` replaces `phase_changed`
+### JSONL Storage (6.1)
+- `tasks.json` → `tasks.jsonl` (one JSON object per line)
+- Line-by-line git diffs, enables concurrent writes
 
-### Session Continuity (Checkpoints & Briefings)
+### Hash-Based Task IDs (6.2)
+- SHA256(title + timestamp) → deterministic `mc-xxxxx` IDs
+- Prevents collisions, enables idempotent retries
 
-- **Rust**: `Checkpoint` struct with `session_id`, `decisions`, `blockers`, `stage`
-- **Rust**: `CheckpointCompiler` produces ~500 token markdown briefings
-- **Rust**: `mc-core checkpoint-compile` and `mc-core checkpoint-validate` commands
-- **Go CLI**: `mc checkpoint` — snapshot state to `.mission/orchestrator/checkpoints/`
-- **Go CLI**: `mc checkpoint restart [--from <id>]` — restart session with compiled briefing
-- **Go CLI**: `mc checkpoint status` — session health (green/yellow/red)
-- **Go CLI**: `mc checkpoint history` — list past sessions from `sessions.jsonl`
-- **Go API**: `POST /api/checkpoints`, `POST /api/checkpoint/restart`, `GET /api/checkpoint/status`, `GET /api/checkpoint/history`
-- **Auto-checkpoint**: triggers on gate approval and graceful shutdown (SIGTERM)
-- **React UI**: session health indicator (green/yellow/red) in Tokens panel
-- **React UI**: "Restart Session" button with confirmation dialog
-- **React UI**: checkpoint history viewer (expandable session list)
-- **React UI**: auto-checkpoint toast notifications
-- `.mission/orchestrator/` directory for checkpoints, `current.json`, `sessions.jsonl`
+### Audit Trail (6.3)
+- Append-only `audit/interactions.jsonl` logging all mutations
+- `mc audit` command to query history
+
+### Task Dependencies (6.4–6.6)
+- `blocks`/`blockedBy` fields with cycle detection
+- `mc ready` — tasks with no open blockers
+- `mc dep tree <id>` — dependency graph
+- `mc blocked` — all blocked tasks and why
+
+### Git Auto-Commit (6.7)
+- All mutations auto-commit with `[mc:{category}]` prefix
+- Categories: checkpoint, task, gate, stage, worker, handoff
+- Per-category config in `.mission/config.json`
+
+### Session Continuity & Checkpoints
+- `mc checkpoint` — snapshot state to `.mission/orchestrator/checkpoints/`
+- `mc checkpoint restart` — restart with compiled ~500 token briefing
+- `mc checkpoint status` — session health (green/yellow/red)
+- `mc checkpoint auto --tokens <n>` — auto-checkpoint at token threshold
+- Auto-checkpoint on gate approval and graceful shutdown
+- Rust: `CheckpointCompiler`, `mc-core checkpoint-compile/validate`
+- React UI: health indicator, restart button, history viewer, toast notifications
+
+### OpenClaw Integration
+- WebSocket bridge connecting to OpenClaw gateway
+- REST endpoints: `/api/openclaw/{event,status,send}`
+- Message relay: MC UI chat ↔ OpenClaw agent session
+- Kai (OpenClaw) replaces tmux-based King process
+
+### Agent Teams
+- Named worker groups with `mc team` commands
+- Coordinated task assignment
+
+### Project Symlinks
+- `~/.mission-control/projects/` symlinks
+- `mc project link/list` for quick switching
+
+### CI Pipeline
+- GitHub Actions: build, test, vet, golangci-lint
+- Pre-commit hooks: gofmt + go vet
+- Branch protection requiring CI pass
 
 ### Testing
-
-- 79 Rust tests (workflow stage transitions, gate checks, checkpoint compile/validate)
-- Go CLI + orchestrator tests (stage transitions, migrate, checkpoint commands, API endpoints)
-- 136 React tests (stores, components, types, session health, restart, history, toast)
+- 79 Rust tests, Go CLI + integration tests, 136 React tests
+- Integration: multi-channel gates, state persistence, full 10-stage walkthrough, v5→v6 migration
 
 ---
 
-## v5.1 - Quality of Life
-
-Improved developer experience, workflow management, and infrastructure.
-
-### Documentation Cleanup
-- Consolidated specs into 5 root files (README, ARCHITECTURE, CONTRIBUTING, CHANGELOG, TODO)
-- Moved historical specs to `docs/archive/`
-- Removed `web/README.md` Vite boilerplate
-
-### Repository Cleanup
-- Renamed `orchestrator/api/v5.go` → `king.go`
-- Removed `orchestrator/api/v4.go`
-- Updated `.gitignore` to cover dist/, target/, node_modules/, .mission/
-- Removed accidentally committed build artifacts
-
-### Testing Improvements
-- 56 Rust tests (workflow state machine, token counting, handoff validation, gate criteria)
-- Go integration tests (King lifecycle, WebSocket flow, API endpoints, Rust core subprocess)
-- React tests: Project wizard (13), Multi-project switching, Matrix toggle (11)
-- E2E Playwright tests (wizard flow, King Mode, agent spawning, zone CRUD, WebSocket reconnection)
-- Test infrastructure: `make test`, `make test-rust`, `make test-go`, `make test-web`, `make test-integration`, `make test-e2e`
-- GitHub Actions CI workflow for PRs
-
-### Startup Simplification
-- `make dev` starts vite + orchestrator with single command
-- `make dev-ui` and `make dev-api` for individual services
-- `make build` production build (Go + Rust + React)
-- `make install` installs binaries to `/usr/local/bin`
-- `make clean` removes build artifacts
-- `mc serve` single binary with embedded React UI via Go `embed` package
-- Homebrew formula created
-
-### Project Wizard
-- `ProjectWizard` component with step state machine
-- `WorkflowMatrix` component with toggle logic
-- Typing indicator component (300ms delay)
-- API endpoints: `POST/GET/DELETE /api/projects`
-- Sidebar project list with switch capability
-- `mc init` accepts `--path`, `--git`, `--king`, `--config` flags
-- Wizard passes matrix config as JSON file to `mc init`
-
-### Configuration & Storage
-- `~/.mission-control/` directory created on first run
-- `mc` CLI and Orchestrator read/write config
-- Project added to list when created via wizard
-- `lastOpened` timestamp updated when project opened
-
-### Bug Fixes
-- **Rust Core Integration**: `mc-core` binary builds, CLI commands implemented, `orchestrator/core/client.go` wrapper created, inline Go parsing replaced with `core.CountTokens()`
-- **Token Usage Display**: Piped through `mc-core tokens`, `token_usage` WebSocket event, UI header/status bar display
-- **Agent Count**: `agent_spawned`/`agent_stopped` events emit correctly, UI listens and updates `agents` array, Playwright test verifies count increments
+## v5.1 — Quality of Life
 
 ### Developer Experience
-- `make lint` runs Go (golangci-lint) + Rust (clippy) + TypeScript (eslint)
-- `make fmt` formats all code (go fmt, cargo fmt, prettier)
-
-### Personas Management
-- 11 workflow personas (researcher, designer, architect, developer, debugger, reviewer, security, tester, qa, docs, devops)
-- Enable/disable personas per-project in Settings
-- Persona configuration stored in `.mission/config.json`
-- Prompt preview and edit capability for each persona
-- WorkflowMatrix respects disabled personas
-- Tools and skills defined for each persona
-
-### Testing Summary
-- 130 web tests (React + types)
-- 56 Rust core tests
-- 12 persona-related tests
-
----
-
-## v5 - King + mc CLI
-
-The brain of MissionControl. King orchestration with CLI tooling.
-
-### mc CLI
-- `mc init` - Create .mission/ scaffold with King + worker prompts
-- `mc status` - JSON dump of phase, tasks, workers, gates
-- `mc phase` - Get/set current workflow phase
-- `mc task` - Create, list, update tasks
-- `mc spawn` - Spawn Claude Code worker process
-- `mc kill` - Kill worker process
-- `mc handoff` - Validate and store handoff (supports `--rust` flag)
-- `mc gate` - Check/approve phase gates
-- `mc workers` - List active workers with health check
-
-### mc-core (Rust)
-- `mc-core validate-handoff <file>` - Schema + semantic validation
-- `mc-core check-gate <phase>` - Gate criteria evaluation
-- `mc-core count-tokens <file>` - Fast token counting with tiktoken
-
-### .mission/ Structure
-```
-.mission/
-├── CLAUDE.md              # King system prompt
-├── config.json            # Project settings
-├── state/
-│   ├── phase.json
-│   ├── tasks.json
-│   ├── workers.json
-│   └── gates.json
-├── specs/
-├── findings/
-├── handoffs/
-├── checkpoints/
-└── prompts/               # 11 persona prompts
-```
-
-### Go Bridge
-- Spawn King as Claude Code process
-- Route UI chat to King stdin
-- Spawn workers as Claude Code processes
-- File watcher on .mission/state/ with WebSocket events
-- REST endpoint: POST /api/mission/gates/:phase/approve
-
-### React UI Updates
-- King chat connected to actual King process
-- Phase/tasks/workers display from WebSocket events
-- Gate approval dialog
-- Findings viewer with type filtering
+- `make dev/build/test/clean/install/lint/fmt` commands
+- `.mission-control/` global config directory
+- Project wizard component with step state machine
+- mc-core Rust subprocess integration (validation, token counting)
+- 11 workflow personas with configurable prompts
 
 ### Testing
-- 64 tests total (8 Go CLI + 56 Rust core)
+- 130 React tests, 56 Rust tests, Go integration tests
+- Playwright E2E tests
 
 ---
 
-## v4 - Rust Core
+## v5 — King + mc CLI
 
-Deterministic workflow engine in Rust.
+### mc CLI
+- `mc init/status/stage/task/spawn/kill/handoff/gate/workers/serve`
 
-- Workflow engine (phases, gates, tasks)
+### mc-core (Rust)
+- `validate-handoff`, `check-gate`, `count-tokens`
+
+### Go Bridge
+- King process management, file watcher, WebSocket hub, REST API
+
+---
+
+## v4 — Rust Core
+- Workflow engine (stages, gates, tasks)
 - Knowledge manager (tokens, checkpoints, validation)
 - Health monitor (stuck detection)
-- Struct definitions and business logic
 
----
-
-## v3 - 2D Dashboard
-
-Full React dashboard with 81 unit tests.
-
-- Zustand state management with persistence
-- Header, Sidebar, AgentCard, AgentPanel components
-- Zone System (CRUD, split/merge)
-- Persona System (4 defaults + custom creation)
-- King Mode UI (KingPanel, KingHeader)
-- Attention System (notifications with quick response)
-- Settings Panel with keyboard shortcuts
+## v3 — 2D Dashboard
+- Full React dashboard, Zustand state, zone/persona systems, King Mode UI
 - 81 unit tests (29 Go + 52 React)
 
----
+## v2 — Orchestrator
+- Go process manager, REST API, WebSocket hub, Rust stream parser
 
-## v2 - Orchestrator
-
-Go process manager with REST API.
-
-- Go process manager (spawn/kill agents)
-- REST API endpoints
-- WebSocket event hub
-- Rust stream parser
-
----
-
-## v1 - Agent Fundamentals
-
-Educational Python agents demonstrating core patterns.
-
-- `v0_minimal.py` (~50 lines, bash only)
-- `v1_basic.py` (~200 lines, full tools)
-- `v2_todo.py` (~300 lines, explicit planning)
-- `v3_subagent.py` (~450 lines, child agents)
+## v1 — Agent Fundamentals
+- Educational Python agents (v0–v3: minimal → subagent delegation)
