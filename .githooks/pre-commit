@@ -1,0 +1,8 @@
+#!/bin/sh
+# Format
+gofmt -w $(git diff --cached --name-only --diff-filter=ACM | grep '\.go$')
+# Re-add formatted files
+git diff --cached --name-only --diff-filter=ACM | grep '\.go$' | xargs -r git add
+# Vet
+cd cmd/mc && go vet ./... && cd ../..
+cd orchestrator && go vet ./... && cd ..
