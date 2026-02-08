@@ -132,13 +132,17 @@ Foundation for multi-agent coordination and intelligent work distribution.
 
 ---
 
-### 6.8 10-Stage Workflow
+### 6.8 10-Stage Workflow ✅ COMPLETE
 **What:** Expand from 6 phases to 10 stages
 
-- [ ] Rename phase.json → stage.json
-- [ ] Add DISCOVERY, GOAL, REQUIREMENTS, PLANNING, VALIDATION stages
-- [ ] Update gates.json with new stage gates
-- [ ] Update UI phase display
+- [x] Rename phase.json → stage.json
+- [x] Add DISCOVERY, GOAL, REQUIREMENTS, PLANNING, VALIDATION stages
+- [x] Update gates.json with new stage gates
+- [x] Update UI phase display
+- [x] Full Rust + Go + React implementation (see TODO.md for details)
+- [x] Migration tooling (`mc migrate`)
+- [x] Checkpoint system (Rust schema + Go CLI + API + React UI)
+- [x] Ran full pipeline: built Kai Chat UI with 7 sub-agents (2026-02-07)
 
 ---
 
@@ -431,11 +435,11 @@ Visual tools for complex workflows.
 | v3 | React UI | Done |
 | v4 | Rust core | Done |
 | v5 | King + mc CLI | Done |
-| v5.1 | Quality of life | Current |
-| v6 | State management | Future |
+| v5.1 | Quality of life | Partial (UI items superseded → darlington.dev) |
+| v6 | 10-stage workflow + OpenClaw | Current (stages ✅, OpenClaw bridge WIP) |
 | v7 | Requirements & traceability | Future |
 | v8 | Infrastructure & scale | Future |
-| v9 | Advanced UI | Future |
+| v9 | Advanced UI (darlington.dev) | Future |
 | v10 | 3D visualization | Future |
 
 See [CHANGELOG.md](CHANGELOG.md) for completed version details.
