@@ -89,17 +89,16 @@ func runKill(cmd *cobra.Command, args []string) error {
 
 	// Also update associated task if exists
 	if worker.TaskID != "" {
-		tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-		var tasksState TasksState
-		if err := readJSON(tasksPath, &tasksState); err == nil {
-			for i := range tasksState.Tasks {
-				if tasksState.Tasks[i].ID == worker.TaskID {
-					tasksState.Tasks[i].Status = "blocked"
-					tasksState.Tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		tasks, loadErr := loadTasks(missionDir)
+		if loadErr == nil {
+			for i := range tasks {
+				if tasks[i].ID == worker.TaskID {
+					tasks[i].Status = "blocked"
+					tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 					break
 				}
 			}
-			writeJSON(tasksPath, tasksState)
+			saveTasks(missionDir, tasks)
 		}
 	}
 

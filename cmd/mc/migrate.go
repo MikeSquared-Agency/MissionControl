@@ -90,30 +90,39 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write gates.json: %w", err)
 	}
 
-	// Migrate tasks.json (change "phase" field to "stage")
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	if _, err := os.Stat(tasksPath); err == nil {
-		data, err := os.ReadFile(tasksPath)
+	// Migrate tasks.json → tasks.jsonl (change "phase" field to "stage", convert to JSONL)
+	oldTasksPath := filepath.Join(missionDir, "state", "tasks.json")
+	newTasksPath := filepath.Join(missionDir, "state", "tasks.jsonl")
+	if _, err := os.Stat(oldTasksPath); err == nil {
+		data, err := os.ReadFile(oldTasksPath)
 		if err == nil {
 			var raw map[string]interface{}
 			if err := json.Unmarshal(data, &raw); err == nil {
+				var migratedTasks []Task
 				if tasks, ok := raw["tasks"].([]interface{}); ok {
 					for _, t := range tasks {
-						if task, ok := t.(map[string]interface{}); ok {
-							if phase, ok := task["phase"]; ok {
+						if taskMap, ok := t.(map[string]interface{}); ok {
+							if phase, ok := taskMap["phase"]; ok {
 								phaseStr, _ := phase.(string)
 								stage := stageMap[phaseStr]
 								if stage == "" {
 									stage = phaseStr
 								}
-								task["stage"] = stage
-								delete(task, "phase")
+								taskMap["stage"] = stage
+								delete(taskMap, "phase")
 							}
+							// Re-marshal/unmarshal to get proper Task struct
+							b, _ := json.Marshal(taskMap)
+							var task Task
+							json.Unmarshal(b, &task)
+							migratedTasks = append(migratedTasks, task)
 						}
 					}
 				}
-				if err := writeJSON(tasksPath, raw); err != nil {
-					fmt.Printf("Warning: failed to migrate tasks.json: %v\n", err)
+				if err := writeTasksJSONL(newTasksPath, migratedTasks); err != nil {
+					fmt.Printf("Warning: failed to migrate tasks to JSONL: %v\n", err)
+				} else {
+					os.Rename(oldTasksPath, oldTasksPath+".migrated")
 				}
 			}
 		}

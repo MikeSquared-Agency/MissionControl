@@ -114,17 +114,16 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 
 	// Update task status
 	if handoff.TaskID != "" {
-		tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-		var tasksState TasksState
-		if err := readJSON(tasksPath, &tasksState); err == nil {
-			for i := range tasksState.Tasks {
-				if tasksState.Tasks[i].ID == handoff.TaskID {
-					tasksState.Tasks[i].Status = handoff.Status
-					tasksState.Tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		tasks, loadErr := loadTasks(missionDir)
+		if loadErr == nil {
+			for i := range tasks {
+				if tasks[i].ID == handoff.TaskID {
+					tasks[i].Status = handoff.Status
+					tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 					break
 				}
 			}
-			writeJSON(tasksPath, tasksState)
+			saveTasks(missionDir, tasks)
 		}
 
 		// Create status file for protocol completion detection

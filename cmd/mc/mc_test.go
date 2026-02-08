@@ -50,7 +50,7 @@ func TestMcInit(t *testing.T) {
 	// Verify state files
 	stateFiles := []string{
 		".mission/state/stage.json",
-		".mission/state/tasks.json",
+		".mission/state/tasks.jsonl",
 		".mission/state/workers.json",
 		".mission/state/gates.json",
 	}
@@ -105,14 +105,8 @@ func TestTaskCreateDirect(t *testing.T) {
 		t.Fatalf("mc init failed: %v", err)
 	}
 
-	// Create task by directly writing to tasks.json
+	// Create task by directly writing to tasks.jsonl
 	missionDir := filepath.Join(tmpDir, ".mission")
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-
-	var state TasksState
-	if err := readJSON(tasksPath, &state); err != nil {
-		t.Fatalf("Failed to read tasks: %v", err)
-	}
 
 	task := Task{
 		ID:        "test-task-1",
@@ -125,28 +119,23 @@ func TestTaskCreateDirect(t *testing.T) {
 		UpdatedAt: "2024-01-01T00:00:00Z",
 	}
 
-	state.Tasks = append(state.Tasks, task)
-	if err := writeJSON(tasksPath, state); err != nil {
+	tasks := []Task{task}
+	if err := saveTasks(missionDir, tasks); err != nil {
 		t.Fatalf("Failed to write task: %v", err)
 	}
 
 	// Verify task was created
-	data, err := os.ReadFile(tasksPath)
+	readTasks, err := loadTasks(missionDir)
 	if err != nil {
-		t.Fatalf("Failed to read tasks.json: %v", err)
+		t.Fatalf("Failed to read tasks.jsonl: %v", err)
 	}
 
-	var readState TasksState
-	if err := json.Unmarshal(data, &readState); err != nil {
-		t.Fatalf("Invalid tasks.json: %v", err)
+	if len(readTasks) != 1 {
+		t.Fatalf("Expected 1 task, got %d", len(readTasks))
 	}
 
-	if len(readState.Tasks) != 1 {
-		t.Fatalf("Expected 1 task, got %d", len(readState.Tasks))
-	}
-
-	if readState.Tasks[0].Name != "Research authentication options" {
-		t.Errorf("Task name mismatch: got '%s'", readState.Tasks[0].Name)
+	if readTasks[0].Name != "Research authentication options" {
+		t.Errorf("Task name mismatch: got '%s'", readTasks[0].Name)
 	}
 }
 
@@ -438,13 +427,9 @@ func TestCheckpointIncludesTasks(t *testing.T) {
 	missionDir := filepath.Join(tmpDir, ".mission")
 
 	// Create a task first
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	tasksState := TasksState{
-		Tasks: []Task{
-			{ID: "task-1", Name: "Test task", Stage: "discovery", Status: "complete"},
-		},
-	}
-	writeJSON(tasksPath, tasksState)
+	saveTasks(missionDir, []Task{
+		{ID: "task-1", Name: "Test task", Stage: "discovery", Status: "complete"},
+	})
 
 	// Create checkpoint
 	cp, err := createCheckpoint(missionDir, "")

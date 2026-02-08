@@ -128,10 +128,11 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 		return nil, fmt.Errorf("failed to read stage: %w", err)
 	}
 
-	var tasksState TasksState
-	if err := readJSON(filepath.Join(missionDir, "state", "tasks.json"), &tasksState); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return nil, fmt.Errorf("failed to read tasks: %w", err)
 	}
+	tasksState := TasksState{Tasks: tasks}
 
 	var gatesState GatesState
 	if err := readJSON(filepath.Join(missionDir, "state", "gates.json"), &gatesState); err != nil {
@@ -230,10 +231,11 @@ func runCheckpointStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read stage: %w", err)
 	}
 
-	var tasksState TasksState
-	if err := readJSON(filepath.Join(missionDir, "state", "tasks.json"), &tasksState); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
+	tasksState := TasksState{Tasks: tasks}
 
 	// Read current session info
 	sessionID := getCurrentSessionID(missionDir)

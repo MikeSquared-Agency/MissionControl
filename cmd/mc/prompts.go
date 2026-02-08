@@ -113,7 +113,7 @@ mc stage next
 
 Read current state with mc status or check files:
 - Stage: cat .mission/state/stage.json
-- Tasks: cat .mission/state/tasks.json
+- Tasks: cat .mission/state/tasks.jsonl
 - Workers: mc workers
 
 ## Finding Synthesis

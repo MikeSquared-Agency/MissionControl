@@ -92,9 +92,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := writeJSON(filepath.Join(missionDir, "state", "tasks.json"), TasksState{
-		Tasks: []Task{},
-	}); err != nil {
+	if err := writeTasksJSONL(filepath.Join(missionDir, "state", "tasks.jsonl"), []Task{}); err != nil {
 		return err
 	}
 

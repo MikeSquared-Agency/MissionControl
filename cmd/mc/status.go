@@ -45,9 +45,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Read tasks
-	if err := readJSON(filepath.Join(missionDir, "state", "tasks.json"), &status.Tasks); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
+	status.Tasks = TasksState{Tasks: tasks}
 
 	// Read workers
 	if err := readJSON(filepath.Join(missionDir, "state", "workers.json"), &status.Workers); err != nil {
