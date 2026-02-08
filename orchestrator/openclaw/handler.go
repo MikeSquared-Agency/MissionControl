@@ -51,6 +51,11 @@ type ChatResponse struct {
 	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
+// RegisterChatAlias registers /api/chat as an alias for /api/openclaw/chat.
+func (h *Handler) RegisterChatAlias(mux *http.ServeMux) {
+	mux.HandleFunc("/api/chat", h.handleChat)
+}
+
 func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

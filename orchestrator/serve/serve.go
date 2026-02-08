@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/DarlingtonDeveloper/MissionControl/api"
+	"github.com/DarlingtonDeveloper/MissionControl/openclaw"
 	"github.com/DarlingtonDeveloper/MissionControl/tokens"
 	"github.com/DarlingtonDeveloper/MissionControl/tracker"
 	"github.com/DarlingtonDeveloper/MissionControl/watcher"
@@ -140,14 +142,33 @@ func Run(cfg Config) error {
 	mux.HandleFunc("/api/specs/orphans", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, []interface{}{})
 	})
-	mux.HandleFunc("/api/openclaw/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]interface{}{"connected": false})
-	})
+	// --- OpenClaw bridge ---
+	gatewayURL := os.Getenv("OPENCLAW_GATEWAY")
+	gatewayToken := os.Getenv("OPENCLAW_TOKEN")
+	if gatewayURL != "" && gatewayToken != "" {
+		bridge := openclaw.NewBridge(gatewayURL, gatewayToken)
+		if err := bridge.Connect(); err != nil {
+			log.Printf("Warning: OpenClaw bridge failed to connect: %v", err)
+		} else {
+			log.Printf("OpenClaw bridge connected to %s", gatewayURL)
+			defer bridge.Close()
+		}
+
+		ocHandler := openclaw.NewHandler(bridge)
+		ocHandler.RegisterRoutes(mux)
+		// /api/chat as convenience alias
+		ocHandler.RegisterChatAlias(mux)
+	} else {
+		mux.HandleFunc("/api/openclaw/status", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, 200, map[string]interface{}{"connected": false})
+		})
+		mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, 501, map[string]string{"error": "OpenClaw bridge not configured. Set OPENCLAW_GATEWAY and OPENCLAW_TOKEN."})
+		})
+	}
 
 	// Apply middleware
-	var handler http.Handler = mux
-	// Note: CORS and Auth middleware from api package will be wired by the caller
-	// or we can apply them here once the api package is updated.
+	handler := api.Chain(mux, api.CORSMiddleware, api.AuthMiddleware)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := &http.Server{
