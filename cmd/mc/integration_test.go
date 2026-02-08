@@ -199,8 +199,6 @@ func TestF3_StatePersistenceAfterTaskCreation(t *testing.T) {
 	defer cleanup()
 	missionDir := filepath.Join(tmpDir, ".mission")
 
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-
 	// Create multiple tasks
 	tasks := []Task{
 		{ID: "t1", Name: "Research auth", Stage: "discovery", Status: "pending", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"},
@@ -208,20 +206,17 @@ func TestF3_StatePersistenceAfterTaskCreation(t *testing.T) {
 		{ID: "t3", Name: "Write specs", Stage: "goal", Status: "pending", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"},
 	}
 
-	var ts TasksState
-	readJSON(tasksPath, &ts)
-	ts.Tasks = tasks
-	if err := writeJSON(tasksPath, ts); err != nil {
+	if err := saveTasks(missionDir, tasks); err != nil {
 		t.Fatalf("Failed to write tasks: %v", err)
 	}
 
 	// Verify tasks survive re-read
-	var ts2 TasksState
-	if err := readJSON(tasksPath, &ts2); err != nil {
+	ts2, err := loadTasks(missionDir)
+	if err != nil {
 		t.Fatalf("Failed to re-read tasks: %v", err)
 	}
-	if len(ts2.Tasks) != 3 {
-		t.Fatalf("Expected 3 tasks, got %d", len(ts2.Tasks))
+	if len(ts2) != 3 {
+		t.Fatalf("Expected 3 tasks, got %d", len(ts2))
 	}
 
 	// Verify other state files are still valid
@@ -250,10 +245,7 @@ func TestF3_StatePersistenceAfterGateApproval(t *testing.T) {
 	missionDir := filepath.Join(tmpDir, ".mission")
 
 	// Add a task first
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	writeJSON(tasksPath, TasksState{
-		Tasks: []Task{{ID: "t1", Name: "Test task", Stage: "discovery", Status: "complete"}},
-	})
+	saveTasks(missionDir, []Task{{ID: "t1", Name: "Test task", Stage: "discovery", Status: "complete"}})
 
 	// Approve gate
 	if err := runGateApprove(nil, []string{"discovery"}); err != nil {
@@ -274,12 +266,9 @@ func TestF3_StatePersistenceAfterGateApproval(t *testing.T) {
 		t.Fatal("gates.json corrupted after gate approval")
 	}
 
-	var ts TasksState
-	if err := readJSON(tasksPath, &ts); err != nil {
-		t.Fatal("tasks.json corrupted after gate approval")
-	}
-	if len(ts.Tasks) != 1 {
-		t.Errorf("Task lost after gate approval! Got %d tasks", len(ts.Tasks))
+	verifyTasks, _ := loadTasks(missionDir)
+	if len(verifyTasks) != 1 {
+		t.Errorf("Task lost after gate approval! Got %d tasks", len(verifyTasks))
 	}
 
 	// Verify checkpoint was created (auto-checkpoint on gate approve)
@@ -298,12 +287,9 @@ func TestF3_CheckpointCapturesFullState(t *testing.T) {
 	missionDir := filepath.Join(tmpDir, ".mission")
 
 	// Set up state: tasks + approve discovery gate
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	writeJSON(tasksPath, TasksState{
-		Tasks: []Task{
-			{ID: "t1", Name: "Task A", Stage: "discovery", Status: "complete"},
-			{ID: "t2", Name: "Task B", Stage: "goal", Status: "pending"},
-		},
+	saveTasks(missionDir, []Task{
+		{ID: "t1", Name: "Task A", Stage: "discovery", Status: "complete"},
+		{ID: "t2", Name: "Task B", Stage: "goal", Status: "pending"},
 	})
 
 	runGateApprove(nil, []string{"discovery"})
@@ -356,23 +342,18 @@ func TestF3_StateConsistencyAcrossMultipleOperations(t *testing.T) {
 	defer cleanup()
 	missionDir := filepath.Join(tmpDir, ".mission")
 
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-
 	// 1. Create tasks
-	writeJSON(tasksPath, TasksState{
-		Tasks: []Task{
-			{ID: "t1", Name: "Research", Stage: "discovery", Status: "complete"},
-		},
+	saveTasks(missionDir, []Task{
+		{ID: "t1", Name: "Research", Stage: "discovery", Status: "complete"},
 	})
 
 	// 2. Approve discovery gate (→ goal)
 	runGateApprove(nil, []string{"discovery"})
 
 	// 3. Add more tasks for goal stage
-	var ts TasksState
-	readJSON(tasksPath, &ts)
-	ts.Tasks = append(ts.Tasks, Task{ID: "t2", Name: "Define goals", Stage: "goal", Status: "complete"})
-	writeJSON(tasksPath, ts)
+	existingTasks, _ := loadTasks(missionDir)
+	existingTasks = append(existingTasks, Task{ID: "t2", Name: "Define goals", Stage: "goal", Status: "complete"})
+	saveTasks(missionDir, existingTasks)
 
 	// 4. Approve goal gate (→ requirements)
 	runGateApprove(nil, []string{"goal"})
@@ -419,10 +400,9 @@ func TestF3_StateConsistencyAcrossMultipleOperations(t *testing.T) {
 		t.Errorf("Disk stage '%s' doesn't match checkpoint stage '%s'", diskStage, cp.Stage)
 	}
 
-	var diskTasks TasksState
-	readJSON(tasksPath, &diskTasks)
-	if len(diskTasks.Tasks) != len(cp.Tasks) {
-		t.Errorf("Disk tasks (%d) != checkpoint tasks (%d)", len(diskTasks.Tasks), len(cp.Tasks))
+	diskTasks, _ := loadTasks(missionDir)
+	if len(diskTasks) != len(cp.Tasks) {
+		t.Errorf("Disk tasks (%d) != checkpoint tasks (%d)", len(diskTasks), len(cp.Tasks))
 	}
 }
 
