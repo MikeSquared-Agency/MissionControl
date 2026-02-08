@@ -73,6 +73,13 @@ func runStage(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to write stage: %w", err)
 		}
 
+		writeAuditLog(missionDir, AuditStageAdvanced, "cli", map[string]interface{}{
+			"from_stage": getPrevStage(nextStage),
+			"to_stage":   nextStage,
+		})
+
+		gitAutoCommit(missionDir, CommitCategoryStage, fmt.Sprintf("advance %s → %s", getPrevStage(nextStage), nextStage))
+
 		fmt.Printf("Stage transitioned: %s → %s\n", getPrevStage(nextStage), nextStage)
 		return nil
 	}
@@ -91,6 +98,12 @@ func runStage(cmd *cobra.Command, args []string) error {
 	if err := writeJSON(stagePath, state); err != nil {
 		return fmt.Errorf("failed to write stage: %w", err)
 	}
+
+	writeAuditLog(missionDir, AuditStageSet, "cli", map[string]interface{}{
+		"stage": targetStage,
+	})
+
+	gitAutoCommit(missionDir, CommitCategoryStage, fmt.Sprintf("set %s", targetStage))
 
 	fmt.Printf("Stage set to: %s\n", targetStage)
 	return nil

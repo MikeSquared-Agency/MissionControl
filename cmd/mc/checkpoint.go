@@ -186,8 +186,14 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 		"session_id":    sessionID,
 	})
 
+	writeAuditLog(missionDir, AuditCheckpointCreated, "cli", map[string]interface{}{
+		"checkpoint_id": cp.ID,
+		"stage":         cp.Stage,
+		"session_id":    sessionID,
+	})
+
 	// Auto-commit to git
-	gitCommitCheckpoint(missionDir, cp.ID)
+	gitAutoCommit(missionDir, CommitCategoryCheckpoint, fmt.Sprintf("checkpoint %s", cp.ID))
 
 	return cp, nil
 }
@@ -203,32 +209,9 @@ func getCurrentSessionID(missionDir string) string {
 	return uuid.New().String()[:8]
 }
 
+// gitCommitCheckpoint is kept for backward compatibility, delegates to gitAutoCommit.
 func gitCommitCheckpoint(missionDir string, checkpointID string) {
-	// Find the project root (parent of .mission)
-	projectDir := filepath.Dir(missionDir)
-
-	// Check if we're in a git repo
-	gitCheck := exec.Command("git", "rev-parse", "--is-inside-work-tree")
-	gitCheck.Dir = projectDir
-	if err := gitCheck.Run(); err != nil {
-		return // Not a git repo, skip
-	}
-
-	// Stage the checkpoint files
-	gitAdd := exec.Command("git", "add",
-		filepath.Join(".mission", "orchestrator", "checkpoints"),
-		filepath.Join(".mission", "orchestrator", "current.json"),
-	)
-	gitAdd.Dir = projectDir
-	if err := gitAdd.Run(); err != nil {
-		return
-	}
-
-	// Commit
-	msg := fmt.Sprintf("checkpoint: %s", checkpointID)
-	gitCommit := exec.Command("git", "commit", "-m", msg, "--allow-empty")
-	gitCommit.Dir = projectDir
-	gitCommit.Run()
+	gitAutoCommit(missionDir, CommitCategoryCheckpoint, fmt.Sprintf("checkpoint %s", checkpointID))
 }
 
 func runCheckpointStatus(cmd *cobra.Command, args []string) error {
@@ -424,6 +407,11 @@ func runCheckpointRestart(cmd *cobra.Command, args []string) error {
 	// Compile briefing using mc-core (if available)
 	briefing := compileBriefing(missionDir, briefingCP)
 
+	writeAuditLog(missionDir, AuditSessionEnded, "cli", map[string]interface{}{
+		"session_id":    oldSessionID,
+		"checkpoint_id": cp.ID,
+	})
+
 	// Log session end
 	now := time.Now().UTC().Format(time.RFC3339)
 	endRecord := SessionRecord{
@@ -445,6 +433,12 @@ func runCheckpointRestart(cmd *cobra.Command, args []string) error {
 	}
 	appendSession(missionDir, startRecord)
 
+	writeAuditLog(missionDir, AuditSessionStarted, "cli", map[string]interface{}{
+		"session_id":    newSessionID,
+		"checkpoint_id": cp.ID,
+		"stage":         cp.Stage,
+	})
+
 	// Update current.json with new session
 	currentPath := filepath.Join(missionDir, "orchestrator", "current.json")
 	writeJSON(currentPath, map[string]string{
@@ -455,7 +449,7 @@ func runCheckpointRestart(cmd *cobra.Command, args []string) error {
 	})
 
 	// Git commit the session transition
-	gitCommitCheckpoint(missionDir, cp.ID)
+	gitAutoCommit(missionDir, CommitCategoryCheckpoint, fmt.Sprintf("session restart %s → %s", oldSessionID, newSessionID))
 
 	result := map[string]string{
 		"old_session":   oldSessionID,

@@ -153,6 +153,23 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	writeAuditLog(missionDir, AuditHandoffReceived, "worker", map[string]interface{}{
+		"task_id":   handoff.TaskID,
+		"worker_id": handoff.WorkerID,
+		"status":    handoff.Status,
+		"findings":  len(handoff.Findings),
+	})
+
+	if handoff.Status == "complete" && handoff.WorkerID != "" {
+		writeAuditLog(missionDir, AuditWorkerCompleted, "worker", map[string]interface{}{
+			"worker_id": handoff.WorkerID,
+			"task_id":   handoff.TaskID,
+		})
+	}
+
+	// Auto-commit handoff
+	gitAutoCommit(missionDir, CommitCategoryHandoff, fmt.Sprintf("worker %s task %s (%s)", shortID(handoff.WorkerID), shortID(handoff.TaskID), handoff.Status))
+
 	fmt.Printf("Handoff stored: %s\n", handoffPath)
 	fmt.Printf("Findings updated: %s\n", filepath.Join(missionDir, "findings", handoff.TaskID+".json"))
 
