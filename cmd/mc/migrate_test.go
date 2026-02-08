@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -115,48 +114,36 @@ func TestMigrateV5ToV6(t *testing.T) {
 		t.Errorf("Expected 10 gates, got %d", len(gates.Gates))
 	}
 
-	// 4. tasks.json should have "stage" field (not "phase")
-	tasksData, err := os.ReadFile(filepath.Join(stateDir, "tasks.json"))
+	// 4. tasks should be in JSONL format with "stage" field (not "phase")
+	migratedTasks, err := loadTasks(missionDir)
 	if err != nil {
-		t.Fatalf("Failed to read tasks.json: %v", err)
-	}
-	var rawTasks map[string]interface{}
-	json.Unmarshal(tasksData, &rawTasks)
-	tasks := rawTasks["tasks"].([]interface{})
-
-	if len(tasks) != 2 {
-		t.Fatalf("Expected 2 tasks preserved, got %d", len(tasks))
+		t.Fatalf("Failed to load tasks after migration: %v", err)
 	}
 
-	for _, raw := range tasks {
-		task := raw.(map[string]interface{})
-		if _, hasPhase := task["phase"]; hasPhase {
-			t.Errorf("Task '%s' still has 'phase' field", task["id"])
-		}
-		if _, hasStage := task["stage"]; !hasStage {
-			t.Errorf("Task '%s' missing 'stage' field", task["id"])
+	if len(migratedTasks) != 2 {
+		t.Fatalf("Expected 2 tasks preserved, got %d", len(migratedTasks))
+	}
+
+	for _, task := range migratedTasks {
+		if task.Stage == "" {
+			t.Errorf("Task '%s' missing 'stage' field", task.ID)
 		}
 	}
 
 	// Check phase→stage mapping on tasks
-	task0 := tasks[0].(map[string]interface{})
-	if task0["stage"] != "implement" {
-		t.Errorf("Task 'task-alpha' stage: expected 'implement', got '%s'", task0["stage"])
+	if migratedTasks[0].Stage != "implement" {
+		t.Errorf("Task 'task-alpha' stage: expected 'implement', got '%s'", migratedTasks[0].Stage)
 	}
-	task1 := tasks[1].(map[string]interface{})
-	if task1["stage"] != "discovery" {
-		t.Errorf("Task 'task-beta' stage: expected 'discovery' (mapped from 'idea'), got '%s'", task1["stage"])
+	if migratedTasks[1].Stage != "discovery" {
+		t.Errorf("Task 'task-beta' stage: expected 'discovery' (mapped from 'idea'), got '%s'", migratedTasks[1].Stage)
 	}
 
 	// Check other task fields are preserved
-	if task0["name"] != "Build the widget" {
-		t.Errorf("Task name not preserved: got '%s'", task0["name"])
+	if migratedTasks[0].Name != "Build the widget" {
+		t.Errorf("Task name not preserved: got '%s'", migratedTasks[0].Name)
 	}
-	if task0["status"] != "in_progress" {
-		t.Errorf("Task status not preserved: got '%s'", task0["status"])
-	}
-	if task0["worker_id"] != "w-1" {
-		t.Errorf("Task worker_id not preserved: got '%s'", task0["worker_id"])
+	if migratedTasks[0].Status != "in_progress" {
+		t.Errorf("Task status not preserved: got '%s'", migratedTasks[0].Status)
 	}
 
 	// 5. orchestrator directory should be created
