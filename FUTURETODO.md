@@ -437,7 +437,7 @@ Visual tools for complex workflows.
 | v4 | Rust core | Done |
 | v5 | King + mc CLI | Done |
 | v5.1 | Quality of life | Partial (UI items superseded → darlington.dev) |
-| v6 | 10-stage workflow + OpenClaw | Current (stages ✅, OpenClaw bridge WIP) |
+| v6 | 10-stage workflow + OpenClaw | ✅ Done (merged to main) |
 | v7 | Requirements & traceability | Future |
 | v8 | Infrastructure & scale | Future |
 | v9 | Advanced UI (darlington.dev) | Future |
