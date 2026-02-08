@@ -96,9 +96,8 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	var state TasksState
-	if err := readJSON(tasksPath, &state); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
@@ -106,7 +105,7 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	taskID := hashid.Generate("task", name, stage, zone, persona)
 
 	// Check for duplicate IDs
-	for _, existing := range state.Tasks {
+	for _, existing := range tasks {
 		if existing.ID == taskID {
 			return fmt.Errorf("task with this ID already exists: %s (name=%q)", taskID, existing.Name)
 		}
@@ -124,9 +123,9 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		UpdatedAt: now,
 	}
 
-	state.Tasks = append(state.Tasks, task)
+	tasks = append(tasks, task)
 
-	if err := writeJSON(tasksPath, state); err != nil {
+	if err := saveTasks(missionDir, tasks); err != nil {
 		return fmt.Errorf("failed to write tasks: %w", err)
 	}
 
@@ -158,17 +157,16 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	statusFilter, _ := cmd.Flags().GetString("status")
 	readyOnly, _ := cmd.Flags().GetBool("ready")
 
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	var state TasksState
-	if err := readJSON(tasksPath, &state); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
-	taskMap := buildTaskMap(state.Tasks)
+	taskMap := buildTaskMap(tasks)
 
 	// Filter tasks
 	var filtered []Task
-	for _, task := range state.Tasks {
+	for _, task := range tasks {
 		if stageFilter != "" && task.Stage != stageFilter {
 			continue
 		}
@@ -201,22 +199,21 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--status is required")
 	}
 
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	var state TasksState
-	if err := readJSON(tasksPath, &state); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
 	found := false
 	var oldStatus string
-	for i := range state.Tasks {
-		if state.Tasks[i].ID == taskID {
-			oldStatus = state.Tasks[i].Status
-			state.Tasks[i].Status = newStatus
-			state.Tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	for i := range tasks {
+		if tasks[i].ID == taskID {
+			oldStatus = tasks[i].Status
+			tasks[i].Status = newStatus
+			tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 			found = true
 
-			output, _ := json.MarshalIndent(state.Tasks[i], "", "  ")
+			output, _ := json.MarshalIndent(tasks[i], "", "  ")
 			fmt.Println(string(output))
 			break
 		}
@@ -226,7 +223,7 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("task not found: %s", taskID)
 	}
 
-	if err := writeJSON(tasksPath, state); err != nil {
+	if err := saveTasks(missionDir, tasks); err != nil {
 		return fmt.Errorf("failed to write tasks: %w", err)
 	}
 
@@ -279,13 +276,12 @@ func runTaskDeps(cmd *cobra.Command, args []string) error {
 	taskID := args[0]
 	showTree, _ := cmd.Flags().GetBool("tree")
 
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	var state TasksState
-	if err := readJSON(tasksPath, &state); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
-	taskMap := buildTaskMap(state.Tasks)
+	taskMap := buildTaskMap(tasks)
 
 	root, ok := taskMap[taskID]
 	if !ok {
@@ -374,16 +370,15 @@ func runQueue(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	var state TasksState
-	if err := readJSON(tasksPath, &state); err != nil {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
-	taskMap := buildTaskMap(state.Tasks)
+	taskMap := buildTaskMap(tasks)
 
 	var ready []Task
-	for _, task := range state.Tasks {
+	for _, task := range tasks {
 		if isReady(task, taskMap) {
 			ready = append(ready, task)
 		}
