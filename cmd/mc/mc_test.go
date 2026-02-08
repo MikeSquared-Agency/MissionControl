@@ -648,14 +648,11 @@ func TestF7_CheckpointRoundTrip(t *testing.T) {
 	defer cleanup()
 
 	// Set up some state: add a task and advance to "goal"
-	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
-	tasksState := TasksState{
-		Tasks: []Task{
-			{ID: "t1", Name: "Research", Stage: "discovery", Status: "complete", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z"},
-			{ID: "t2", Name: "Define goals", Stage: "goal", Status: "pending", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z"},
-		},
+	tasks := []Task{
+		{ID: "t1", Name: "Research", Stage: "discovery", Status: "complete", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z"},
+		{ID: "t2", Name: "Define goals", Stage: "goal", Status: "pending", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z"},
 	}
-	if err := writeJSON(tasksPath, tasksState); err != nil {
+	if err := saveTasks(missionDir, tasks); err != nil {
 		t.Fatalf("Failed to write tasks: %v", err)
 	}
 
