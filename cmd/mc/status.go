@@ -72,17 +72,54 @@ func runStatus(cmd *cobra.Command, args []string) error {
 }
 
 func findMissionDir() (string, error) {
+	// 1. If --project flag is set, look up from the global registry
+	if projectFlag != "" {
+		reg, err := loadRegistry()
+		if err != nil {
+			return "", fmt.Errorf("failed to load project registry: %w", err)
+		}
+		missionDir, ok := reg.Projects[projectFlag]
+		if !ok {
+			return "", fmt.Errorf("project '%s' not found in registry (see 'mc project list')", projectFlag)
+		}
+		// Resolve symlinks and verify existence
+		resolved, err := filepath.EvalSymlinks(missionDir)
+		if err != nil {
+			return "", fmt.Errorf("project '%s' .mission/ path not accessible: %s", projectFlag, missionDir)
+		}
+		return resolved, nil
+	}
+
+	// 2. Check MC_PROJECT env var
+	if envProject := os.Getenv("MC_PROJECT"); envProject != "" {
+		reg, err := loadRegistry()
+		if err == nil {
+			if missionDir, ok := reg.Projects[envProject]; ok {
+				resolved, err := filepath.EvalSymlinks(missionDir)
+				if err == nil {
+					return resolved, nil
+				}
+			}
+		}
+	}
+
+	// 3. Walk up from cwd looking for .mission/ (follows symlinks via os.Stat)
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	// Walk up looking for .mission/
 	dir := cwd
 	for {
 		missionDir := filepath.Join(dir, ".mission")
-		if _, err := os.Stat(missionDir); err == nil {
-			return missionDir, nil
+		// os.Stat follows symlinks, so .mission/ can be a symlink
+		if info, err := os.Stat(missionDir); err == nil && info.IsDir() {
+			// Resolve to real path for consistent behavior
+			resolved, err := filepath.EvalSymlinks(missionDir)
+			if err != nil {
+				return "", fmt.Errorf(".mission/ found but symlink broken: %w", err)
+			}
+			return resolved, nil
 		}
 
 		parent := filepath.Dir(dir)
