@@ -98,6 +98,9 @@ func runAuditList(cmd *cobra.Command, args []string) error {
 	n := 20
 	if cmd.Flags().Changed("last") {
 		n, _ = cmd.Flags().GetInt("last")
+		if n <= 0 {
+			n = 20
+		}
 	}
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 
@@ -124,6 +127,9 @@ func runAuditFilter(cmd *cobra.Command, args []string) error {
 	actorFilter, _ := cmd.Flags().GetString("actor")
 	sinceStr, _ := cmd.Flags().GetString("since")
 	n, _ := cmd.Flags().GetInt("last")
+	if n <= 0 {
+		n = 20
+	}
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 
 	var sinceTime time.Time
@@ -221,15 +227,19 @@ func writeAuditLog(missionDir string, action string, actor string, details map[s
 	auditPath := filepath.Join(missionDir, "audit.jsonl")
 	data, err := json.Marshal(entry)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to marshal audit entry: %v\n", err)
 		return
 	}
 
 	f, err := os.OpenFile(auditPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to open audit log: %v\n", err)
 		return
 	}
 	defer f.Close()
-	f.Write(data)
+	if _, err := f.Write(data); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to write audit entry: %v\n", err)
+	}
 	f.WriteString("\n")
 }
 

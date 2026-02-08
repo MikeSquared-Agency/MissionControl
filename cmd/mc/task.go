@@ -170,22 +170,13 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	found := false
+	var oldStatus string
 	for i := range state.Tasks {
 		if state.Tasks[i].ID == taskID {
-			oldStatus := state.Tasks[i].Status
+			oldStatus = state.Tasks[i].Status
 			state.Tasks[i].Status = newStatus
 			state.Tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 			found = true
-
-			auditAction := AuditTaskUpdated
-			if newStatus == "complete" {
-				auditAction = AuditTaskCompleted
-			}
-			writeAuditLog(missionDir, auditAction, "cli", map[string]interface{}{
-				"task_id":    taskID,
-				"old_status": oldStatus,
-				"new_status": newStatus,
-			})
 
 			output, _ := json.MarshalIndent(state.Tasks[i], "", "  ")
 			fmt.Println(string(output))
@@ -200,6 +191,17 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 	if err := writeJSON(tasksPath, state); err != nil {
 		return fmt.Errorf("failed to write tasks: %w", err)
 	}
+
+	// Audit after successful persistence
+	auditAction := AuditTaskUpdated
+	if newStatus == "complete" {
+		auditAction = AuditTaskCompleted
+	}
+	writeAuditLog(missionDir, auditAction, "cli", map[string]interface{}{
+		"task_id":    taskID,
+		"old_status": oldStatus,
+		"new_status": newStatus,
+	})
 
 	// Auto-commit
 	gitAutoCommit(missionDir, CommitCategoryTask, taskCommitMsg("update", taskID, newStatus))
