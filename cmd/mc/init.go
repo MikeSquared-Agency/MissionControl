@@ -278,6 +278,11 @@ type GatesState struct {
 	Gates map[string]Gate `json:"gates"`
 }
 
+type Team struct {
+	Personas []string `json:"personas"`
+	Zone     string   `json:"zone,omitempty"`
+}
+
 type Config struct {
 	Version    string            `json:"version"`
 	Audience   string            `json:"audience"` // personal, external
@@ -285,4 +290,5 @@ type Config struct {
 	OpenClaw   bool              `json:"openclaw"`
 	Matrix     interface{}       `json:"matrix,omitempty"`
 	AutoCommit *AutoCommitConfig `json:"auto_commit,omitempty"`
+	Teams      map[string]Team   `json:"teams,omitempty"`
 }
