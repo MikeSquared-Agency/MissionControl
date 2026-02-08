@@ -155,6 +155,17 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Read current stage — only allow approving the gate for the CURRENT stage
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	var currentStage StageState
+	if err := readJSON(stagePath, &currentStage); err != nil {
+		return fmt.Errorf("failed to read current stage: %w", err)
+	}
+
+	if currentStage.Current != stage {
+		return fmt.Errorf("cannot approve gate for %q: current stage is %q (gate approval only allowed for the current stage)", stage, currentStage.Current)
+	}
+
 	// Update gate status
 	gatesPath := filepath.Join(missionDir, "state", "gates.json")
 	var gatesState GatesState
@@ -165,6 +176,11 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 	gate, ok := gatesState.Gates[stage]
 	if !ok {
 		return fmt.Errorf("gate not found: %s", stage)
+	}
+
+	// Prevent re-approving an already-approved gate (which would trigger duplicate transitions)
+	if gate.Status == "approved" {
+		return fmt.Errorf("gate for %q is already approved", stage)
 	}
 
 	gate.Status = "approved"
@@ -187,14 +203,13 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Checkpoint created: %s\n", cp.ID)
 	}
 
-	// Transition to next stage
+	// Transition to next stage — only ONE stage forward
 	nextStage, err := getNextStage(stage)
 	if err != nil {
 		fmt.Printf("Gate approved: %s (final stage)\n", stage)
 		return nil
 	}
 
-	stagePath := filepath.Join(missionDir, "state", "stage.json")
 	stageState := StageState{
 		Current:   nextStage,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
