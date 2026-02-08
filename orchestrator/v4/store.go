@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mike/mission-control/hashid"
 )
 
 // Store manages v4 workflow state
@@ -203,7 +204,7 @@ func (s *Store) CreateTask(name string, stage Stage, zone, persona string, deps 
 
 	now := time.Now().Unix()
 	task := &Task{
-		ID:           uuid.New().String(),
+		ID:           hashid.Generate("task", name, string(stage), zone, persona),
 		Name:         name,
 		Stage:        stage,
 		Zone:         zone,

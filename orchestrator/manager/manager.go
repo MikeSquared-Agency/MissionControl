@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mike/mission-control/hashid"
 )
 
 // AgentType represents the type of agent
@@ -122,7 +123,7 @@ type SpawnRequest struct {
 
 // Spawn creates and starts a new agent
 func (m *Manager) Spawn(req SpawnRequest) (*Agent, error) {
-	id := uuid.New().String()[:8]
+	id := hashid.Generate("agent", req.Task, string(req.Type), req.Zone, req.Persona)
 
 	// Use provided name or generate from ID
 	name := req.Name
