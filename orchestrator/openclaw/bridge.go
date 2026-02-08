@@ -97,7 +97,7 @@ type Bridge struct {
 // NewBridge creates a new OpenClaw bridge (does not connect yet).
 func NewBridge(gatewayURL, token string) *Bridge {
 	devID := make([]byte, 8)
-	_, _ = rand.Read(devID)
+	rand.Read(devID)
 	return &Bridge{
 		gatewayURL: gatewayURL,
 		token:      token,
@@ -354,6 +354,6 @@ func (b *Bridge) setError(msg string) {
 
 func randomID() string {
 	b := make([]byte, 8)
-	_, _ = rand.Read(b)
+	rand.Read(b)
 	return hex.EncodeToString(b)
 }
