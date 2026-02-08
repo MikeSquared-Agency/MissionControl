@@ -7,13 +7,16 @@ package hashid
 import (
 	"crypto/sha256"
 	"fmt"
-	"strings"
 )
 
 // Generate produces a deterministic 10-character hex ID from the given
-// content parts. Parts are joined with "|" before hashing.
+// content parts. Parts are length-prefixed before hashing to avoid
+// ambiguous encodings (e.g., ["a|b"] vs ["a", "b"]).
 func Generate(parts ...string) string {
-	content := strings.Join(parts, "|")
-	hash := sha256.Sum256([]byte(content))
-	return fmt.Sprintf("%x", hash[:5]) // 5 bytes = 10 hex chars
+	h := sha256.New()
+	for _, p := range parts {
+		// Length-prefix each part to make encoding unambiguous
+		fmt.Fprintf(h, "%d:%s", len(p), p)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)[:5]) // 5 bytes = 10 hex chars
 }

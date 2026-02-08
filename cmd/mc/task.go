@@ -74,14 +74,24 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	tasks, err := loadTasks(missionDir)
-	if err != nil {
+	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
+	var state TasksState
+	if err := readJSON(tasksPath, &state); err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
+	taskID := hashid.Generate("task", name, stage, zone, persona)
+
+	// Check for duplicate IDs
+	for _, existing := range state.Tasks {
+		if existing.ID == taskID {
+			return fmt.Errorf("task with this ID already exists: %s (name=%q)", taskID, existing.Name)
+		}
+	}
+
 	task := Task{
-		ID:        hashid.Generate("task", name, stage, zone, persona),
+		ID:        taskID,
 		Name:      name,
 		Stage:     stage,
 		Zone:      zone,
@@ -91,9 +101,9 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		UpdatedAt: now,
 	}
 
-	tasks = append(tasks, task)
+	state.Tasks = append(state.Tasks, task)
 
-	if err := saveTasks(missionDir, tasks); err != nil {
+	if err := writeJSON(tasksPath, state); err != nil {
 		return fmt.Errorf("failed to write tasks: %w", err)
 	}
 
@@ -113,14 +123,15 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	stageFilter, _ := cmd.Flags().GetString("stage")
 	statusFilter, _ := cmd.Flags().GetString("status")
 
-	tasks, err := loadTasks(missionDir)
-	if err != nil {
+	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
+	var state TasksState
+	if err := readJSON(tasksPath, &state); err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
 	// Filter tasks
 	var filtered []Task
-	for _, task := range tasks {
+	for _, task := range state.Tasks {
 		if stageFilter != "" && task.Stage != stageFilter {
 			continue
 		}
@@ -150,19 +161,20 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--status is required")
 	}
 
-	tasks, err := loadTasks(missionDir)
-	if err != nil {
+	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
+	var state TasksState
+	if err := readJSON(tasksPath, &state); err != nil {
 		return fmt.Errorf("failed to read tasks: %w", err)
 	}
 
 	found := false
-	for i := range tasks {
-		if tasks[i].ID == taskID {
-			tasks[i].Status = newStatus
-			tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	for i := range state.Tasks {
+		if state.Tasks[i].ID == taskID {
+			state.Tasks[i].Status = newStatus
+			state.Tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 			found = true
 
-			output, _ := json.MarshalIndent(tasks[i], "", "  ")
+			output, _ := json.MarshalIndent(state.Tasks[i], "", "  ")
 			fmt.Println(string(output))
 			break
 		}
@@ -172,7 +184,7 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("task not found: %s", taskID)
 	}
 
-	if err := saveTasks(missionDir, tasks); err != nil {
+	if err := writeJSON(tasksPath, state); err != nil {
 		return fmt.Errorf("failed to write tasks: %w", err)
 	}
 
