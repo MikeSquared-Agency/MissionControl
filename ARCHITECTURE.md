@@ -139,7 +139,7 @@ All mutations auto-commit with `[mc:{category}]` prefixed messages. Configurable
 
 ## Directory Structure
 
-```
+```text
 /
 ├── cmd/mc/                  # mc CLI (Go)
 ├── orchestrator/            # Go orchestrator
@@ -171,7 +171,7 @@ All mutations auto-commit with `[mc:{category}]` prefixed messages. Configurable
 | `mc dep add/remove/tree` | Task dependencies |
 | `mc ready` | Tasks with no open blockers |
 | `mc blocked` | Show blocked tasks |
-| `mc spawn <persona> <task>` | Spawn worker process |
+| `mc spawn <persona> <task> [--zone <zone>]` | Spawn worker process |
 | `mc kill <worker-id>` | Kill worker process |
 | `mc workers` | List active workers |
 | `mc handoff <file>` | Validate and store handoff |
@@ -199,7 +199,7 @@ mc-core checkpoint-validate <file>   # Validate checkpoint schema
 
 ## .mission/ Directory
 
-```
+```text
 .mission/
 ├── CLAUDE.md              # King system prompt
 ├── config.json            # Project settings, auto_commit config
