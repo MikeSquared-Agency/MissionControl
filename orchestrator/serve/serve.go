@@ -30,20 +30,20 @@ type Config struct {
 
 // topicMap maps watcher event types to hub topics.
 var topicMap = map[string]string{
-	"stage.changed":  "stage",
-	"task.created":   "task",
-	"task.updated":   "task",
-	"task.deleted":   "task",
-	"worker.spawned": "worker",
-	"worker.status":  "worker",
-	"worker.killed":  "worker",
-	"gate.approved":  "gate",
-	"gate.rejected":  "gate",
-	"zone.activity":  "zone",
-	"checkpoint":     "checkpoint",
-	"audit":          "audit",
-	"findings.new":   "task",
-	"memory.updated": "memory",
+	"stage_changed":         "stage",
+	"task_created":          "task",
+	"task_updated":          "task",
+	"task_deleted":          "task",
+	"worker_spawned":        "worker",
+	"worker_completed":      "worker",
+	"worker_status_changed": "worker",
+	"gate_approved":         "gate",
+	"gate_ready":            "gate",
+	"zone_activity":         "zone",
+	"checkpoint":            "checkpoint",
+	"audit":                 "audit",
+	"findings_ready":        "task",
+	"memory_updated":        "memory",
 }
 
 // Run starts the orchestrator server.
