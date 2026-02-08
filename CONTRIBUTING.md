@@ -16,6 +16,9 @@
 git clone https://github.com/yourname/mission-control
 cd mission-control
 
+# Enable pre-commit hooks (formatting + vet)
+git config core.hooksPath .githooks
+
 # Install dependencies
 make setup
 
