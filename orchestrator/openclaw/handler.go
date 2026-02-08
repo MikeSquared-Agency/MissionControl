@@ -27,7 +27,7 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(h.bridge.Status())
+	_ = json.NewEncoder(w).Encode(h.bridge.Status())
 }
 
 // SendRequest is the JSON body for POST /api/openclaw/send.
@@ -56,10 +56,10 @@ func (h *Handler) handleSend(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
