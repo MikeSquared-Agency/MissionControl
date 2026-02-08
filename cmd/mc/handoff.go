@@ -153,6 +153,8 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	gitAutoCommit(missionDir, CommitCategoryHandoff, fmt.Sprintf("handoff: worker %s, status %s", shortID(handoff.WorkerID), handoff.Status))
+
 	fmt.Printf("Handoff stored: %s\n", handoffPath)
 	fmt.Printf("Findings updated: %s\n", filepath.Join(missionDir, "findings", handoff.TaskID+".json"))
 

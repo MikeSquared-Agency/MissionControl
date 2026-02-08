@@ -187,7 +187,7 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 	})
 
 	// Auto-commit to git
-	gitCommitCheckpoint(missionDir, cp.ID)
+	gitAutoCommit(missionDir, CommitCategoryCheckpoint, fmt.Sprintf("checkpoint: %s", shortID(cp.ID)))
 
 	return cp, nil
 }

@@ -130,6 +130,8 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to update workers state: %w", err)
 	}
 
+	gitAutoCommit(missionDir, CommitCategoryWorker, fmt.Sprintf("spawn worker: %s", shortID(worker.ID)))
+
 	// Output worker info
 	output, _ := json.MarshalIndent(worker, "", "  ")
 	fmt.Println(string(output))
