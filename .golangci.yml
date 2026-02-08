@@ -1,0 +1,37 @@
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - staticcheck
+    - unused
+  disable:
+    - typecheck
+
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - (io.Writer).Write
+      - (io.Writer).WriteByte  
+      - (*bytes.Buffer).Write
+      - (*bytes.Buffer).WriteString
+      - (*bytes.Buffer).WriteByte
+      - (*os.File).Write
+      - (*os.File).WriteString
+      - (net/http.ResponseWriter).Write
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - os.MkdirAll
+      - os.Chdir
+      - (*encoding/json.Encoder).Encode
+      - (*encoding/json.Decoder).Decode
+      - encoding/json.Unmarshal
+      - rand.Read
+      - crypto/rand.Read
+      - io.ReadAll
+
+issues:
+  exclude-dirs:
+    - vendor
+  max-issues-per-linter: 0
+  max-same-issues: 0
