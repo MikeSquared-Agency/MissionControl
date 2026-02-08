@@ -105,7 +105,7 @@ func TestUpdateTaskStatusEmitsEvent(t *testing.T) {
 	mux.ServeHTTP(createW, createReq)
 
 	var created Task
-	json.Unmarshal(createW.Body.Bytes(), &created)
+	_ = json.Unmarshal(createW.Body.Bytes(), &created)
 
 	// Clear events from creation
 	notifier.events = nil
@@ -153,7 +153,7 @@ func TestStageTransitionRequiresGateApproval(t *testing.T) {
 	mux.ServeHTTP(stagesW, stagesReq)
 
 	var stagesResp StagesResponse
-	json.Unmarshal(stagesW.Body.Bytes(), &stagesResp)
+	_ = json.Unmarshal(stagesW.Body.Bytes(), &stagesResp)
 
 	if stagesResp.Current != StageDiscovery {
 		t.Errorf("Expected current stage 'discovery', got %s", stagesResp.Current)
@@ -165,7 +165,7 @@ func TestStageTransitionRequiresGateApproval(t *testing.T) {
 	mux.ServeHTTP(gateW, gateReq)
 
 	var gate Gate
-	json.Unmarshal(gateW.Body.Bytes(), &gate)
+	_ = json.Unmarshal(gateW.Body.Bytes(), &gate)
 
 	if gate.Status != GateStatusClosed {
 		t.Errorf("Expected gate status 'closed', got %s", gate.Status)
@@ -183,7 +183,7 @@ func TestStageTransitionRequiresGateApproval(t *testing.T) {
 	}
 
 	var approvalResp GateApprovalResponse
-	json.Unmarshal(approveW.Body.Bytes(), &approvalResp)
+	_ = json.Unmarshal(approveW.Body.Bytes(), &approvalResp)
 
 	if approvalResp.Gate.Status != GateStatusOpen {
 		t.Errorf("Expected approved gate status 'open', got %s", approvalResp.Gate.Status)
@@ -212,7 +212,7 @@ func TestTokenWarningFlow(t *testing.T) {
 	}
 
 	var budget TokenBudget
-	json.Unmarshal(createW.Body.Bytes(), &budget)
+	_ = json.Unmarshal(createW.Body.Bytes(), &budget)
 
 	if budget.Status != BudgetStatusHealthy {
 		t.Errorf("Expected status 'healthy', got %s", budget.Status)
@@ -232,7 +232,7 @@ func TestTokenWarningFlow(t *testing.T) {
 		t.Errorf("Expected status 200, got %d: %s", usageW.Code, usageW.Body.String())
 	}
 
-	json.Unmarshal(usageW.Body.Bytes(), &budget)
+	_ = json.Unmarshal(usageW.Body.Bytes(), &budget)
 
 	if budget.Status != BudgetStatusWarning {
 		t.Errorf("Expected status 'warning' at 60%%, got %s", budget.Status)
@@ -267,7 +267,7 @@ func TestTokenWarningFlow(t *testing.T) {
 	criticalW := httptest.NewRecorder()
 	mux.ServeHTTP(criticalW, criticalReq)
 
-	json.Unmarshal(criticalW.Body.Bytes(), &budget)
+	_ = json.Unmarshal(criticalW.Body.Bytes(), &budget)
 
 	if budget.Status != BudgetStatusCritical {
 		t.Errorf("Expected status 'critical' at 80%%, got %s", budget.Status)
@@ -302,7 +302,7 @@ func TestHandoffValidationFlow(t *testing.T) {
 	mux.ServeHTTP(taskW, taskReq)
 
 	var task Task
-	json.Unmarshal(taskW.Body.Bytes(), &task)
+	_ = json.Unmarshal(taskW.Body.Bytes(), &task)
 
 	// Clear events
 	notifier.events = nil
@@ -328,7 +328,7 @@ func TestHandoffValidationFlow(t *testing.T) {
 	}
 
 	var resp HandoffResponse
-	json.Unmarshal(handoffW.Body.Bytes(), &resp)
+	_ = json.Unmarshal(handoffW.Body.Bytes(), &resp)
 
 	if !resp.Valid {
 		t.Errorf("Expected valid handoff, got errors: %v", resp.Errors)
@@ -351,7 +351,7 @@ func TestHandoffValidationFlow(t *testing.T) {
 	mux.ServeHTTP(invalidW, invalidReq)
 
 	var invalidResp HandoffResponse
-	json.Unmarshal(invalidW.Body.Bytes(), &invalidResp)
+	_ = json.Unmarshal(invalidW.Body.Bytes(), &invalidResp)
 
 	if invalidResp.Valid {
 		t.Error("Expected invalid handoff due to missing task_id")
@@ -379,7 +379,7 @@ func TestHandoffBlockedRequiresReason(t *testing.T) {
 	mux.ServeHTTP(handoffW, handoffReq)
 
 	var resp HandoffResponse
-	json.Unmarshal(handoffW.Body.Bytes(), &resp)
+	_ = json.Unmarshal(handoffW.Body.Bytes(), &resp)
 
 	if resp.Valid {
 		t.Error("Expected invalid handoff due to missing blocked_reason")
@@ -398,7 +398,7 @@ func TestHandoffBlockedRequiresReason(t *testing.T) {
 	validW := httptest.NewRecorder()
 	mux.ServeHTTP(validW, validReq)
 
-	json.Unmarshal(validW.Body.Bytes(), &resp)
+	_ = json.Unmarshal(validW.Body.Bytes(), &resp)
 
 	if !resp.Valid {
 		t.Errorf("Expected valid handoff with blocked_reason, got errors: %v", resp.Errors)
@@ -422,7 +422,7 @@ func TestGetStagesEndpoint(t *testing.T) {
 	}
 
 	var resp StagesResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	if resp.Current != StageDiscovery {
 		t.Errorf("Expected current stage 'discovery', got %s", resp.Current)
@@ -455,7 +455,7 @@ func TestListTasksEndpoint(t *testing.T) {
 	}
 
 	var resp TasksResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	if len(resp.Tasks) != 2 {
 		t.Errorf("Expected 2 tasks, got %d", len(resp.Tasks))
@@ -482,7 +482,7 @@ func TestListTasksWithFilter(t *testing.T) {
 	mux.ServeHTTP(w, req)
 
 	var resp TasksResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	if len(resp.Tasks) != 1 {
 		t.Errorf("Expected 1 task in discovery stage, got %d", len(resp.Tasks))
@@ -504,7 +504,7 @@ func TestGetTaskEndpoint(t *testing.T) {
 	mux.ServeHTTP(createW, createReq)
 
 	var created Task
-	json.Unmarshal(createW.Body.Bytes(), &created)
+	_ = json.Unmarshal(createW.Body.Bytes(), &created)
 
 	// Get the task
 	getReq := httptest.NewRequest("GET", "/api/tasks/"+created.ID, nil)
@@ -516,7 +516,7 @@ func TestGetTaskEndpoint(t *testing.T) {
 	}
 
 	var task Task
-	json.Unmarshal(getW.Body.Bytes(), &task)
+	_ = json.Unmarshal(getW.Body.Bytes(), &task)
 
 	if task.ID != created.ID {
 		t.Errorf("Expected task ID %s, got %s", created.ID, task.ID)
@@ -550,7 +550,7 @@ func TestCheckpointCreation(t *testing.T) {
 	}
 
 	var summary CheckpointSummary
-	json.Unmarshal(w.Body.Bytes(), &summary)
+	_ = json.Unmarshal(w.Body.Bytes(), &summary)
 
 	if summary.ID == "" {
 		t.Error("Checkpoint ID should not be empty")
@@ -593,7 +593,7 @@ func TestListCheckpoints(t *testing.T) {
 	}
 
 	var resp CheckpointsResponse
-	json.Unmarshal(listW.Body.Bytes(), &resp)
+	_ = json.Unmarshal(listW.Body.Bytes(), &resp)
 
 	if len(resp.Checkpoints) < 1 {
 		t.Error("Expected at least 1 checkpoint")
@@ -622,7 +622,7 @@ func TestFindingSummaryTooLong(t *testing.T) {
 	mux.ServeHTTP(w, req)
 
 	var resp HandoffResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	if resp.Valid {
 		t.Error("Expected invalid handoff due to summary too long")

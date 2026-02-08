@@ -66,15 +66,15 @@ var checkpointRestartCmd = &cobra.Command{
 
 // CheckpointData is the JSON structure written to checkpoint files
 type CheckpointData struct {
-	ID        string            `json:"id"`
-	Stage     string            `json:"stage"`
-	CreatedAt string            `json:"created_at"`
-	SessionID string            `json:"session_id,omitempty"`
-	Tasks     []Task            `json:"tasks"`
-	Gates     map[string]Gate   `json:"gates"`
-	Decisions []string          `json:"decisions"`
-	Blockers  []string          `json:"blockers"`
-	Summary   string            `json:"summary,omitempty"`
+	ID        string          `json:"id"`
+	Stage     string          `json:"stage"`
+	CreatedAt string          `json:"created_at"`
+	SessionID string          `json:"session_id,omitempty"`
+	Tasks     []Task          `json:"tasks"`
+	Gates     map[string]Gate `json:"gates"`
+	Decisions []string        `json:"decisions"`
+	Blockers  []string        `json:"blockers"`
+	Summary   string          `json:"summary,omitempty"`
 }
 
 // SessionRecord is a line in sessions.jsonl
@@ -143,14 +143,14 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 	var decisions []string
 	decisionsPath := filepath.Join(missionDir, "orchestrator", "decisions.json")
 	if data, err := os.ReadFile(decisionsPath); err == nil {
-		json.Unmarshal(data, &decisions)
+		_ = json.Unmarshal(data, &decisions)
 	}
 
 	// Read blockers (from .mission/orchestrator/blockers.json if it exists)
 	var blockers []string
 	blockersPath := filepath.Join(missionDir, "orchestrator", "blockers.json")
 	if data, err := os.ReadFile(blockersPath); err == nil {
-		json.Unmarshal(data, &blockers)
+		_ = json.Unmarshal(data, &blockers)
 	}
 
 	// Load or create session ID
@@ -172,7 +172,7 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 
 	// Write checkpoint file
 	checkpointsDir := filepath.Join(missionDir, "orchestrator", "checkpoints")
-	os.MkdirAll(checkpointsDir, 0755)
+	_ = os.MkdirAll(checkpointsDir, 0755)
 
 	cpPath := filepath.Join(checkpointsDir, cp.ID+".json")
 	if err := writeJSON(cpPath, cp); err != nil {
@@ -181,7 +181,7 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 
 	// Update current.json pointer
 	currentPath := filepath.Join(missionDir, "orchestrator", "current.json")
-	writeJSON(currentPath, map[string]string{
+	_ = writeJSON(currentPath, map[string]string{
 		"checkpoint_id": cp.ID,
 		"created_at":    cp.CreatedAt,
 		"session_id":    sessionID,
@@ -208,11 +208,6 @@ func getCurrentSessionID(missionDir string) string {
 		}
 	}
 	return uuid.New().String()[:8]
-}
-
-// gitCommitCheckpoint is kept for backward compatibility, delegates to gitAutoCommit.
-func gitCommitCheckpoint(missionDir string, checkpointID string) {
-	gitAutoCommit(missionDir, CommitCategoryCheckpoint, fmt.Sprintf("checkpoint %s", checkpointID))
 }
 
 func runCheckpointStatus(cmd *cobra.Command, args []string) error {
@@ -443,7 +438,7 @@ func runCheckpointRestart(cmd *cobra.Command, args []string) error {
 
 	// Update current.json with new session
 	currentPath := filepath.Join(missionDir, "orchestrator", "current.json")
-	writeJSON(currentPath, map[string]string{
+	_ = writeJSON(currentPath, map[string]string{
 		"checkpoint_id": cp.ID,
 		"session_id":    newSessionID,
 		"created_at":    now,
@@ -487,7 +482,7 @@ func compileBriefing(missionDir string, cp *CheckpointData) string {
 func generateFallbackBriefing(cp *CheckpointData) string {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("# Session Briefing\n\n"))
+	b.WriteString("# Session Briefing\n\n")
 	b.WriteString(fmt.Sprintf("**Stage:** %s\n", cp.Stage))
 	if cp.SessionID != "" {
 		b.WriteString(fmt.Sprintf("**Previous Session:** %s\n", cp.SessionID))
@@ -514,7 +509,7 @@ func generateFallbackBriefing(cp *CheckpointData) string {
 			pending++
 		}
 	}
-	b.WriteString(fmt.Sprintf("## Tasks\n"))
+	b.WriteString("## Tasks\n")
 	b.WriteString(fmt.Sprintf("- Total: %d, Done: %d, Pending: %d\n\n", total, done, pending))
 
 	if len(cp.Blockers) > 0 {
@@ -553,6 +548,6 @@ func appendSession(missionDir string, record SessionRecord) {
 		return
 	}
 	defer f.Close()
-	f.Write(data)
-	f.WriteString("\n")
+	_, _ = f.Write(data)
+	_, _ = f.WriteString("\n")
 }

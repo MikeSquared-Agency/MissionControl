@@ -22,13 +22,13 @@ const (
 // AutoCommitConfig controls which state mutations trigger git commits.
 // Stored in .mission/config.json under "auto_commit".
 type AutoCommitConfig struct {
-	Enabled    bool `json:"enabled"`     // Master switch (default: true)
-	Checkpoint bool `json:"checkpoint"`  // Checkpoint creation (default: true, legacy behavior)
-	Task       bool `json:"task"`        // Task create/update/complete (default: true)
-	Gate       bool `json:"gate"`        // Gate approvals (default: true)
-	Stage      bool `json:"stage"`       // Stage transitions (default: true)
-	Worker     bool `json:"worker"`      // Worker spawn/kill (default: true)
-	Handoff    bool `json:"handoff"`     // Handoff processing (default: true)
+	Enabled    bool `json:"enabled"`    // Master switch (default: true)
+	Checkpoint bool `json:"checkpoint"` // Checkpoint creation (default: true, legacy behavior)
+	Task       bool `json:"task"`       // Task create/update/complete (default: true)
+	Gate       bool `json:"gate"`       // Gate approvals (default: true)
+	Stage      bool `json:"stage"`      // Stage transitions (default: true)
+	Worker     bool `json:"worker"`     // Worker spawn/kill (default: true)
+	Handoff    bool `json:"handoff"`    // Handoff processing (default: true)
 }
 
 // DefaultAutoCommitConfig returns the default config with everything enabled.
@@ -120,35 +120,7 @@ func gitAutoCommit(missionDir string, category AutoCommitCategory, msg string) {
 	commitMsg := fmt.Sprintf("[mc:%s] %s", prefix, msg)
 	gitCommit := exec.Command("git", "commit", "-m", commitMsg)
 	gitCommit.Dir = projectDir
-	gitCommit.Run()
-}
-
-// gitAutoCommitPaths stages specific paths and commits. Used by checkpoint for backward compat.
-func gitAutoCommitPaths(missionDir string, category AutoCommitCategory, msg string, paths []string) {
-	cfg := loadAutoCommitConfig(missionDir)
-	if !cfg.Enabled || !cfg.Checkpoint {
-		return
-	}
-
-	projectDir := filepath.Dir(missionDir)
-
-	gitCheck := exec.Command("git", "rev-parse", "--is-inside-work-tree")
-	gitCheck.Dir = projectDir
-	if err := gitCheck.Run(); err != nil {
-		return
-	}
-
-	args := append([]string{"add"}, paths...)
-	gitAdd := exec.Command("git", args...)
-	gitAdd.Dir = projectDir
-	if err := gitAdd.Run(); err != nil {
-		return
-	}
-
-	commitMsg := fmt.Sprintf("[mc:%s] %s", string(category), msg)
-	gitCommit := exec.Command("git", "commit", "-m", commitMsg, "--allow-empty")
-	gitCommit.Dir = projectDir
-	gitCommit.Run()
+	_ = gitCommit.Run()
 }
 
 // shortID returns first 8 chars of an ID for commit messages

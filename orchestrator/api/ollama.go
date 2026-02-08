@@ -50,7 +50,7 @@ func (h *OllamaHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // handleModels handles GET /api/ollama/models
@@ -67,5 +67,5 @@ func (h *OllamaHandler) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(models)
+	_ = json.NewEncoder(w).Encode(models)
 }

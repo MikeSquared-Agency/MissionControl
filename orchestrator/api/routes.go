@@ -59,7 +59,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 // handleHealth handles GET /api/health
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // handleAgents handles /api/agents
@@ -130,7 +130,7 @@ func (h *Handler) handleAgent(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listAgents(w http.ResponseWriter, r *http.Request) {
 	agents := h.Manager.List()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agents)
+	_ = json.NewEncoder(w).Encode(agents)
 }
 
 // spawnAgent handles POST /api/agents
@@ -159,7 +159,7 @@ func (h *Handler) spawnAgent(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(agent)
+	_ = json.NewEncoder(w).Encode(agent)
 }
 
 // getAgent handles GET /api/agents/:id
@@ -171,7 +171,7 @@ func (h *Handler) getAgent(w http.ResponseWriter, r *http.Request, id string) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agent)
+	_ = json.NewEncoder(w).Encode(agent)
 }
 
 // killAgent handles DELETE /api/agents/:id
@@ -204,7 +204,7 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request, id string)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
 }
 
 // MoveAgentRequest represents a request to move an agent to a zone
@@ -227,7 +227,7 @@ func (h *Handler) moveAgent(w http.ResponseWriter, r *http.Request, id string) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "moved"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "moved"})
 }
 
 // RespondRequest represents a response to an attention request
@@ -252,7 +252,7 @@ func (h *Handler) respondToAttention(w http.ResponseWriter, r *http.Request, id 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "responded"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "responded"})
 }
 
 // Zone handlers
@@ -297,7 +297,7 @@ func (h *Handler) handleZone(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listZones(w http.ResponseWriter, r *http.Request) {
 	zones := h.Manager.ListZones()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(zones)
+	_ = json.NewEncoder(w).Encode(zones)
 }
 
 // createZone handles POST /api/zones
@@ -321,7 +321,7 @@ func (h *Handler) createZone(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(created)
+	_ = json.NewEncoder(w).Encode(created)
 }
 
 // getZone handles GET /api/zones/:id
@@ -333,7 +333,7 @@ func (h *Handler) getZone(w http.ResponseWriter, r *http.Request, id string) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(zone)
+	_ = json.NewEncoder(w).Encode(zone)
 }
 
 // updateZone handles PUT /api/zones/:id
@@ -351,7 +351,7 @@ func (h *Handler) updateZone(w http.ResponseWriter, r *http.Request, id string) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(zone)
+	_ = json.NewEncoder(w).Encode(zone)
 }
 
 // deleteZone handles DELETE /api/zones/:id
@@ -371,5 +371,5 @@ func (h *Handler) deleteZone(w http.ResponseWriter, r *http.Request, id string) 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }

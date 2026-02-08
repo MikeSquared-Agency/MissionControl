@@ -66,20 +66,20 @@ func (h *PTYHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	cmd := exec.Command(tmuxPath, "attach-session", "-t", sessionName)
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		conn.WriteMessage(websocket.TextMessage, []byte("Failed to attach: "+err.Error()))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("Failed to attach: "+err.Error()))
 		return
 	}
 	defer func() {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		ptmx.Close()
 	}()
 
 	// Set initial PTY size (will be updated by client resize message)
-	pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
+	_ = pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
 
 	// Send Ctrl+L to force tmux to redraw the screen
 	time.Sleep(100 * time.Millisecond)
-	ptmx.Write([]byte{12}) // Ctrl+L = ASCII 12
+	_, _ = ptmx.Write([]byte{12}) // Ctrl+L = ASCII 12
 
 	var wg sync.WaitGroup
 	done := make(chan struct{})

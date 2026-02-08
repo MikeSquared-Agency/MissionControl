@@ -103,43 +103,43 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to parse tasks.json during migration: %w", err)
 			}
 			var migratedTasks []Task
-				if tasks, ok := raw["tasks"].([]interface{}); ok {
-					for _, t := range tasks {
-						if taskMap, ok := t.(map[string]interface{}); ok {
-							if phase, ok := taskMap["phase"]; ok {
-								phaseStr, _ := phase.(string)
-								stage := stageMap[phaseStr]
-								if stage == "" {
-									stage = phaseStr
-								}
-								taskMap["stage"] = stage
-								delete(taskMap, "phase")
+			if tasks, ok := raw["tasks"].([]interface{}); ok {
+				for _, t := range tasks {
+					if taskMap, ok := t.(map[string]interface{}); ok {
+						if phase, ok := taskMap["phase"]; ok {
+							phaseStr, _ := phase.(string)
+							stage := stageMap[phaseStr]
+							if stage == "" {
+								stage = phaseStr
 							}
-							// Re-marshal/unmarshal to get proper Task struct
-							b, mErr := json.Marshal(taskMap)
-							if mErr != nil {
-								fmt.Fprintf(os.Stderr, "warning: failed to marshal task during migration: %v\n", mErr)
-								continue
-							}
-							var task Task
-							if uErr := json.Unmarshal(b, &task); uErr != nil {
-								fmt.Fprintf(os.Stderr, "warning: failed to unmarshal task during migration: %v\n", uErr)
-								continue
-							}
-							migratedTasks = append(migratedTasks, task)
+							taskMap["stage"] = stage
+							delete(taskMap, "phase")
 						}
+						// Re-marshal/unmarshal to get proper Task struct
+						b, mErr := json.Marshal(taskMap)
+						if mErr != nil {
+							fmt.Fprintf(os.Stderr, "warning: failed to marshal task during migration: %v\n", mErr)
+							continue
+						}
+						var task Task
+						if uErr := json.Unmarshal(b, &task); uErr != nil {
+							fmt.Fprintf(os.Stderr, "warning: failed to unmarshal task during migration: %v\n", uErr)
+							continue
+						}
+						migratedTasks = append(migratedTasks, task)
 					}
 				}
-				if err := writeTasksJSONL(newTasksPath, migratedTasks); err != nil {
+			}
+			if err := writeTasksJSONL(newTasksPath, migratedTasks); err != nil {
 				fmt.Printf("Warning: failed to migrate tasks to JSONL: %v\n", err)
 			} else {
-				os.Rename(oldTasksPath, oldTasksPath+".migrated")
+				_ = os.Rename(oldTasksPath, oldTasksPath+".migrated")
 			}
 		}
 	}
 
 	// Create orchestrator directory
-	os.MkdirAll(filepath.Join(missionDir, "orchestrator", "checkpoints"), 0755)
+	_ = os.MkdirAll(filepath.Join(missionDir, "orchestrator", "checkpoints"), 0755)
 
 	// Delete old phase.json
 	os.Remove(phasePath)

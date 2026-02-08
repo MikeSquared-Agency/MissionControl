@@ -65,8 +65,8 @@ func writeTasksJSONL(path string, tasks []Task) error {
 			os.Remove(tmpPath)
 			return err
 		}
-		w.Write(data)
-		w.WriteByte('\n')
+		_, _ = w.Write(data)
+		_ = w.WriteByte('\n')
 	}
 	if err := w.Flush(); err != nil {
 		f.Close()
@@ -125,7 +125,7 @@ func migrateTasksJSONToJSONL(jsonPath, jsonlPath string) ([]Task, error) {
 	}
 
 	// Rename old file so we don't migrate again
-	os.Rename(jsonPath, jsonPath+".migrated")
+	_ = os.Rename(jsonPath, jsonPath+".migrated")
 
 	return state.Tasks, nil
 }

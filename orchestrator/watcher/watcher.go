@@ -144,7 +144,7 @@ func (w *Watcher) loadInitialState() {
 
 	// Load stage
 	if data, err := os.ReadFile(filepath.Join(stateDir, "stage.json")); err == nil {
-		json.Unmarshal(data, &w.lastStage)
+		_ = json.Unmarshal(data, &w.lastStage)
 	}
 
 	// Load tasks (JSONL format, one task per line)
@@ -157,7 +157,7 @@ func (w *Watcher) loadInitialState() {
 	// Load workers
 	var workersState WorkersState
 	if data, err := os.ReadFile(filepath.Join(stateDir, "workers.json")); err == nil {
-		json.Unmarshal(data, &workersState)
+		_ = json.Unmarshal(data, &workersState)
 		for _, wr := range workersState.Workers {
 			w.lastWorkers[wr.ID] = wr
 		}
@@ -166,7 +166,7 @@ func (w *Watcher) loadInitialState() {
 	// Load gates
 	var gatesState GatesState
 	if data, err := os.ReadFile(filepath.Join(stateDir, "gates.json")); err == nil {
-		json.Unmarshal(data, &gatesState)
+		_ = json.Unmarshal(data, &gatesState)
 		w.lastGates = gatesState.Gates
 	}
 }
@@ -178,7 +178,7 @@ func (w *Watcher) checkForChanges() {
 	// Check stage
 	var currentStage StageState
 	if data, err := os.ReadFile(filepath.Join(stateDir, "stage.json")); err == nil {
-		json.Unmarshal(data, &currentStage)
+		_ = json.Unmarshal(data, &currentStage)
 		w.mu.Lock()
 		if currentStage.Current != w.lastStage.Current {
 			w.emitEvent("stage_changed", map[string]interface{}{
@@ -215,7 +215,7 @@ func (w *Watcher) checkForChanges() {
 	// Check workers
 	var workersState WorkersState
 	if data, err := os.ReadFile(filepath.Join(stateDir, "workers.json")); err == nil {
-		json.Unmarshal(data, &workersState)
+		_ = json.Unmarshal(data, &workersState)
 
 		w.mu.Lock()
 		currentWorkers := make(map[string]Worker)
@@ -251,7 +251,7 @@ func (w *Watcher) checkForChanges() {
 	// Check gates
 	var gatesState GatesState
 	if data, err := os.ReadFile(filepath.Join(stateDir, "gates.json")); err == nil {
-		json.Unmarshal(data, &gatesState)
+		_ = json.Unmarshal(data, &gatesState)
 
 		w.mu.Lock()
 		for stage, gate := range gatesState.Gates {
@@ -259,7 +259,7 @@ func (w *Watcher) checkForChanges() {
 				if gate.Status != lastGate.Status {
 					if gate.Status == "approved" {
 						w.emitEvent("gate_approved", map[string]interface{}{
-							"stage":      stage,
+							"stage":       stage,
 							"approved_at": gate.ApprovedAt,
 						})
 					} else if gate.Status == "ready" {
