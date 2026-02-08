@@ -115,6 +115,11 @@ func runCheckpointCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Audit log
+	writeAuditLog(missionDir, AuditCheckpointCreated, "cli", map[string]interface{}{
+		"checkpoint_id": cp.ID,
+	})
+
 	output, _ := json.MarshalIndent(cp, "", "  ")
 	fmt.Println(string(output))
 

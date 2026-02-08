@@ -134,11 +134,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create config.json with optional matrix
+	defaultAC := DefaultAutoCommitConfig()
 	config := Config{
-		Version:  "1.0.0",
-		Audience: "personal",
-		Zones:    []string{"frontend", "backend", "database", "infra", "shared"},
-		OpenClaw: initOpenClaw,
+		Version:    "1.0.0",
+		Audience:   "personal",
+		Zones:      []string{"frontend", "backend", "database", "infra", "shared"},
+		OpenClaw:   initOpenClaw,
+		AutoCommit: &defaultAC,
 	}
 
 	// If matrix provided, include it in config
@@ -192,6 +194,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+
+	// Audit log
+	writeAuditLog(missionDir, AuditProjectInitialized, "cli", map[string]interface{}{
+		"path": workDir,
+	})
 
 	fmt.Printf("Initialized .mission/ directory at %s\n", workDir)
 	fmt.Println("")
@@ -275,9 +282,10 @@ type GatesState struct {
 }
 
 type Config struct {
-	Version  string      `json:"version"`
-	Audience string      `json:"audience"` // personal, external
-	Zones    []string    `json:"zones"`
-	OpenClaw bool        `json:"openclaw"`
-	Matrix   interface{} `json:"matrix,omitempty"`
+	Version    string             `json:"version"`
+	Audience   string             `json:"audience"` // personal, external
+	Zones      []string           `json:"zones"`
+	OpenClaw   bool               `json:"openclaw"`
+	Matrix     interface{}        `json:"matrix,omitempty"`
+	AutoCommit *AutoCommitConfig  `json:"auto_commit,omitempty"`
 }

@@ -98,6 +98,13 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write tasks: %w", err)
 	}
 
+	gitAutoCommit(missionDir, CommitCategoryTask, taskCommitMsg("create", task.ID, task.Name))
+
+	// Audit log
+	writeAuditLog(missionDir, AuditTaskCreated, "cli", map[string]interface{}{
+		"task_id": task.ID, "name": name, "stage": stage,
+	})
+
 	// Output task as JSON
 	output, _ := json.MarshalIndent(task, "", "  ")
 	fmt.Println(string(output))
@@ -178,6 +185,17 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 	if err := writeJSON(tasksPath, state); err != nil {
 		return fmt.Errorf("failed to write tasks: %w", err)
 	}
+
+	action := "update"
+	if newStatus == "complete" {
+		action = "complete"
+	}
+	gitAutoCommit(missionDir, CommitCategoryTask, taskCommitMsg(action, taskID, ""))
+
+	// Audit log
+	writeAuditLog(missionDir, AuditTaskUpdated, "cli", map[string]interface{}{
+		"task_id": taskID, "status": newStatus,
+	})
 
 	return nil
 }
