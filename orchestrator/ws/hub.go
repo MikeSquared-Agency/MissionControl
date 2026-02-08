@@ -4,66 +4,68 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/DarlingtonDeveloper/MissionControl/manager"
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for development
-	},
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// Client represents a WebSocket client
+// Event is the core message type broadcast through the hub.
+type Event struct {
+	Topic string          `json:"topic"`
+	Type  string          `json:"type"`
+	Data  json.RawMessage `json:"data"`
+}
+
+// clientCommand represents a command sent from the client.
+type clientCommand struct {
+	Type   string   `json:"type"`
+	Topics []string `json:"topics,omitempty"`
+}
+
+// Client represents a WebSocket client with optional topic subscriptions.
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan []byte
+	hub           *Hub
+	conn          *websocket.Conn
+	send          chan []byte
+	subscriptions map[string]bool // nil = receive all topics
+	mu            sync.RWMutex
 }
 
-// Hub maintains the set of active clients and broadcasts events
+// Hub maintains connected clients and broadcasts namespaced events.
 type Hub struct {
 	clients    map[*Client]bool
-	broadcast  chan []byte
+	broadcast  chan Event
 	register   chan *Client
 	unregister chan *Client
-	manager    *manager.Manager
 	mu         sync.RWMutex
 
-	// v4StateProvider provides v4 state for initial sync
-	v4StateProvider func() interface{}
-
-	// missionStateProvider provides mission state for initial sync
-	missionStateProvider func() interface{}
+	stateProvider func() interface{}
 }
 
-// NewHub creates a new Hub
-func NewHub(m *manager.Manager) *Hub {
+// NewHub creates a new Hub.
+func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte, 256),
+		broadcast:  make(chan Event, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		manager:    m,
 	}
 }
 
-// Run starts the hub's main loop
+// Run starts the hub's main loop.
 func (h *Hub) Run() {
-	// Start listening for manager events
-	go h.listenForEvents()
-
 	for {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			log.Printf("Client connected. Total clients: %d", len(h.clients))
-
-			// Send current state to new client
+			log.Printf("[ws] client connected (%d total)", h.ClientCount())
 			h.sendInitialState(client)
 
 		case client := <-h.unregister:
@@ -73,16 +75,23 @@ func (h *Hub) Run() {
 				close(client.send)
 			}
 			h.mu.Unlock()
-			log.Printf("Client disconnected. Total clients: %d", len(h.clients))
+			log.Printf("[ws] client disconnected (%d total)", h.ClientCount())
 
-		case message := <-h.broadcast:
+		case event := <-h.broadcast:
+			data, err := json.Marshal(event)
+			if err != nil {
+				log.Printf("[ws] marshal error: %v", err)
+				continue
+			}
 			h.mu.RLock()
 			for client := range h.clients {
-				select {
-				case client.send <- message:
-				default:
-					close(client.send)
-					delete(h.clients, client)
+				if client.wantsTopic(event.Topic) {
+					select {
+					case client.send <- data:
+					default:
+						close(client.send)
+						delete(h.clients, client)
+					}
 				}
 			}
 			h.mu.RUnlock()
@@ -90,92 +99,45 @@ func (h *Hub) Run() {
 	}
 }
 
-// listenForEvents listens for events from the manager and broadcasts them
-func (h *Hub) listenForEvents() {
-	for event := range h.manager.Events() {
-		data, err := json.Marshal(event)
-		if err != nil {
-			log.Printf("Error marshaling event: %v", err)
-			continue
-		}
-		h.broadcast <- data
-	}
+// Broadcast sends an event to all subscribed clients.
+func (h *Hub) Broadcast(event Event) {
+	h.broadcast <- event
 }
 
-// sendInitialState sends the current agents and zones to a client
-func (h *Hub) sendInitialState(client *Client) {
-	// Send agent list
-	agents := h.manager.List()
-	agentEvent := map[string]interface{}{
-		"type":   "agent_list",
-		"agents": agents,
-	}
-	agentData, _ := json.Marshal(agentEvent)
-	client.send <- agentData
-
-	// Send zone list
-	zones := h.manager.ListZones()
-	zoneEvent := map[string]interface{}{
-		"type":  "zone_list",
-		"zones": zones,
-	}
-	zoneData, _ := json.Marshal(zoneEvent)
-	client.send <- zoneData
-
-	// Send v4 state if provider is set
-	if h.v4StateProvider != nil {
-		v4State := h.v4StateProvider()
-		if v4State != nil {
-			v4Event := map[string]interface{}{
-				"type":  "v4_state",
-				"state": v4State,
-			}
-			v4Data, _ := json.Marshal(v4Event)
-			client.send <- v4Data
-		}
-	}
-
-	// Send mission state if provider is set
-	if h.missionStateProvider != nil {
-		missionState := h.missionStateProvider()
-		if missionState != nil {
-			missionEvent := map[string]interface{}{
-				"type":  "mission_state",
-				"state": missionState,
-			}
-			missionData, _ := json.Marshal(missionEvent)
-			client.send <- missionData
-		}
-	}
-
-}
-
-// Notify broadcasts an event to all connected clients (implements v4.EventNotifier)
-func (h *Hub) Notify(event interface{}) {
-	data, err := json.Marshal(event)
+// BroadcastRaw marshals data and broadcasts as an Event.
+func (h *Hub) BroadcastRaw(topic, eventType string, data interface{}) {
+	raw, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("Error marshaling v4 event: %v", err)
+		log.Printf("[ws] BroadcastRaw marshal error: %v", err)
 		return
 	}
-	h.broadcast <- data
+	h.Broadcast(Event{Topic: topic, Type: eventType, Data: raw})
 }
 
-// SetV4StateProvider sets the function to get v4 state for initial sync
-func (h *Hub) SetV4StateProvider(provider func() interface{}) {
-	h.v4StateProvider = provider
+// SetStateProvider sets the function used for initial state sync.
+func (h *Hub) SetStateProvider(fn func() interface{}) {
+	h.mu.Lock()
+	h.stateProvider = fn
+	h.mu.Unlock()
 }
 
-// SetMissionStateProvider sets the function to get mission state for initial sync
-func (h *Hub) SetMissionStateProvider(provider func() interface{}) {
-	h.missionStateProvider = provider
+// ClientCount returns the number of connected clients.
+func (h *Hub) ClientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
 }
 
-
-// HandleWebSocket handles WebSocket connections
+// HandleWebSocket upgrades the HTTP connection and registers the client.
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	if !h.checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade error: %v", err)
+		log.Printf("[ws] upgrade error: %v", err)
 		return
 	}
 
@@ -184,175 +146,120 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		conn: conn,
 		send: make(chan []byte, 256),
 	}
-
 	h.register <- client
 
-	// Start goroutines for reading and writing
 	go client.writePump()
 	go client.readPump()
 }
 
-// readPump reads messages from the WebSocket connection
+// checkAuth validates the request against MC_API_TOKEN.
+func (h *Hub) checkAuth(r *http.Request) bool {
+	token := os.Getenv("MC_API_TOKEN")
+	if token == "" {
+		return true // auth disabled in dev mode
+	}
+	// Check Authorization header (Bearer token)
+	if auth := r.Header.Get("Authorization"); auth == "Bearer "+token {
+		return true
+	}
+	// Check query param
+	if r.URL.Query().Get("token") == token {
+		return true
+	}
+	return false
+}
+
+// sendInitialState sends state sync to a newly connected client.
+func (h *Hub) sendInitialState(client *Client) {
+	h.mu.RLock()
+	provider := h.stateProvider
+	h.mu.RUnlock()
+
+	if provider == nil {
+		return
+	}
+	state := provider()
+	if state == nil {
+		return
+	}
+	raw, err := json.Marshal(state)
+	if err != nil {
+		log.Printf("[ws] initial state marshal error: %v", err)
+		return
+	}
+	event := Event{Topic: "sync", Type: "initial_state", Data: raw}
+	data, _ := json.Marshal(event)
+	select {
+	case client.send <- data:
+	default:
+	}
+}
+
+// wantsTopic returns true if the client should receive events for the given topic.
+func (c *Client) wantsTopic(topic string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.subscriptions == nil {
+		return true // nil = receive all
+	}
+	return c.subscriptions[topic]
+}
+
+// readPump reads messages from the WebSocket connection.
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
-
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket error: %v", err)
+				log.Printf("[ws] read error: %v", err)
 			}
 			break
 		}
-
-		// Handle incoming commands
 		c.handleCommand(message)
 	}
 }
 
-// writePump writes messages to the WebSocket connection
+// writePump writes messages to the WebSocket connection.
 func (c *Client) writePump() {
 	defer c.conn.Close()
-
 	for message := range c.send {
 		if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			log.Printf("WebSocket write error: %v", err)
 			return
 		}
 	}
 }
 
-// Command represents a command from the client
-type Command struct {
-	Type    string          `json:"type"`
-	Payload json.RawMessage `json:"payload"`
-}
-
-// SpawnCommand represents a spawn_agent command
-type SpawnCommand struct {
-	Type        manager.AgentType `json:"type"`
-	Name        string            `json:"name"`
-	Task        string            `json:"task"`
-	Persona     string            `json:"persona"`
-	Zone        string            `json:"zone"`
-	WorkingDir  string            `json:"workingDir"`
-	Agent       string            `json:"agent"`
-	OfflineMode bool              `json:"offlineMode"`
-	OllamaModel string            `json:"ollamaModel"`
-}
-
-// handleCommand processes commands from the client
+// handleCommand processes client commands.
 func (c *Client) handleCommand(message []byte) {
-	var cmd Command
+	var cmd clientCommand
 	if err := json.Unmarshal(message, &cmd); err != nil {
-		log.Printf("Invalid command: %v", err)
 		return
 	}
-
 	switch cmd.Type {
-	case "spawn_agent":
-		var spawn SpawnCommand
-		if err := json.Unmarshal(cmd.Payload, &spawn); err != nil {
-			log.Printf("Invalid spawn command: %v", err)
-			return
+	case "subscribe":
+		c.mu.Lock()
+		if c.subscriptions == nil {
+			c.subscriptions = make(map[string]bool)
 		}
-		_, err := c.hub.manager.Spawn(manager.SpawnRequest{
-			Type:        spawn.Type,
-			Name:        spawn.Name,
-			Task:        spawn.Task,
-			Persona:     spawn.Persona,
-			Zone:        spawn.Zone,
-			WorkingDir:  spawn.WorkingDir,
-			Agent:       spawn.Agent,
-			OfflineMode: spawn.OfflineMode,
-			OllamaModel: spawn.OllamaModel,
-		})
-		if err != nil {
-			log.Printf("Failed to spawn agent: %v", err)
+		for _, t := range cmd.Topics {
+			c.subscriptions[t] = true
 		}
+		c.mu.Unlock()
 
-	case "kill_agent":
-		var payload struct {
-			AgentID string `json:"agent_id"`
+	case "unsubscribe":
+		c.mu.Lock()
+		if c.subscriptions != nil {
+			for _, t := range cmd.Topics {
+				delete(c.subscriptions, t)
+			}
 		}
-		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
-			log.Printf("Invalid kill command: %v", err)
-			return
-		}
-		if err := c.hub.manager.Kill(payload.AgentID); err != nil {
-			log.Printf("Failed to kill agent: %v", err)
-		}
-
-	case "send_message":
-		var payload struct {
-			AgentID string `json:"agent_id"`
-			Content string `json:"content"`
-		}
-		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
-			log.Printf("Invalid message command: %v", err)
-			return
-		}
-		if err := c.hub.manager.SendMessage(payload.AgentID, payload.Content); err != nil {
-			log.Printf("Failed to send message: %v", err)
-		}
-
-	case "create_zone":
-		var zone manager.Zone
-		if err := json.Unmarshal(cmd.Payload, &zone); err != nil {
-			log.Printf("Invalid create_zone command: %v", err)
-			return
-		}
-		if _, err := c.hub.manager.CreateZone(&zone); err != nil {
-			log.Printf("Failed to create zone: %v", err)
-		}
-
-	case "update_zone":
-		var payload struct {
-			ID      string       `json:"id"`
-			Updates manager.Zone `json:"updates"`
-		}
-		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
-			log.Printf("Invalid update_zone command: %v", err)
-			return
-		}
-		if _, err := c.hub.manager.UpdateZone(payload.ID, &payload.Updates); err != nil {
-			log.Printf("Failed to update zone: %v", err)
-		}
-
-	case "delete_zone":
-		var payload struct {
-			ZoneID string `json:"zone_id"`
-		}
-		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
-			log.Printf("Invalid delete_zone command: %v", err)
-			return
-		}
-		if err := c.hub.manager.DeleteZone(payload.ZoneID); err != nil {
-			log.Printf("Failed to delete zone: %v", err)
-		}
-
-	case "move_agent":
-		var payload struct {
-			AgentID string `json:"agent_id"`
-			ZoneID  string `json:"zone_id"`
-		}
-		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
-			log.Printf("Invalid move_agent command: %v", err)
-			return
-		}
-		if err := c.hub.manager.MoveAgent(payload.AgentID, payload.ZoneID); err != nil {
-			log.Printf("Failed to move agent: %v", err)
-		}
+		c.mu.Unlock()
 
 	case "request_sync":
-		// Send full state to this client
 		c.hub.sendInitialState(c)
-
-
-	default:
-		log.Printf("Unknown command type: %s", cmd.Type)
 	}
 }
