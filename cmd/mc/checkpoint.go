@@ -20,8 +20,12 @@ func init() {
 	checkpointCmd.AddCommand(checkpointHistoryCmd)
 	checkpointCmd.AddCommand(checkpointQueryCmd)
 	checkpointCmd.AddCommand(checkpointRestartCmd)
+	checkpointCmd.AddCommand(checkpointAutoCmd)
 
+	checkpointCmd.Flags().Int("tokens", 0, "Current token count; only checkpoint if above threshold")
 	checkpointRestartCmd.Flags().String("from", "", "Checkpoint ID to restart from")
+	checkpointAutoCmd.Flags().Int("tokens", 0, "Current token count (required)")
+	checkpointAutoCmd.Flags().String("reason", "pre-compaction", "Reason for the automatic checkpoint")
 }
 
 var checkpointCmd = &cobra.Command{
@@ -62,6 +66,15 @@ var checkpointRestartCmd = &cobra.Command{
 	Use:   "restart",
 	Short: "Create checkpoint and restart session with briefing",
 	RunE:  runCheckpointRestart,
+}
+
+var checkpointAutoCmd = &cobra.Command{
+	Use:   "auto",
+	Short: "Auto-checkpoint for pre-compaction (token-aware)",
+	Long: `Creates a checkpoint when token usage is high, intended for pre-compaction saves.
+If --tokens is provided, the checkpoint is only created when the count exceeds the
+configured threshold (default 150k). Without --tokens, always creates.`,
+	RunE: runCheckpointAuto,
 }
 
 // CheckpointData is the JSON structure written to checkpoint files
@@ -110,10 +123,69 @@ func runCheckpointCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// If --tokens is set, only checkpoint when above threshold
+	tokens, _ := cmd.Flags().GetInt("tokens")
+	if tokens > 0 {
+		threshold := getTokenThreshold(missionDir)
+		if tokens < threshold {
+			fmt.Printf("{\"skipped\": true, \"tokens\": %d, \"threshold\": %d}\n", tokens, threshold)
+			return nil
+		}
+	}
+
 	cp, err := createCheckpoint(missionDir, "")
 	if err != nil {
 		return err
 	}
+
+	output, _ := json.MarshalIndent(cp, "", "  ")
+	fmt.Println(string(output))
+
+	return nil
+}
+
+func runCheckpointAuto(cmd *cobra.Command, args []string) error {
+	missionDir, err := findMissionDir()
+	if err != nil {
+		return err
+	}
+
+	if err := requireV6(missionDir); err != nil {
+		return err
+	}
+
+	tokens, _ := cmd.Flags().GetInt("tokens")
+	reason, _ := cmd.Flags().GetString("reason")
+
+	// If tokens provided, check threshold
+	if tokens > 0 {
+		threshold := getTokenThreshold(missionDir)
+		if tokens < threshold {
+			fmt.Printf("{\"skipped\": true, \"reason\": \"below threshold\", \"tokens\": %d, \"threshold\": %d}\n", tokens, threshold)
+			return nil
+		}
+	}
+
+	cp, err := createCheckpoint(missionDir, "")
+	if err != nil {
+		return err
+	}
+
+	// Tag the checkpoint with the reason
+	cp.Summary = fmt.Sprintf("auto-checkpoint: %s (tokens: %d)", reason, tokens)
+
+	// Re-write with summary
+	checkpointsDir := filepath.Join(missionDir, "orchestrator", "checkpoints")
+	cpPath := filepath.Join(checkpointsDir, cp.ID+".json")
+	_ = writeJSON(cpPath, cp)
+
+	writeAuditLog(missionDir, AuditCheckpointCreated, "auto", map[string]interface{}{
+		"checkpoint_id": cp.ID,
+		"reason":        reason,
+		"tokens":        tokens,
+	})
+
+	gitAutoCommit(missionDir, CommitCategoryCheckpoint, fmt.Sprintf("auto-checkpoint %s (%s)", cp.ID, reason))
 
 	output, _ := json.MarshalIndent(cp, "", "  ")
 	fmt.Println(string(output))

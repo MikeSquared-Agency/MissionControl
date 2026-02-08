@@ -116,6 +116,7 @@ func TestTeamListNoTeams(t *testing.T) {
 	os.Chdir(tmpDir)
 	defer os.Chdir(oldDir)
 
+	// Should not error
 	err := runTeamList(nil, nil)
 	if err != nil {
 		t.Fatalf("runTeamList failed: %v", err)
