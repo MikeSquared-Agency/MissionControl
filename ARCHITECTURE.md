@@ -100,6 +100,19 @@ Each stage has a **gate** with criteria that must be met before advancing.
 | **Document** | README + docs | Docs | Docs complete |
 | **Release** | Deploy & verify | DevOps | Deployed, verified |
 
+### Zones
+Zones organize the codebase into bounded areas. Workers are assigned to zones and stay in their lane.
+
+| Zone | Scope |
+|------|-------|
+| Frontend | UI components, styles, client logic |
+| Backend | APIs, services, server logic |
+| Database | Schemas, migrations, queries |
+| Infra | CI/CD, deployment, monitoring |
+| Shared | Cross-cutting utilities, types |
+
+Zones support CRUD (create, edit, split, merge) and workers are assigned via `mc spawn <persona> <task> --zone <zone>`. This prevents workers from stepping on each other's files.
+
 ### Task Dependencies
 Tasks support `blocks`/`blockedBy` relationships with cycle detection. `mc ready` shows tasks with no open blockers.
 
