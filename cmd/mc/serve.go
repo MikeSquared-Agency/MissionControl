@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/mike/mission-control/openclaw"
 	"github.com/spf13/cobra"
 )
 
@@ -106,6 +107,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 		log.Printf("  UI: Embedded (serving at /)")
 	}
 
+	// OpenClaw bridge
+	ocToken := os.Getenv("OPENCLAW_TOKEN")
+	bridge := openclaw.NewBridge(serveOpenClawGateway, ocToken)
+	if err := bridge.Connect(); err != nil {
+		log.Printf("Warning: OpenClaw bridge failed to connect: %v", err)
+		log.Printf("Chat relay will be unavailable. Set --openclaw-gateway and OPENCLAW_TOKEN.")
+	} else {
+		log.Printf("  OpenClaw: Connected to %s", serveOpenClawGateway)
+	}
+	ocHandler := openclaw.NewHandler(bridge)
+	ocHandler.RegisterRoutes(mux)
+
 	// Health endpoint
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -124,6 +137,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
 		log.Println("Shutting down...")
+		bridge.Close()
 
 		// Auto-checkpoint on shutdown
 		if cp, err := createCheckpoint(missionDir, ""); err == nil {
