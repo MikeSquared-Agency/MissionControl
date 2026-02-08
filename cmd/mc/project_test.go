@@ -16,18 +16,18 @@ func TestFindMissionDirFollowsSymlink(t *testing.T) {
 
 	// Create real .mission dir in a separate location
 	realMission := filepath.Join(tmpDir, "shared", ".mission")
-	os.MkdirAll(filepath.Join(realMission, "state"), 0755)
+	_ = os.MkdirAll(filepath.Join(realMission, "state"), 0755)
 	writeJSON(filepath.Join(realMission, "config.json"), map[string]string{"version": "1.0.0"})
 
 	// Create project dir with symlink
 	projectDir := filepath.Join(tmpDir, "my-project")
-	os.MkdirAll(projectDir, 0755)
+	_ = os.MkdirAll(projectDir, 0755)
 	os.Symlink(realMission, filepath.Join(projectDir, ".mission"))
 
 	// Change to project dir
 	originalDir, _ := os.Getwd()
-	os.Chdir(projectDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(projectDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Reset project flag
 	projectFlag = ""
@@ -54,7 +54,7 @@ func TestFindMissionDirWithProjectFlag(t *testing.T) {
 
 	// Create a real .mission dir
 	realMission := filepath.Join(tmpDir, "my-project", ".mission")
-	os.MkdirAll(filepath.Join(realMission, "state"), 0755)
+	_ = os.MkdirAll(filepath.Join(realMission, "state"), 0755)
 	writeJSON(filepath.Join(realMission, "config.json"), map[string]string{"version": "1.0.0"})
 
 	// Override registry path for test
@@ -156,15 +156,15 @@ func TestProjectLink(t *testing.T) {
 
 	// Create target .mission dir
 	target := filepath.Join(tmpDir, "shared-mission")
-	os.MkdirAll(target, 0755)
+	_ = os.MkdirAll(target, 0755)
 
 	// Create project dir
 	projectDir := filepath.Join(tmpDir, "project")
-	os.MkdirAll(projectDir, 0755)
+	_ = os.MkdirAll(projectDir, 0755)
 
 	originalDir, _ := os.Getwd()
-	os.Chdir(projectDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(projectDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Run link command
 	err = projectLinkCmd.RunE(nil, []string{target})
@@ -203,14 +203,14 @@ func TestProjectLinkAlreadyExists(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	target := filepath.Join(tmpDir, "shared-mission")
-	os.MkdirAll(target, 0755)
+	_ = os.MkdirAll(target, 0755)
 
 	projectDir := filepath.Join(tmpDir, "project")
-	os.MkdirAll(filepath.Join(projectDir, ".mission"), 0755) // Already exists
+	_ = os.MkdirAll(filepath.Join(projectDir, ".mission"), 0755) // Already exists
 
 	originalDir, _ := os.Getwd()
-	os.Chdir(projectDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(projectDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	err = projectLinkCmd.RunE(nil, []string{target})
 	if err == nil {
