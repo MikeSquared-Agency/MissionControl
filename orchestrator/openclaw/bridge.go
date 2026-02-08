@@ -2,11 +2,17 @@
 package openclaw
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,43 +41,19 @@ type Frame struct {
 	Error   json.RawMessage `json:"error,omitempty"`
 }
 
-// ConnectParams is the connect request payload.
-type ConnectParams struct {
-	MinProtocol int             `json:"minProtocol"`
-	MaxProtocol int             `json:"maxProtocol"`
-	Client      ConnectClient   `json:"client"`
-	Role        string          `json:"role"`
-	Scopes      []string        `json:"scopes"`
-	Caps        []string        `json:"caps"`
-	Commands    []string        `json:"commands"`
-	Permissions map[string]bool `json:"permissions"`
-	Auth        *ConnectAuth    `json:"auth,omitempty"`
-	Locale      string          `json:"locale"`
-	UserAgent   string          `json:"userAgent"`
-	Device      ConnectDevice   `json:"device"`
-}
-
-type ConnectClient struct {
-	ID       string `json:"id"`
-	Version  string `json:"version"`
-	Platform string `json:"platform"`
-	Mode     string `json:"mode"`
-}
-
-type ConnectAuth struct {
-	Token string `json:"token"`
-}
-
-type ConnectDevice struct {
-	ID string `json:"id"`
-}
-
 // StatusInfo is returned by the /api/openclaw/status endpoint.
 type StatusInfo struct {
 	State       State      `json:"state"`
 	GatewayURL  string     `json:"gatewayUrl"`
 	Error       string     `json:"error,omitempty"`
 	ConnectedAt *time.Time `json:"connectedAt,omitempty"`
+}
+
+// deviceIdentity holds the Ed25519 keypair for device auth.
+type deviceIdentity struct {
+	DeviceID   string
+	PublicKey  ed25519.PublicKey
+	PrivateKey ed25519.PrivateKey
 }
 
 // Bridge manages the WebSocket connection to the OpenClaw gateway.
@@ -83,7 +65,7 @@ type Bridge struct {
 	err         string
 	conn        *websocket.Conn
 	connectedAt *time.Time
-	deviceID    string
+	device      *deviceIdentity
 	stopCh      chan struct{}
 	tickMs      int
 
@@ -96,13 +78,12 @@ type Bridge struct {
 
 // NewBridge creates a new OpenClaw bridge (does not connect yet).
 func NewBridge(gatewayURL, token string) *Bridge {
-	devID := make([]byte, 8)
-	rand.Read(devID)
+	device := loadOrCreateDevice()
 	return &Bridge{
 		gatewayURL: gatewayURL,
 		token:      token,
 		state:      StateDisconnected,
-		deviceID:   "mc-orch-" + hex.EncodeToString(devID),
+		device:     device,
 		pending:    make(map[string]chan *Frame),
 		tickMs:     15000,
 	}
@@ -127,7 +108,9 @@ func (b *Bridge) Connect() error {
 	b.err = ""
 	b.mu.Unlock()
 
-	conn, _, err := websocket.DefaultDialer.Dial(b.gatewayURL, nil)
+	headers := make(map[string][]string)
+	headers["Origin"] = []string{"https://darlington.dev"}
+	conn, _, err := websocket.DefaultDialer.Dial(b.gatewayURL, headers)
 	if err != nil {
 		b.setError(fmt.Sprintf("dial: %v", err))
 		return err
@@ -150,31 +133,51 @@ func (b *Bridge) Connect() error {
 		return fmt.Errorf("unexpected first frame: %s", challenge.Event)
 	}
 
-	// Send connect request
-	reqID := randomID()
-	params := ConnectParams{
-		MinProtocol: 3,
-		MaxProtocol: 3,
-		Client: ConnectClient{
-			ID:       "mc-orchestrator",
-			Version:  "0.1.0",
-			Platform: "linux",
-			Mode:     "operator",
-		},
-		Role:        "operator",
-		Scopes:      []string{"operator.read", "operator.write"},
-		Caps:        []string{},
-		Commands:    []string{},
-		Permissions: map[string]bool{},
-		Locale:      "en-US",
-		UserAgent:   "mc-orchestrator/0.1.0",
-		Device:      ConnectDevice{ID: b.deviceID},
+	// Extract nonce from challenge
+	var challengeData struct {
+		Nonce string `json:"nonce"`
 	}
-	if b.token != "" {
-		params.Auth = &ConnectAuth{Token: b.token}
+	if challenge.Payload != nil {
+		json.Unmarshal(challenge.Payload, &challengeData)
+	}
+
+	// Build and sign connect params
+	signedAt := time.Now().UnixMilli()
+	scopes := []string{"operator.read", "operator.write"}
+
+	sigPayload := buildSignaturePayload(
+		b.device.DeviceID, "webchat", "webchat",
+		"operator", scopes, signedAt,
+		b.token, challengeData.Nonce,
+	)
+	signature := ed25519.Sign(b.device.PrivateKey, []byte(sigPayload))
+
+	params := map[string]interface{}{
+		"minProtocol": 3,
+		"maxProtocol": 3,
+		"client": map[string]string{
+			"id":       "webchat",
+			"version":  "1.0.0",
+			"platform": "linux",
+			"mode":     "webchat",
+		},
+		"role":   "operator",
+		"scopes": scopes,
+		"caps":   []string{},
+		"auth":   map[string]string{"token": b.token},
+		"device": map[string]interface{}{
+			"id":        b.device.DeviceID,
+			"publicKey": toBase64URL(b.device.PublicKey),
+			"signature": toBase64URL(signature),
+			"signedAt":  signedAt,
+			"nonce":     challengeData.Nonce,
+		},
+		"userAgent": "mc-orchestrator/1.0.0",
+		"locale":    "en-US",
 	}
 
 	paramsJSON, _ := json.Marshal(params)
+	reqID := randomID()
 	connectReq := Frame{
 		Type:   "req",
 		ID:     reqID,
@@ -204,7 +207,7 @@ func (b *Bridge) Connect() error {
 		return fmt.Errorf("connect failed: %s", errMsg)
 	}
 
-	// Parse tick interval from hello-ok payload
+	// Parse tick interval
 	var helloOK struct {
 		Policy struct {
 			TickIntervalMs int `json:"tickIntervalMs"`
@@ -220,7 +223,7 @@ func (b *Bridge) Connect() error {
 	b.connectedAt = &now
 	b.mu.Unlock()
 
-	log.Printf("[openclaw] connected to %s (tick=%dms)", b.gatewayURL, b.tickMs)
+	log.Printf("[openclaw] connected to %s (device=%s, tick=%dms)", b.gatewayURL, b.device.DeviceID, b.tickMs)
 
 	b.stopCh = make(chan struct{})
 	go b.readLoop()
@@ -350,6 +353,89 @@ func (b *Bridge) setError(msg string) {
 		b.conn.Close()
 		b.conn = nil
 	}
+}
+
+// --- Device identity ---
+
+const deviceKeyFile = ".mc-device-identity.json"
+
+type storedIdentity struct {
+	Version    int    `json:"version"`
+	DeviceID   string `json:"deviceId"`
+	PublicKey  string `json:"publicKey"`
+	PrivateKey string `json:"privateKey"`
+}
+
+func loadOrCreateDevice() *deviceIdentity {
+	home, _ := os.UserHomeDir()
+	path := filepath.Join(home, deviceKeyFile)
+
+	// Try to load existing
+	if data, err := os.ReadFile(path); err == nil {
+		var stored storedIdentity
+		if json.Unmarshal(data, &stored) == nil && stored.Version == 1 {
+			pub, _ := base64.RawURLEncoding.DecodeString(stored.PublicKey)
+			priv, _ := base64.RawURLEncoding.DecodeString(stored.PrivateKey)
+			if len(pub) == ed25519.PublicKeySize && len(priv) == ed25519.SeedSize {
+				privateKey := ed25519.NewKeyFromSeed(priv)
+				return &deviceIdentity{
+					DeviceID:   stored.DeviceID,
+					PublicKey:  pub,
+					PrivateKey: privateKey,
+				}
+			}
+		}
+	}
+
+	// Generate new keypair
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	hash := sha256.Sum256(pub)
+	deviceID := hex.EncodeToString(hash[:])
+
+	// Persist
+	stored := storedIdentity{
+		Version:    1,
+		DeviceID:   deviceID,
+		PublicKey:  toBase64URL(pub),
+		PrivateKey: toBase64URL(priv.Seed()),
+	}
+	data, _ := json.MarshalIndent(stored, "", "  ")
+	os.WriteFile(path, data, 0600)
+
+	log.Printf("[openclaw] generated new device identity: %s", deviceID)
+
+	return &deviceIdentity{
+		DeviceID:   deviceID,
+		PublicKey:  pub,
+		PrivateKey: priv,
+	}
+}
+
+// --- Helpers ---
+
+func buildSignaturePayload(deviceID, clientID, clientMode, role string, scopes []string, signedAtMs int64, token, nonce string) string {
+	version := "v1"
+	if nonce != "" {
+		version = "v2"
+	}
+	parts := []string{
+		version,
+		deviceID,
+		clientID,
+		clientMode,
+		role,
+		strings.Join(scopes, ","),
+		fmt.Sprintf("%d", signedAtMs),
+		token,
+	}
+	if version == "v2" {
+		parts = append(parts, nonce)
+	}
+	return strings.Join(parts, "|")
+}
+
+func toBase64URL(data []byte) string {
+	return base64.RawURLEncoding.EncodeToString(data)
 }
 
 func randomID() string {
