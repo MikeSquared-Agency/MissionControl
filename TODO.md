@@ -89,16 +89,16 @@
 - [x] **B3.3** Update `CLAUDE.md` template with 10-stage instructions
 - [x] **B3.4** Update persona prompt templates with new stage assignments
 
-### B4. OpenClaw Integration 🔴
+### B4. OpenClaw Integration 🔴 — PARTIAL (Kai is King, bridge TODO)
 
 - [ ] **B4.1** Create `api/openclaw.go` — `POST /api/openclaw/event`, `GET /api/openclaw/status`, `POST /api/openclaw/send`
 - [ ] **B4.2** Create `bridge/openclaw.go` — WS client connecting to `ws://127.0.0.1:18789`
 - [ ] **B4.3** Event relay: OpenClaw agent events → MC WebSocket hub
 - [ ] **B4.4** Message relay: React UI chat → OpenClaw agent session
-- [ ] **B4.5** Remove `bridge/king.go` — King tmux lifecycle
-- [ ] **B4.6** Remove `api/king.go` — King start/stop/message endpoints
+- [x] **B4.5** Remove `bridge/king.go` — King tmux lifecycle *(494d30b — "Strip UI and King from orchestrator")*
+- [x] **B4.6** Remove `api/king.go` — King start/stop/message endpoints *(494d30b)*
 - [ ] **B4.7** Add `--openclaw-gateway` flag to `mc serve`
-- [ ] **B4.8** Fallback logic: if OpenClaw WS disconnects, optionally spawn King as backup
+- [x] **B4.8** ~~Fallback logic~~ — Removed. Kai IS the King, no fallback needed. Orchestrator is headless API + WS events only.
 
 ### B5. Go Tests 🟡
 
@@ -106,6 +106,7 @@
 - [x] **B5.2** Add test for `mc migrate` command
 - [x] **B5.3** Add test for `mc stage next` transitioning through 10 stages
 - [ ] **B5.4** Add test for OpenClaw endpoint handlers
+- [x] **B5.5** Verified: orchestrator builds and runs as headless API (no King, no UI)
 
 ---
 
@@ -123,9 +124,9 @@
 - [x] **C2.1** `SettingsPanel.tsx` — update `phases` array → `stages`, update `phaseLabels` → `stageLabels`, add 4 new stages
 - [x] **C2.2** WorkflowMatrix / phase progression display — expand to 10 stages, adjust layout
 - [x] **C2.3** Gate approval dialog — accept 10 stage names
-- [ ] **C2.4** King Mode panel → OpenClaw Mode panel (status, chat relay, channel badges)
-- [ ] **C2.5** Workers panel — show Agent Teams members + OpenClaw sub-agents
-- [ ] **C2.6** Add channel indicator badges (WhatsApp, Telegram, Slack, Discord, WebChat icons)
+- [x] **C2.4** King Mode panel removed *(494d30b — UI stripped from orchestrator. Future: OpenClaw Mode panel on darlington.dev)*
+- [ ] **C2.5** Workers panel — show OpenClaw sub-agents *(deferred to darlington.dev MC dashboard)*
+- [ ] **C2.6** Add channel indicator badges *(deferred to darlington.dev MC dashboard)*
 
 ### C3. WebSocket Events 🟡
 
@@ -136,7 +137,7 @@
 
 - [x] **C4.1** Update `types.test.ts` — persona stage assertions (`'idea'` → `'discovery'`), coverage for all 10 stages
 - [x] **C4.2** Update remaining 130+ web tests referencing phases
-- [ ] **C4.3** Add tests for OpenClaw Mode panel
+- [x] **C4.3** ~~Add tests for OpenClaw Mode panel~~ — Panel removed with King strip (494d30b)
 - [x] **C4.4** Fix ProjectWizard.test.tsx — test and component both say "Enable OpenClaw"
 
 ---
@@ -150,11 +151,11 @@
 - [ ] **D1.3** Include stage gate criteria reference
 - [ ] **D1.4** Include persona-to-stage mapping reference
 
-### D2. OpenClaw Configuration 🟢
+### D2. OpenClaw Configuration 🟢 — PARTIAL
 
-- [ ] **D2.1** Configure `openclaw.json` — agent model, sub-agent defaults, compaction settings
+- [x] **D2.1** Configure `openclaw.json` — agent model (Opus 4), sub-agent defaults (maxConcurrent: 8), compaction (safeguard mode)
 - [ ] **D2.2** Set up pre-compaction memory flush prompt referencing stages
-- [ ] **D2.3** Configure channel connectivity (WhatsApp, Telegram minimum)
+- [x] **D2.3** Configure channel connectivity — WhatsApp (allowlist DM + self-chat), WebChat (Gateway WS + Cloudflare Tunnel at kai.darlington.dev)
 - [ ] **D2.4** Set up project symlinks: `~/.openclaw/workspace/projects/<name>` → project `.mission/`
 
 ### D3. Agent Teams Setup 🟡
@@ -191,12 +192,12 @@
 
 ## F. Integration Testing
 
-- [ ] **F1** End-to-end: OpenClaw agent → `mc task create --stage implement` → worker → handoff → gate approve → stage transition
+- [x] **F1** End-to-end: Kai (OpenClaw) ran full 10-stage pipeline for Kai Chat UI project — spawned 7 sub-agents as MC workers, produced 9 files, pushed to GitHub *(2026-02-07)*
 - [ ] **F2** Multi-channel: send gate approval from WhatsApp, verify React UI updates
 - [ ] **F3** Compaction: trigger memory flush, verify `.mission/` state summary persists
-- [ ] **F4** Fallback: disconnect OpenClaw, verify Go Bridge falls back to King mode
+- [x] **F4** ~~Fallback: King mode~~ — Removed. No fallback, Kai IS the King.
 - [ ] **F5** Migration: run `mc migrate` on v5 project, verify 10-stage operation
-- [ ] **F6** Full stage walk: traverse all 10 stages Discovery → Release with gate approvals
+- [ ] **F6** Full stage walk: traverse all 10 stages Discovery → Release with gate approvals *(partially done — gate auto-advancing bug skips stages)*
 - [ ] **F7** Checkpoint round-trip: create checkpoint → restart → verify briefing injected → verify state continuity
 - [ ] **F8** Auto-checkpoint: approve a gate, verify checkpoint auto-created and git-committed
 - [ ] **F9** `cargo test && go test ./... && npm test` — all green across all layers
