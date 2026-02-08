@@ -46,14 +46,46 @@ func DefaultAutoCommitConfig() AutoCommitConfig {
 
 // loadAutoCommitConfig reads the auto_commit config from .mission/config.json.
 func loadAutoCommitConfig(missionDir string) AutoCommitConfig {
+	type autoCommitConfigRaw struct {
+		Enabled    *bool `json:"enabled"`
+		Checkpoint *bool `json:"checkpoint"`
+		Task       *bool `json:"task"`
+		Gate       *bool `json:"gate"`
+		Stage      *bool `json:"stage"`
+		Worker     *bool `json:"worker"`
+		Handoff    *bool `json:"handoff"`
+	}
+
+	defaults := DefaultAutoCommitConfig()
 	configPath := filepath.Join(missionDir, "config.json")
 	var cfg struct {
-		AutoCommit *AutoCommitConfig `json:"auto_commit,omitempty"`
+		AutoCommit *autoCommitConfigRaw `json:"auto_commit,omitempty"`
 	}
 	if err := readJSON(configPath, &cfg); err != nil || cfg.AutoCommit == nil {
-		return DefaultAutoCommitConfig()
+		return defaults
 	}
-	return *cfg.AutoCommit
+	if cfg.AutoCommit.Enabled != nil {
+		defaults.Enabled = *cfg.AutoCommit.Enabled
+	}
+	if cfg.AutoCommit.Checkpoint != nil {
+		defaults.Checkpoint = *cfg.AutoCommit.Checkpoint
+	}
+	if cfg.AutoCommit.Task != nil {
+		defaults.Task = *cfg.AutoCommit.Task
+	}
+	if cfg.AutoCommit.Gate != nil {
+		defaults.Gate = *cfg.AutoCommit.Gate
+	}
+	if cfg.AutoCommit.Stage != nil {
+		defaults.Stage = *cfg.AutoCommit.Stage
+	}
+	if cfg.AutoCommit.Worker != nil {
+		defaults.Worker = *cfg.AutoCommit.Worker
+	}
+	if cfg.AutoCommit.Handoff != nil {
+		defaults.Handoff = *cfg.AutoCommit.Handoff
+	}
+	return defaults
 }
 
 // gitAutoCommit stages .mission/ changes and commits with the given message,

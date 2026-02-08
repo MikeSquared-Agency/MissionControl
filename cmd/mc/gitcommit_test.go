@@ -315,7 +315,7 @@ func countGitCommits(t *testing.T, dir string) int {
 		return 0
 	}
 	var count int
-	_, _ = strings.NewReader(strings.TrimSpace(string(out))), nil
+	_ = strings.NewReader(strings.TrimSpace(string(out)))
 	count = 0
 	for _, c := range strings.TrimSpace(string(out)) {
 		count = count*10 + int(c-'0')

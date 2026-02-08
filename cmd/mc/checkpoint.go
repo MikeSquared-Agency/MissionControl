@@ -115,11 +115,6 @@ func runCheckpointCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Audit log
-	writeAuditLog(missionDir, AuditCheckpointCreated, "cli", map[string]interface{}{
-		"checkpoint_id": cp.ID,
-	})
-
 	output, _ := json.MarshalIndent(cp, "", "  ")
 	fmt.Println(string(output))
 
@@ -182,6 +177,11 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 	if err := writeJSON(cpPath, cp); err != nil {
 		return nil, fmt.Errorf("failed to write checkpoint: %w", err)
 	}
+
+	// Audit log (covers all checkpoint creation paths: CLI, gate approval, restart)
+	writeAuditLog(missionDir, AuditCheckpointCreated, "cli", map[string]interface{}{
+		"checkpoint_id": cp.ID,
+	})
 
 	// Update current.json pointer
 	currentPath := filepath.Join(missionDir, "orchestrator", "current.json")
@@ -562,6 +562,6 @@ func appendSession(missionDir string, record SessionRecord) {
 		return
 	}
 	defer f.Close()
+	data = append(data, '\n')
 	f.Write(data)
-	f.WriteString("\n")
 }

@@ -176,6 +176,10 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to update gate: %w", err)
 	}
 
+	writeAuditLog(missionDir, AuditGateApproved, "cli", map[string]interface{}{
+		"stage": stage,
+	})
+
 	gitAutoCommit(missionDir, CommitCategoryGate, fmt.Sprintf("approve gate: %s", stage))
 
 	// Auto-checkpoint on gate approval (G3.1)

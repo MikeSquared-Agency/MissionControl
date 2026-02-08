@@ -118,11 +118,20 @@ The path stored is the resolved absolute path to the .mission/ directory.`,
 			return fmt.Errorf(".mission/ path does not exist: %s", missionDir)
 		}
 
+		// Verify it's actually a directory
+		info, err := os.Stat(resolved)
+		if err != nil {
+			return fmt.Errorf("cannot stat .mission/ path: %w", err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("%s is not a directory", missionDir)
+		}
+
 		// Verify it's actually a .mission directory (has state/ or config.json)
-		if _, err := os.Stat(filepath.Join(resolved, "config.json")); os.IsNotExist(err) {
-			if _, err := os.Stat(filepath.Join(resolved, "state")); os.IsNotExist(err) {
-				return fmt.Errorf("%s does not appear to be a valid .mission/ directory", missionDir)
-			}
+		_, errCfg := os.Stat(filepath.Join(resolved, "config.json"))
+		_, errState := os.Stat(filepath.Join(resolved, "state"))
+		if errCfg != nil && errState != nil {
+			return fmt.Errorf("%s does not appear to be a valid .mission/ directory", missionDir)
 		}
 
 		reg, err := loadRegistry()
@@ -226,15 +235,21 @@ Examples:
 }
 
 // registryPath returns the path to ~/.mc/projects.json
-func registryPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".mc", "projects.json")
+func registryPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".mc", "projects.json"), nil
 }
 
 func loadRegistry() (*ProjectRegistry, error) {
 	reg := &ProjectRegistry{Projects: make(map[string]string)}
 
-	path := registryPath()
+	path, err := registryPath()
+	if err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return reg, nil
@@ -255,7 +270,10 @@ func loadRegistry() (*ProjectRegistry, error) {
 }
 
 func saveRegistry(reg *ProjectRegistry) error {
-	path := registryPath()
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

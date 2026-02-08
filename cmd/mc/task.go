@@ -193,7 +193,11 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 	gitAutoCommit(missionDir, CommitCategoryTask, taskCommitMsg(action, taskID, ""))
 
 	// Audit log
-	writeAuditLog(missionDir, AuditTaskUpdated, "cli", map[string]interface{}{
+	auditAction := AuditTaskUpdated
+	if newStatus == "complete" {
+		auditAction = AuditTaskCompleted
+	}
+	writeAuditLog(missionDir, auditAction, "cli", map[string]interface{}{
 		"task_id": taskID, "status": newStatus,
 	})
 

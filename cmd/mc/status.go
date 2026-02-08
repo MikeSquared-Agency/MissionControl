@@ -91,14 +91,18 @@ func findMissionDir() (string, error) {
 	// 2. Check MC_PROJECT env var
 	if envProject := os.Getenv("MC_PROJECT"); envProject != "" {
 		reg, err := loadRegistry()
-		if err == nil {
-			if missionDir, ok := reg.Projects[envProject]; ok {
-				resolved, err := filepath.EvalSymlinks(missionDir)
-				if err == nil {
-					return resolved, nil
-				}
-			}
+		if err != nil {
+			return "", fmt.Errorf("MC_PROJECT set to '%s' but failed to load registry: %w", envProject, err)
 		}
+		missionDir, ok := reg.Projects[envProject]
+		if !ok {
+			return "", fmt.Errorf("MC_PROJECT set to '%s' but project not found in registry (see 'mc project list')", envProject)
+		}
+		resolved, err := filepath.EvalSymlinks(missionDir)
+		if err != nil {
+			return "", fmt.Errorf("MC_PROJECT '%s' .mission/ path not accessible: %w", envProject, err)
+		}
+		return resolved, nil
 	}
 
 	// 3. Walk up from cwd looking for .mission/ (follows symlinks via os.Stat)
@@ -110,14 +114,24 @@ func findMissionDir() (string, error) {
 	dir := cwd
 	for {
 		missionDir := filepath.Join(dir, ".mission")
-		// os.Stat follows symlinks, so .mission/ can be a symlink
-		if info, err := os.Stat(missionDir); err == nil && info.IsDir() {
-			// Resolve to real path for consistent behavior
-			resolved, err := filepath.EvalSymlinks(missionDir)
-			if err != nil {
-				return "", fmt.Errorf(".mission/ found but symlink broken: %w", err)
+		// Use Lstat to detect broken symlinks
+		if info, err := os.Lstat(missionDir); err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				// It's a symlink — resolve it
+				resolved, err := filepath.EvalSymlinks(missionDir)
+				if err != nil {
+					return "", fmt.Errorf(".mission/ is a broken symlink: %w", err)
+				}
+				return resolved, nil
 			}
-			return resolved, nil
+			if info.IsDir() {
+				// Regular directory — resolve for consistency
+				resolved, err := filepath.EvalSymlinks(missionDir)
+				if err != nil {
+					return "", fmt.Errorf(".mission/ found but not accessible: %w", err)
+				}
+				return resolved, nil
+			}
 		}
 
 		parent := filepath.Dir(dir)

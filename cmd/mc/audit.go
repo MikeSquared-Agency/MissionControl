@@ -99,6 +99,9 @@ func runAuditList(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("last") {
 		n, _ = cmd.Flags().GetInt("last")
 	}
+	if n < 0 {
+		return fmt.Errorf("--last must be >= 0")
+	}
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 
 	entries, err := readAuditLog(missionDir)
@@ -229,8 +232,8 @@ func writeAuditLog(missionDir string, action string, actor string, details map[s
 		return
 	}
 	defer f.Close()
+	data = append(data, '\n')
 	f.Write(data)
-	f.WriteString("\n")
 }
 
 // readAuditLog reads all entries from .mission/audit.jsonl
