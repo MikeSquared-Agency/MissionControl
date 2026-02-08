@@ -284,11 +284,24 @@ type Team struct {
 }
 
 type Config struct {
-	Version    string            `json:"version"`
-	Audience   string            `json:"audience"` // personal, external
-	Zones      []string          `json:"zones"`
-	OpenClaw   bool              `json:"openclaw"`
-	Matrix     interface{}       `json:"matrix,omitempty"`
-	AutoCommit *AutoCommitConfig `json:"auto_commit,omitempty"`
-	Teams      map[string]Team   `json:"teams,omitempty"`
+	Version        string            `json:"version"`
+	Audience       string            `json:"audience"` // personal, external
+	Zones          []string          `json:"zones"`
+	OpenClaw       bool              `json:"openclaw"`
+	Matrix         interface{}       `json:"matrix,omitempty"`
+	AutoCommit     *AutoCommitConfig `json:"auto_commit,omitempty"`
+	TokenThreshold int               `json:"token_threshold,omitempty"`
+	Teams          map[string]Team   `json:"teams,omitempty"`
+}
+
+const defaultTokenThreshold = 150000
+
+// getTokenThreshold returns the configured token threshold or the default (150k).
+func getTokenThreshold(missionDir string) int {
+	configPath := filepath.Join(missionDir, "config.json")
+	var cfg Config
+	if err := readJSON(configPath, &cfg); err == nil && cfg.TokenThreshold > 0 {
+		return cfg.TokenThreshold
+	}
+	return defaultTokenThreshold
 }
