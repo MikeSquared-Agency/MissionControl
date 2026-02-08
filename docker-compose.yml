@@ -1,0 +1,12 @@
+services:
+  mc:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./project:/workspace
+    environment:
+      - MC_API_TOKEN=${MC_API_TOKEN}
+      - OPENCLAW_TOKEN=${OPENCLAW_TOKEN}
+      - OPENCLAW_GATEWAY=${OPENCLAW_GATEWAY:-ws://host.docker.internal:18789}
+    working_dir: /workspace

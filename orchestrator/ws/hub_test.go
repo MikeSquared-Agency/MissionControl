@@ -8,291 +8,252 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DarlingtonDeveloper/MissionControl/manager"
 	"github.com/gorilla/websocket"
 )
 
-func TestNewHub(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	if hub == nil {
-		t.Fatal("NewHub returned nil")
-	}
-
-	if hub.clients == nil {
-		t.Error("clients map should be initialized")
-	}
-
-	if hub.broadcast == nil {
-		t.Error("broadcast channel should be initialized")
-	}
-
-	if hub.register == nil {
-		t.Error("register channel should be initialized")
-	}
-
-	if hub.unregister == nil {
-		t.Error("unregister channel should be initialized")
-	}
-}
-
-func TestHubNotify(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	// Start hub in background
+func setupHub(t *testing.T) (*Hub, *httptest.Server) {
+	t.Helper()
+	hub := NewHub()
 	go hub.Run()
-
-	// Give hub time to start
-	time.Sleep(10 * time.Millisecond)
-
-	// Notify should not block even with no clients
-	done := make(chan bool)
-	go func() {
-		hub.Notify(map[string]string{"type": "test_event"})
-		done <- true
-	}()
-
-	select {
-	case <-done:
-		// Success - didn't block
-	case <-time.After(time.Second):
-		t.Error("Notify blocked with no clients")
-	}
-}
-
-func TestHubSetProviders(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	// Test SetV4StateProvider
-	hub.SetV4StateProvider(func() interface{} {
-		return map[string]string{"state": "test"}
-	})
-
-	if hub.v4StateProvider == nil {
-		t.Error("v4StateProvider should be set")
-	}
-
-	// Test SetMissionStateProvider
-	hub.SetMissionStateProvider(func() interface{} {
-		return map[string]string{"mission": "test"}
-	})
-
-	if hub.missionStateProvider == nil {
-		t.Error("missionStateProvider should be set")
-	}
-}
-
-func TestWebSocketConnection(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	// Start hub
-	go hub.Run()
-	time.Sleep(10 * time.Millisecond)
-
-	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
+	return hub, server
+}
+
+func dialWS(t *testing.T, server *httptest.Server) *websocket.Conn {
+	t.Helper()
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	return conn
+}
+
+func readEvent(t *testing.T, conn *websocket.Conn) Event {
+	t.Helper()
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var ev Event
+	if err := json.Unmarshal(msg, &ev); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return ev
+}
+
+func TestHubAcceptsConnections(t *testing.T) {
+	hub, server := setupHub(t)
 	defer server.Close()
 
-	// Convert http URL to ws URL
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn := dialWS(t, server)
+	defer conn.Close()
 
-	// Connect WebSocket client
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect WebSocket: %v", err)
-	}
-	defer ws.Close()
-
-	// Should receive initial state (agent_list)
-	_ = ws.SetReadDeadline(time.Now().Add(time.Second))
-	_, message, err := ws.ReadMessage()
-	if err != nil {
-		t.Fatalf("Failed to read message: %v", err)
-	}
-
-	var event map[string]interface{}
-	if err := json.Unmarshal(message, &event); err != nil {
-		t.Fatalf("Failed to parse message: %v", err)
-	}
-
-	if event["type"] != "agent_list" {
-		t.Errorf("Expected first message to be agent_list, got %v", event["type"])
+	time.Sleep(50 * time.Millisecond)
+	if hub.ClientCount() != 1 {
+		t.Fatalf("expected 1 client, got %d", hub.ClientCount())
 	}
 }
 
-func TestWebSocketReceivesZoneList(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	go hub.Run()
-	time.Sleep(10 * time.Millisecond)
-
-	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
+func TestBroadcastSendsToAll(t *testing.T) {
+	hub, server := setupHub(t)
 	defer server.Close()
 
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-	defer ws.Close()
+	c1 := dialWS(t, server)
+	defer c1.Close()
+	c2 := dialWS(t, server)
+	defer c2.Close()
 
-	// Read messages until we get zone_list
-	_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
-	foundZoneList := false
-
-	for i := 0; i < 5; i++ {
-		_, message, err := ws.ReadMessage()
-		if err != nil {
-			break
-		}
-
-		var event map[string]interface{}
-		_ = json.Unmarshal(message, &event)
-
-		if event["type"] == "zone_list" {
-			foundZoneList = true
-			zones, ok := event["zones"].([]interface{})
-			if !ok {
-				t.Error("zones should be an array")
-			}
-			if len(zones) < 1 {
-				t.Error("Should have at least default zone")
-			}
-			break
-		}
-	}
-
-	if !foundZoneList {
-		t.Error("Did not receive zone_list event")
-	}
-}
-
-func TestWebSocketBroadcast(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	go hub.Run()
 	time.Sleep(50 * time.Millisecond)
 
-	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
+	hub.BroadcastRaw("worker", "spawned", map[string]string{"worker_id": "mc-a1b2c"})
+
+	ev1 := readEvent(t, c1)
+	ev2 := readEvent(t, c2)
+
+	if ev1.Topic != "worker" || ev1.Type != "spawned" {
+		t.Fatalf("unexpected event: %+v", ev1)
+	}
+	if ev2.Topic != "worker" || ev2.Type != "spawned" {
+		t.Fatalf("unexpected event: %+v", ev2)
+	}
+}
+
+func TestSubscribeFiltersTopics(t *testing.T) {
+	hub, server := setupHub(t)
 	defer server.Close()
 
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn := dialWS(t, server)
+	defer conn.Close()
+	time.Sleep(50 * time.Millisecond)
 
-	// Connect a client
-	ws1, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect client: %v", err)
+	// Subscribe to only "task"
+	cmd, _ := json.Marshal(clientCommand{Type: "subscribe", Topics: []string{"task"}})
+	conn.WriteMessage(websocket.TextMessage, cmd)
+	time.Sleep(50 * time.Millisecond)
+
+	// Broadcast a "worker" event — should be filtered out
+	hub.BroadcastRaw("worker", "spawned", map[string]string{})
+	// Broadcast a "task" event — should arrive
+	hub.BroadcastRaw("task", "started", map[string]string{"id": "t1"})
+
+	ev := readEvent(t, conn)
+	if ev.Topic != "task" {
+		t.Fatalf("expected task event, got %s", ev.Topic)
 	}
-	defer ws1.Close()
+}
 
-	// Wait for client to register
+func TestUnsubscribe(t *testing.T) {
+	hub, server := setupHub(t)
+	defer server.Close()
+
+	conn := dialWS(t, server)
+	defer conn.Close()
+	time.Sleep(50 * time.Millisecond)
+
+	// Subscribe to task and worker
+	cmd, _ := json.Marshal(clientCommand{Type: "subscribe", Topics: []string{"task", "worker"}})
+	conn.WriteMessage(websocket.TextMessage, cmd)
+	time.Sleep(50 * time.Millisecond)
+
+	// Unsubscribe from worker
+	cmd, _ = json.Marshal(clientCommand{Type: "unsubscribe", Topics: []string{"worker"}})
+	conn.WriteMessage(websocket.TextMessage, cmd)
+	time.Sleep(50 * time.Millisecond)
+
+	hub.BroadcastRaw("worker", "spawned", map[string]string{})
+	hub.BroadcastRaw("task", "done", map[string]string{})
+
+	ev := readEvent(t, conn)
+	if ev.Topic != "task" {
+		t.Fatalf("expected task, got %s", ev.Topic)
+	}
+}
+
+func TestInitialStateSync(t *testing.T) {
+	hub, server := setupHub(t)
+	defer server.Close()
+
+	hub.SetStateProvider(func() interface{} {
+		return map[string]string{"status": "ready"}
+	})
+	time.Sleep(50 * time.Millisecond)
+
+	conn := dialWS(t, server)
+	defer conn.Close()
+
+	ev := readEvent(t, conn)
+	if ev.Topic != "sync" || ev.Type != "initial_state" {
+		t.Fatalf("expected sync/initial_state, got %s/%s", ev.Topic, ev.Type)
+	}
+}
+
+func TestClientDisconnect(t *testing.T) {
+	hub, server := setupHub(t)
+	defer server.Close()
+
+	conn := dialWS(t, server)
+	time.Sleep(50 * time.Millisecond)
+	if hub.ClientCount() != 1 {
+		t.Fatalf("expected 1 client, got %d", hub.ClientCount())
+	}
+
+	conn.Close()
 	time.Sleep(100 * time.Millisecond)
 
-	// Broadcast a message - it will be queued after initial sync messages
-	testEvent := map[string]string{"type": "test_broadcast", "data": "hello"}
-	hub.Notify(testEvent)
-
-	// Read messages until we get our broadcast or timeout
-	_ = ws1.SetReadDeadline(time.Now().Add(2 * time.Second))
-	found := false
-	for i := 0; i < 10; i++ {
-		_, msg, err := ws1.ReadMessage()
-		if err != nil {
-			break
-		}
-		var event map[string]string
-		_ = json.Unmarshal(msg, &event)
-		if event["type"] == "test_broadcast" {
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		t.Error("Did not receive broadcast event")
-	}
-}
-
-func TestWebSocketCommandRequestSync(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
-
-	go hub.Run()
-	time.Sleep(50 * time.Millisecond)
-
-	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
-	defer server.Close()
-
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-	defer ws.Close()
-
-	// Wait for initial sync and then send request_sync
+	// Trigger unregister by broadcasting
+	hub.BroadcastRaw("task", "ping", nil)
 	time.Sleep(100 * time.Millisecond)
 
-	// Send request_sync command
-	cmd := Command{Type: "request_sync"}
-	cmdData, _ := json.Marshal(cmd)
-	_ = ws.WriteMessage(websocket.TextMessage, cmdData)
-
-	// Read messages - should get agent_list (from initial or sync)
-	_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
-	foundAgentList := false
-	for i := 0; i < 10; i++ {
-		_, message, err := ws.ReadMessage()
-		if err != nil {
-			break
-		}
-		var event map[string]interface{}
-		_ = json.Unmarshal(message, &event)
-		if event["type"] == "agent_list" {
-			foundAgentList = true
-			// Verify it has agents array
-			if _, ok := event["agents"]; !ok {
-				t.Error("agent_list should have agents field")
-			}
-			break
-		}
-	}
-
-	if !foundAgentList {
-		t.Error("Did not receive agent_list event")
+	if hub.ClientCount() != 0 {
+		t.Fatalf("expected 0 clients, got %d", hub.ClientCount())
 	}
 }
 
-func TestWebSocketDisconnect(t *testing.T) {
-	m := manager.NewManager("/tmp/test")
-	hub := NewHub(m)
+func TestAuthRejectsInvalidToken(t *testing.T) {
+	t.Setenv("MC_API_TOKEN", "secret123")
 
+	hub := NewHub()
 	go hub.Run()
-	time.Sleep(10 * time.Millisecond)
-
 	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
 	defer server.Close()
 
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
+	// No token — should fail
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	_, resp, err := websocket.DefaultDialer.Dial(url, nil)
+	if err == nil {
+		t.Fatal("expected error for missing token")
+	}
+	if resp != nil && resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
 	}
 
-	// Wait for registration
+	// Wrong token
+	_, _, err = websocket.DefaultDialer.Dial(url+"?token=wrong", nil)
+	if err == nil {
+		t.Fatal("expected error for wrong token")
+	}
+
+	// Correct token via query
+	conn, _, err := websocket.DefaultDialer.Dial(url+"?token=secret123", nil)
+	if err != nil {
+		t.Fatalf("expected success with correct token: %v", err)
+	}
+	conn.Close()
+
+	// Correct token via header
+	header := http.Header{}
+	header.Set("Authorization", "Bearer secret123")
+	conn, _, err = websocket.DefaultDialer.Dial(url, header)
+	if err != nil {
+		t.Fatalf("expected success with bearer token: %v", err)
+	}
+	conn.Close()
+}
+
+func TestBroadcastRawMarshals(t *testing.T) {
+	hub, server := setupHub(t)
+	defer server.Close()
+
+	conn := dialWS(t, server)
+	defer conn.Close()
 	time.Sleep(50 * time.Millisecond)
 
-	// Close connection
-	ws.Close()
+	hub.BroadcastRaw("gate", "passed", map[string]interface{}{
+		"stage": 3,
+		"name":  "implement",
+	})
 
-	// Wait for unregistration
+	ev := readEvent(t, conn)
+	if ev.Topic != "gate" || ev.Type != "passed" {
+		t.Fatalf("unexpected: %+v", ev)
+	}
+	var data map[string]interface{}
+	json.Unmarshal(ev.Data, &data)
+	if data["name"] != "implement" {
+		t.Fatalf("unexpected data: %v", data)
+	}
+}
+
+func TestRequestSync(t *testing.T) {
+	hub, server := setupHub(t)
+	defer server.Close()
+
+	// Connect before state provider is set — no sync event
+	conn := dialWS(t, server)
+	defer conn.Close()
 	time.Sleep(50 * time.Millisecond)
 
-	// Hub should handle disconnect gracefully (no panic)
+	hub.SetStateProvider(func() interface{} {
+		return map[string]string{"phase": "2"}
+	})
+
+	cmd, _ := json.Marshal(clientCommand{Type: "request_sync"})
+	conn.WriteMessage(websocket.TextMessage, cmd)
+
+	ev := readEvent(t, conn)
+	if ev.Topic != "sync" || ev.Type != "initial_state" {
+		t.Fatalf("expected sync, got %s/%s", ev.Topic, ev.Type)
+	}
 }
