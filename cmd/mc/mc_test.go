@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -594,5 +595,211 @@ func TestHandoffValidationError(t *testing.T) {
 	err = runHandoff(nil, []string{handoffFile})
 	if err == nil {
 		t.Error("Expected error for invalid handoff")
+	}
+}
+
+// setupTestMission creates a temp dir with mc init and git, returns (tmpDir, missionDir, cleanup)
+func setupTestMission(t *testing.T) (string, string, func()) {
+	t.Helper()
+	tmpDir, err := os.MkdirTemp("", "mc-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	originalDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+
+	// Init git repo (needed for checkpoint git commits)
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "config", "user.email", "test@test.com")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "config", "user.name", "Test")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	if err := runInit(nil, nil); err != nil {
+		os.RemoveAll(tmpDir)
+		os.Chdir(originalDir)
+		t.Fatalf("mc init failed: %v", err)
+	}
+
+	// Initial git commit so checkpoint commits work
+	cmd = exec.Command("git", "add", "-A")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "commit", "-m", "init")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	missionDir := filepath.Join(tmpDir, ".mission")
+	cleanup := func() {
+		os.Chdir(originalDir)
+		os.RemoveAll(tmpDir)
+	}
+	return tmpDir, missionDir, cleanup
+}
+
+// TestF7_CheckpointRoundTrip creates a checkpoint, then restores it, verifying state matches.
+func TestF7_CheckpointRoundTrip(t *testing.T) {
+	_, missionDir, cleanup := setupTestMission(t)
+	defer cleanup()
+
+	// Set up some state: add a task and advance to "goal"
+	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
+	tasksState := TasksState{
+		Tasks: []Task{
+			{ID: "t1", Name: "Research", Stage: "discovery", Status: "complete", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z"},
+			{ID: "t2", Name: "Define goals", Stage: "goal", Status: "pending", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z"},
+		},
+	}
+	if err := writeJSON(tasksPath, tasksState); err != nil {
+		t.Fatalf("Failed to write tasks: %v", err)
+	}
+
+	// Advance stage to "goal"
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	if err := writeJSON(stagePath, StageState{Current: "goal", UpdatedAt: "2024-01-01T00:00:00Z"}); err != nil {
+		t.Fatalf("Failed to write stage: %v", err)
+	}
+
+	// Create checkpoint
+	cp, err := createCheckpoint(missionDir, "test-session")
+	if err != nil {
+		t.Fatalf("createCheckpoint failed: %v", err)
+	}
+
+	if cp.Stage != "goal" {
+		t.Errorf("Checkpoint stage: got %q, want %q", cp.Stage, "goal")
+	}
+	if len(cp.Tasks) != 2 {
+		t.Errorf("Checkpoint tasks count: got %d, want 2", len(cp.Tasks))
+	}
+
+	// Now change state (advance to requirements)
+	if err := writeJSON(stagePath, StageState{Current: "requirements", UpdatedAt: "2024-01-02T00:00:00Z"}); err != nil {
+		t.Fatalf("Failed to update stage: %v", err)
+	}
+
+	// Query the checkpoint and verify it preserved the original state
+	cpPath := filepath.Join(missionDir, "orchestrator", "checkpoints", cp.ID+".json")
+	var restored CheckpointData
+	if err := readJSON(cpPath, &restored); err != nil {
+		t.Fatalf("Failed to read checkpoint: %v", err)
+	}
+
+	if restored.Stage != "goal" {
+		t.Errorf("Restored checkpoint stage: got %q, want %q", restored.Stage, "goal")
+	}
+	if restored.ID != cp.ID {
+		t.Errorf("Restored checkpoint ID: got %q, want %q", restored.ID, cp.ID)
+	}
+	if len(restored.Tasks) != 2 {
+		t.Errorf("Restored tasks count: got %d, want 2", len(restored.Tasks))
+	}
+	if restored.Tasks[0].ID != "t1" || restored.Tasks[1].ID != "t2" {
+		t.Error("Restored task IDs don't match")
+	}
+	if restored.SessionID != "test-session" {
+		t.Errorf("Restored session ID: got %q, want %q", restored.SessionID, "test-session")
+	}
+
+	// Verify current stage is still "requirements" (checkpoint didn't mutate live state)
+	var liveStage StageState
+	if err := readJSON(stagePath, &liveStage); err != nil {
+		t.Fatalf("Failed to read live stage: %v", err)
+	}
+	if liveStage.Current != "requirements" {
+		t.Errorf("Live stage should still be 'requirements', got %q", liveStage.Current)
+	}
+}
+
+// TestF8_AutoCheckpointOnGateApproval approves a gate and verifies a checkpoint was auto-created.
+func TestF8_AutoCheckpointOnGateApproval(t *testing.T) {
+	tmpDir, missionDir, cleanup := setupTestMission(t)
+	defer cleanup()
+	_ = tmpDir
+
+	// Verify starting stage is "discovery"
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	var stage StageState
+	if err := readJSON(stagePath, &stage); err != nil {
+		t.Fatalf("Failed to read stage: %v", err)
+	}
+	if stage.Current != "discovery" {
+		t.Fatalf("Expected initial stage 'discovery', got %q", stage.Current)
+	}
+
+	// Mark all discovery tasks complete (so gate criteria can be met)
+	tasksPath := filepath.Join(missionDir, "state", "tasks.json")
+	tasksState := TasksState{
+		Tasks: []Task{
+			{ID: "t1", Name: "Discover", Stage: "discovery", Status: "complete", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z"},
+		},
+	}
+	if err := writeJSON(tasksPath, tasksState); err != nil {
+		t.Fatalf("Failed to write tasks: %v", err)
+	}
+
+	// Count checkpoints before approval
+	checkpointsDir := filepath.Join(missionDir, "orchestrator", "checkpoints")
+	beforeEntries, _ := os.ReadDir(checkpointsDir)
+	beforeCount := len(beforeEntries)
+
+	// Approve the discovery gate
+	err := runGateApprove(nil, []string{"discovery"})
+	if err != nil {
+		t.Fatalf("runGateApprove failed: %v", err)
+	}
+
+	// Verify checkpoint was auto-created
+	afterEntries, _ := os.ReadDir(checkpointsDir)
+	afterCount := len(afterEntries)
+	if afterCount <= beforeCount {
+		t.Error("No checkpoint was created on gate approval")
+	}
+
+	// Verify stage advanced to "goal" (exactly one stage)
+	if err := readJSON(stagePath, &stage); err != nil {
+		t.Fatalf("Failed to read stage after approval: %v", err)
+	}
+	if stage.Current != "goal" {
+		t.Errorf("Expected stage 'goal' after approving discovery gate, got %q", stage.Current)
+	}
+
+	// Verify the gate is marked approved
+	gatesPath := filepath.Join(missionDir, "state", "gates.json")
+	var gatesState GatesState
+	if err := readJSON(gatesPath, &gatesState); err != nil {
+		t.Fatalf("Failed to read gates: %v", err)
+	}
+	gate := gatesState.Gates["discovery"]
+	if gate.Status != "approved" {
+		t.Errorf("Discovery gate status: got %q, want 'approved'", gate.Status)
+	}
+	if gate.ApprovedAt == "" {
+		t.Error("Discovery gate ApprovedAt should be set")
+	}
+
+	// BUG REGRESSION: Verify re-approving the same gate fails (prevents double-advance)
+	err = runGateApprove(nil, []string{"discovery"})
+	if err == nil {
+		t.Error("Re-approving an already-approved gate should fail")
+	}
+
+	// BUG REGRESSION: Verify approving a non-current stage fails
+	err = runGateApprove(nil, []string{"requirements"})
+	if err == nil {
+		t.Error("Approving gate for non-current stage should fail")
+	}
+
+	// Verify stage is STILL "goal" (no auto-advance beyond one stage)
+	if err := readJSON(stagePath, &stage); err != nil {
+		t.Fatalf("Failed to re-read stage: %v", err)
+	}
+	if stage.Current != "goal" {
+		t.Errorf("Stage should still be 'goal', got %q (auto-advance bug!)", stage.Current)
 	}
 }
