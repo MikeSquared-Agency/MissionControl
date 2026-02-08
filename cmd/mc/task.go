@@ -98,6 +98,17 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write tasks: %w", err)
 	}
 
+	writeAuditLog(missionDir, AuditTaskCreated, "cli", map[string]interface{}{
+		"task_id": task.ID,
+		"name":    task.Name,
+		"stage":   task.Stage,
+		"zone":    task.Zone,
+		"persona": task.Persona,
+	})
+
+	// Auto-commit
+	gitAutoCommit(missionDir, CommitCategoryTask, taskCommitMsg("create", task.ID, task.Name))
+
 	// Output task as JSON
 	output, _ := json.MarshalIndent(task, "", "  ")
 	fmt.Println(string(output))
@@ -161,9 +172,20 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 	found := false
 	for i := range state.Tasks {
 		if state.Tasks[i].ID == taskID {
+			oldStatus := state.Tasks[i].Status
 			state.Tasks[i].Status = newStatus
 			state.Tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 			found = true
+
+			auditAction := AuditTaskUpdated
+			if newStatus == "complete" {
+				auditAction = AuditTaskCompleted
+			}
+			writeAuditLog(missionDir, auditAction, "cli", map[string]interface{}{
+				"task_id":    taskID,
+				"old_status": oldStatus,
+				"new_status": newStatus,
+			})
 
 			output, _ := json.MarshalIndent(state.Tasks[i], "", "  ")
 			fmt.Println(string(output))
@@ -178,6 +200,9 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 	if err := writeJSON(tasksPath, state); err != nil {
 		return fmt.Errorf("failed to write tasks: %w", err)
 	}
+
+	// Auto-commit
+	gitAutoCommit(missionDir, CommitCategoryTask, taskCommitMsg("update", taskID, newStatus))
 
 	return nil
 }

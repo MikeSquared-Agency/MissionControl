@@ -176,6 +176,10 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to update gate: %w", err)
 	}
 
+	writeAuditLog(missionDir, AuditGateApproved, "cli", map[string]interface{}{
+		"stage": stage,
+	})
+
 	// Auto-checkpoint on gate approval (G3.1)
 	if cp, err := createCheckpoint(missionDir, ""); err == nil {
 		fmt.Printf("Checkpoint created: %s\n", cp.ID)
@@ -197,6 +201,11 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 	if err := writeJSON(stagePath, stageState); err != nil {
 		return fmt.Errorf("failed to update stage: %w", err)
 	}
+
+	writeAuditLog(missionDir, AuditStageAdvanced, "cli", map[string]interface{}{
+		"from_stage": stage,
+		"to_stage":   nextStage,
+	})
 
 	fmt.Printf("Gate approved: %s → %s\n", stage, nextStage)
 

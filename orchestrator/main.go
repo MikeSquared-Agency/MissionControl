@@ -9,12 +9,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mike/mission-control/api"
-	"github.com/mike/mission-control/manager"
-	"github.com/mike/mission-control/terminal"
-	"github.com/mike/mission-control/v4"
-	"github.com/mike/mission-control/watcher"
-	"github.com/mike/mission-control/ws"
+	"github.com/DarlingtonDeveloper/MissionControl/api"
+	"github.com/DarlingtonDeveloper/MissionControl/manager"
+	"github.com/DarlingtonDeveloper/MissionControl/terminal"
+	"github.com/DarlingtonDeveloper/MissionControl/v4"
+	"github.com/DarlingtonDeveloper/MissionControl/watcher"
+	"github.com/DarlingtonDeveloper/MissionControl/ws"
 )
 
 func main() {

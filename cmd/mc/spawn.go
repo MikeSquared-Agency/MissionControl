@@ -130,6 +130,14 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to update workers state: %w", err)
 	}
 
+	writeAuditLog(missionDir, AuditWorkerSpawned, "cli", map[string]interface{}{
+		"worker_id": workerID,
+		"persona":   persona,
+		"task_id":   taskID,
+		"zone":      zone,
+		"pid":       claudeCmd.Process.Pid,
+	})
+
 	// Output worker info
 	output, _ := json.MarshalIndent(worker, "", "  ")
 	fmt.Println(string(output))

@@ -1,4 +1,4 @@
-module github.com/mike/mission-control
+module github.com/DarlingtonDeveloper/MissionControl
 
 go 1.25.3
 
