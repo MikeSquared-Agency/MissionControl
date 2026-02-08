@@ -121,11 +121,12 @@ Foundation for multi-agent coordination and intelligent work distribution.
 
 ---
 
-### 6.7 Git Commit Hooks
+### 6.7 Git Commit Hooks ✅ COMPLETE
 **What:** Auto-commit state changes to git
 
-- [ ] Post-mutation hook in `mc` commands
-- [ ] Commit with message: `mc: {action} {target}`
+- [x] Post-mutation hook in `mc` commands (all mutation points wired up)
+- [x] Commit with message: `[mc:{category}] {action} {target}`
+- [x] Configurable per-category via `.mission/config.json` `auto_commit`
 - [ ] Optional: push to remote
 
 **Benefit:** Automatic version history, disaster recovery
