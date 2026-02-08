@@ -145,6 +145,7 @@ func Run(cfg Config) error {
 	// --- OpenClaw bridge ---
 	gatewayURL := os.Getenv("OPENCLAW_GATEWAY")
 	gatewayToken := os.Getenv("OPENCLAW_TOKEN")
+	bridgeConnected := false
 	if gatewayURL != "" && gatewayToken != "" {
 		bridge := openclaw.NewBridge(gatewayURL, gatewayToken)
 		if err := bridge.Connect(); err != nil {
@@ -152,13 +153,14 @@ func Run(cfg Config) error {
 		} else {
 			log.Printf("OpenClaw bridge connected to %s", gatewayURL)
 			defer bridge.Close()
-		}
+			bridgeConnected = true
 
-		ocHandler := openclaw.NewHandler(bridge)
-		ocHandler.RegisterRoutes(mux)
-		// /api/chat as convenience alias
-		ocHandler.RegisterChatAlias(mux)
-	} else {
+			ocHandler := openclaw.NewHandler(bridge)
+			ocHandler.RegisterRoutes(mux)
+			ocHandler.RegisterChatAlias(mux)
+		}
+	}
+	if !bridgeConnected {
 		mux.HandleFunc("/api/openclaw/status", func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]interface{}{"connected": false})
 		})
