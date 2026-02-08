@@ -67,7 +67,7 @@ func TestFullWalkthrough_F6(t *testing.T) {
 		}
 
 		// --- Verify gate was approved with timestamp ---
-		gate := readGate(t, gatesPath, stage)
+		gate := readGateFromPath(t, gatesPath, stage)
 		if gate.Status != "approved" {
 			t.Errorf("stage %q: gate status = %q, want %q", stage, gate.Status, "approved")
 		}
@@ -143,18 +143,13 @@ func TestFullWalkthrough_NoDoubleAdvance(t *testing.T) {
 	}
 	assertCurrentStage(t, stagePath, "goal")
 
-	// Approve discovery gate AGAIN → stage should still be goal, not requirements
-	if err := runGateApprove(nil, []string{"discovery"}); err != nil {
-		t.Fatalf("second gate approve failed: %v", err)
+	// Approve discovery gate AGAIN → should error since we're now on "goal"
+	err := runGateApprove(nil, []string{"discovery"})
+	if err == nil {
+		t.Error("expected error when approving gate for non-current stage")
 	}
-	// The gate for "discovery" advances from "discovery" to "goal", but we're already at "goal"
-	// so this would advance to "goal" again (which is current) — it depends on implementation.
-	// The key point: we should NOT be at "requirements" from a double-approve of "discovery"
-	var stage StageState
-	readJSONFile(t, stagePath, &stage)
-	if stage.Current == "requirements" {
-		t.Error("double-approving discovery gate should NOT advance to requirements")
-	}
+	// Stage should still be "goal", not "requirements"
+	assertCurrentStage(t, stagePath, "goal")
 }
 
 // --- helpers ---
@@ -207,7 +202,7 @@ func completeTask(t *testing.T, missionDir, taskID string) {
 	}
 }
 
-func readGate(t *testing.T, gatesPath, stage string) Gate {
+func readGateFromPath(t *testing.T, gatesPath, stage string) Gate {
 	t.Helper()
 	var gs GatesState
 	readJSONFile(t, gatesPath, &gs)
