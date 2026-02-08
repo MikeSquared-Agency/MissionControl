@@ -177,7 +177,7 @@ func runCheckpointAuto(cmd *cobra.Command, args []string) error {
 	// Re-write with summary
 	checkpointsDir := filepath.Join(missionDir, "orchestrator", "checkpoints")
 	cpPath := filepath.Join(checkpointsDir, cp.ID+".json")
-	writeJSON(cpPath, cp)
+	_ = writeJSON(cpPath, cp)
 
 	writeAuditLog(missionDir, AuditCheckpointCreated, "auto", map[string]interface{}{
 		"checkpoint_id": cp.ID,
