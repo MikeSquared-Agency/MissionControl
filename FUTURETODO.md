@@ -55,69 +55,69 @@
 
 Foundation for multi-agent coordination and intelligent work distribution.
 
-### 6.1 JSONL Migration
+### 6.1 JSONL Migration ✅ COMPLETE
 **What:** Convert `tasks.json` to `tasks.jsonl` (one JSON object per line)
 
-- [ ] One-time migration script
-- [ ] Update all read/write functions in `mc` CLI
-- [ ] Update file watcher in Go bridge
+- [x] One-time migration script
+- [x] Update all read/write functions in `mc` CLI
+- [x] Update file watcher in Go bridge
 
 **Benefit:** Git merges line-by-line, enables concurrent writes
 
 ---
 
-### 6.2 Hash-Based Task IDs
+### 6.2 Hash-Based Task IDs ✅ COMPLETE
 **What:** Replace sequential/random IDs with content-hash IDs (`mc-a7x2k`)
 
-- [ ] SHA256(title + timestamp) truncated to 5 chars
-- [ ] Update ID generation in `mc task create`
-- [ ] Migration for existing tasks
+- [x] SHA256(title + timestamp) truncated to 5 chars
+- [x] Update ID generation in `mc task create`
+- [x] Migration for existing tasks
 
 **Benefit:** Prevents ID collisions, deterministic retries
 
 ---
 
-### 6.3 Audit Trail
+### 6.3 Audit Trail ✅ COMPLETE
 **What:** Append-only `audit/interactions.jsonl` logging all state mutations
 
-- [ ] Create audit log format (actor, action, target, timestamp)
-- [ ] Hook into all `mc` commands that mutate state
-- [ ] Add `mc audit` command to query history
+- [x] Create audit log format (actor, action, target, timestamp)
+- [x] Hook into all `mc` commands that mutate state
+- [x] Add `mc audit` command to query history
 
 **Benefit:** Full history, debug replay, compliance support
 
 ---
 
-### 6.4 Task Dependencies
+### 6.4 Task Dependencies ✅ COMPLETE
 **What:** Add `blocks`/`blockedBy` fields to tasks
 
-- [ ] Schema changes to task format
-- [ ] `mc task create --blocks <id>` flag
-- [ ] `mc dep add/remove` commands
-- [ ] Dependency validation (no cycles)
-- [ ] Auto-update blocked tasks when blockers close
+- [x] Schema changes to task format
+- [x] `mc task create --blocks <id>` flag
+- [x] `mc dep add/remove` commands
+- [x] Dependency validation (no cycles)
+- [x] Auto-update blocked tasks when blockers close
 
 **Benefit:** King distributes work intelligently, workers get actionable tasks
 
 ---
 
-### 6.5 Ready Queue Command
+### 6.5 Ready Queue Command ✅ COMPLETE
 **What:** `mc ready` shows tasks with no open blockers
 
-- [ ] Query tasks where all `blockedBy` are closed
-- [ ] Filter by stage, assignee, labels
-- [ ] JSON output for King to consume
+- [x] Query tasks where all `blockedBy` are closed
+- [x] Filter by stage, assignee, labels
+- [x] JSON output for King to consume
 
 **Benefit:** Workers ask "what can I do?" and get real answers
 
 ---
 
-### 6.6 Dependency Visualization
+### 6.6 Dependency Visualization ✅ COMPLETE
 **What:** `mc dep tree <id>` shows dependency graph
 
-- [ ] Tree view of what blocks what
-- [ ] Show status of each node
-- [ ] `mc blocked` shows all blocked tasks and why
+- [x] Tree view of what blocks what
+- [x] Show status of each node
+- [x] `mc blocked` shows all blocked tasks and why
 
 ---
 
