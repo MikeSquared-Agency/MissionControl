@@ -139,7 +139,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create orchestrator directory
-	os.MkdirAll(filepath.Join(missionDir, "orchestrator", "checkpoints"), 0755)
+	_ = os.MkdirAll(filepath.Join(missionDir, "orchestrator", "checkpoints"), 0755)
 
 	// Delete old phase.json
 	os.Remove(phasePath)

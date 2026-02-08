@@ -29,7 +29,7 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 
 	var resp map[string]string
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	if resp["status"] != "ok" {
 		t.Errorf("Expected status 'ok', got %s", resp["status"])
@@ -50,7 +50,7 @@ func TestListZonesEndpoint(t *testing.T) {
 	}
 
 	var zones []manager.Zone
-	json.Unmarshal(w.Body.Bytes(), &zones)
+	_ = json.Unmarshal(w.Body.Bytes(), &zones)
 
 	// Should have at least the default zone
 	if len(zones) < 1 {
@@ -86,7 +86,7 @@ func TestCreateZoneEndpoint(t *testing.T) {
 	}
 
 	var zone manager.Zone
-	json.Unmarshal(w.Body.Bytes(), &zone)
+	_ = json.Unmarshal(w.Body.Bytes(), &zone)
 
 	if zone.Name != "Test Zone" {
 		t.Errorf("Expected zone name 'Test Zone', got %s", zone.Name)
@@ -125,7 +125,7 @@ func TestUpdateZoneEndpoint(t *testing.T) {
 	routes.ServeHTTP(createW, createReq)
 
 	var created manager.Zone
-	json.Unmarshal(createW.Body.Bytes(), &created)
+	_ = json.Unmarshal(createW.Body.Bytes(), &created)
 
 	// Update the zone
 	updateBody := bytes.NewBufferString(`{"name":"Updated","color":"#3b82f6"}`)
@@ -139,7 +139,7 @@ func TestUpdateZoneEndpoint(t *testing.T) {
 	}
 
 	var updated manager.Zone
-	json.Unmarshal(updateW.Body.Bytes(), &updated)
+	_ = json.Unmarshal(updateW.Body.Bytes(), &updated)
 
 	if updated.Name != "Updated" {
 		t.Errorf("Expected updated name 'Updated', got %s", updated.Name)
@@ -158,7 +158,7 @@ func TestDeleteZoneEndpoint(t *testing.T) {
 	routes.ServeHTTP(createW, createReq)
 
 	var created manager.Zone
-	json.Unmarshal(createW.Body.Bytes(), &created)
+	_ = json.Unmarshal(createW.Body.Bytes(), &created)
 
 	// Delete the zone
 	deleteReq := httptest.NewRequest("DELETE", "/api/zones/"+created.ID, nil)
@@ -193,7 +193,7 @@ func TestListAgentsEndpoint(t *testing.T) {
 	}
 
 	var agents []manager.Agent
-	json.Unmarshal(w.Body.Bytes(), &agents)
+	_ = json.Unmarshal(w.Body.Bytes(), &agents)
 
 	// Should be empty initially
 	if len(agents) != 0 {

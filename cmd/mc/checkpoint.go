@@ -143,14 +143,14 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 	var decisions []string
 	decisionsPath := filepath.Join(missionDir, "orchestrator", "decisions.json")
 	if data, err := os.ReadFile(decisionsPath); err == nil {
-		json.Unmarshal(data, &decisions)
+		_ = json.Unmarshal(data, &decisions)
 	}
 
 	// Read blockers (from .mission/orchestrator/blockers.json if it exists)
 	var blockers []string
 	blockersPath := filepath.Join(missionDir, "orchestrator", "blockers.json")
 	if data, err := os.ReadFile(blockersPath); err == nil {
-		json.Unmarshal(data, &blockers)
+		_ = json.Unmarshal(data, &blockers)
 	}
 
 	// Load or create session ID
@@ -172,7 +172,7 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 
 	// Write checkpoint file
 	checkpointsDir := filepath.Join(missionDir, "orchestrator", "checkpoints")
-	os.MkdirAll(checkpointsDir, 0755)
+	_ = os.MkdirAll(checkpointsDir, 0755)
 
 	cpPath := filepath.Join(checkpointsDir, cp.ID+".json")
 	if err := writeJSON(cpPath, cp); err != nil {
@@ -181,7 +181,7 @@ func createCheckpoint(missionDir string, sessionID string) (*CheckpointData, err
 
 	// Update current.json pointer
 	currentPath := filepath.Join(missionDir, "orchestrator", "current.json")
-	writeJSON(currentPath, map[string]string{
+	_ = writeJSON(currentPath, map[string]string{
 		"checkpoint_id": cp.ID,
 		"created_at":    cp.CreatedAt,
 		"session_id":    sessionID,
@@ -438,7 +438,7 @@ func runCheckpointRestart(cmd *cobra.Command, args []string) error {
 
 	// Update current.json with new session
 	currentPath := filepath.Join(missionDir, "orchestrator", "current.json")
-	writeJSON(currentPath, map[string]string{
+	_ = writeJSON(currentPath, map[string]string{
 		"checkpoint_id": cp.ID,
 		"session_id":    newSessionID,
 		"created_at":    now,
@@ -548,6 +548,6 @@ func appendSession(missionDir string, record SessionRecord) {
 		return
 	}
 	defer f.Close()
-	f.Write(data)
-	f.WriteString("\n")
+	_, _ = f.Write(data)
+	_, _ = f.WriteString("\n")
 }

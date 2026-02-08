@@ -240,7 +240,7 @@ func writeAuditLog(missionDir string, action string, actor string, details map[s
 	if _, err := f.Write(data); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to write audit entry: %v\n", err)
 	}
-	f.WriteString("\n")
+	_, _ = f.WriteString("\n")
 }
 
 // readAuditLog reads all entries from .mission/audit.jsonl

@@ -29,7 +29,7 @@ func TestIsRunning(t *testing.T) {
 	t.Run("returns true when server responds OK", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Ollama is running"))
+			_, _ = w.Write([]byte("Ollama is running"))
 		}))
 		defer server.Close()
 
@@ -73,7 +73,7 @@ func TestListModels(t *testing.T) {
 				t.Errorf("expected path /api/tags, got %s", r.URL.Path)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(mockModels)
+			_ = json.NewEncoder(w).Encode(mockModels)
 		}))
 		defer server.Close()
 
@@ -122,7 +122,7 @@ func TestHasModel(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockModels)
+		_ = json.NewEncoder(w).Encode(mockModels)
 	}))
 	defer server.Close()
 
@@ -160,7 +160,7 @@ func TestGetModelNames(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockModels)
+		_ = json.NewEncoder(w).Encode(mockModels)
 	}))
 	defer server.Close()
 

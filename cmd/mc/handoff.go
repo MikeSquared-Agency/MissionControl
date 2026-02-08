@@ -100,7 +100,7 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 		// Read existing findings or create new
 		var existingFindings []Finding
 		if existingData, err := os.ReadFile(findingsPath); err == nil {
-			json.Unmarshal(existingData, &existingFindings)
+			_ = json.Unmarshal(existingData, &existingFindings)
 		}
 
 		// Append new findings

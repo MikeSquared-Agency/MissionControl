@@ -18,8 +18,8 @@ func TestMcInit(t *testing.T) {
 
 	// Change to temp directory
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Run init
 	err = runInit(nil, nil)
@@ -96,8 +96,8 @@ func TestTaskCreateDirect(t *testing.T) {
 
 	// Change to temp directory
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Initialize
 	err = runInit(nil, nil)
@@ -150,8 +150,8 @@ func TestStageTransition(t *testing.T) {
 
 	// Change to temp directory
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Initialize
 	err = runInit(nil, nil)
@@ -193,8 +193,8 @@ func TestHandoffValidation(t *testing.T) {
 
 	// Change to temp directory
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Initialize
 	err = runInit(nil, nil)
@@ -249,8 +249,8 @@ func TestGateCheck(t *testing.T) {
 
 	// Change to temp directory
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Initialize
 	err = runInit(nil, nil)
@@ -276,8 +276,8 @@ func TestPromptGeneration(t *testing.T) {
 
 	// Change to temp directory
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Initialize
 	err = runInit(nil, nil)
@@ -311,8 +311,8 @@ func TestStageSequence(t *testing.T) {
 
 	// Change to temp directory
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Initialize
 	err = runInit(nil, nil)
@@ -361,8 +361,8 @@ func TestCheckpointCreate(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	err = runInit(nil, nil)
 	if err != nil {
@@ -416,8 +416,8 @@ func TestCheckpointIncludesTasks(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	err = runInit(nil, nil)
 	if err != nil {
@@ -457,8 +457,8 @@ func TestGateApproveCreatesCheckpoint(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	err = runInit(nil, nil)
 	if err != nil {
@@ -490,7 +490,7 @@ func TestGateApproveCreatesCheckpoint(t *testing.T) {
 	stageFile := filepath.Join(missionDir, "state", "stage.json")
 	data, _ := os.ReadFile(stageFile)
 	var stage StageState
-	json.Unmarshal(data, &stage)
+	_ = json.Unmarshal(data, &stage)
 
 	if stage.Current != "goal" {
 		t.Errorf("Expected stage 'goal' after gate approve, got '%s'", stage.Current)
@@ -506,8 +506,8 @@ func TestCheckpointRestart(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	err = runInit(nil, nil)
 	if err != nil {
@@ -565,8 +565,8 @@ func TestHandoffValidationError(t *testing.T) {
 
 	// Change to temp directory
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	// Initialize
 	err = runInit(nil, nil)

@@ -120,7 +120,7 @@ func gitAutoCommit(missionDir string, category AutoCommitCategory, msg string) {
 	commitMsg := fmt.Sprintf("[mc:%s] %s", prefix, msg)
 	gitCommit := exec.Command("git", "commit", "-m", commitMsg)
 	gitCommit.Dir = projectDir
-	gitCommit.Run()
+	_ = gitCommit.Run()
 }
 
 // shortID returns first 8 chars of an ID for commit messages

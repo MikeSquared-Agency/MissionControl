@@ -69,7 +69,7 @@ func (h *Handler) handleStages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // CreateTaskRequest is the request for POST /api/tasks
@@ -124,7 +124,7 @@ func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 	tasks := h.Store.ListTasks(stage, zone, status, persona)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TasksResponse{Tasks: tasks})
+	_ = json.NewEncoder(w).Encode(TasksResponse{Tasks: tasks})
 }
 
 func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +155,7 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(task)
+	_ = json.NewEncoder(w).Encode(task)
 }
 
 // UpdateTaskStatusRequest is the request for PUT /api/tasks/:id/status
@@ -201,7 +201,7 @@ func (h *Handler) getTask(w http.ResponseWriter, r *http.Request, id string) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(task)
+	_ = json.NewEncoder(w).Encode(task)
 }
 
 func (h *Handler) updateTaskStatus(w http.ResponseWriter, r *http.Request, id string) {
@@ -242,7 +242,7 @@ func (h *Handler) updateTaskStatus(w http.ResponseWriter, r *http.Request, id st
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(task)
+	_ = json.NewEncoder(w).Encode(task)
 }
 
 // ============================================================================
@@ -305,7 +305,7 @@ func (h *Handler) handleHandoffs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(HandoffResponse{
+		_ = json.NewEncoder(w).Encode(HandoffResponse{
 			Valid:  false,
 			Errors: errors,
 		})
@@ -331,7 +331,7 @@ func (h *Handler) handleHandoffs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(HandoffResponse{
+	_ = json.NewEncoder(w).Encode(HandoffResponse{
 		Valid:   true,
 		DeltaID: "", // TODO: implement delta computation
 	})
@@ -347,7 +347,7 @@ func (h *Handler) handleCheckpoints(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		checkpoints := h.Store.ListCheckpoints()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(CheckpointsResponse{Checkpoints: checkpoints})
+		_ = json.NewEncoder(w).Encode(CheckpointsResponse{Checkpoints: checkpoints})
 
 	case "POST":
 		summary := h.Store.CreateCheckpoint()
@@ -363,7 +363,7 @@ func (h *Handler) handleCheckpoints(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(summary)
+		_ = json.NewEncoder(w).Encode(summary)
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -389,7 +389,7 @@ func (h *Handler) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(checkpoint)
+	_ = json.NewEncoder(w).Encode(checkpoint)
 }
 
 func (h *Handler) handleBudget(w http.ResponseWriter, r *http.Request) {
@@ -407,7 +407,7 @@ func (h *Handler) handleBudget(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(budget)
+		_ = json.NewEncoder(w).Encode(budget)
 
 	case "POST":
 		var req struct {
@@ -421,7 +421,7 @@ func (h *Handler) handleBudget(w http.ResponseWriter, r *http.Request) {
 		budget, _ := h.Store.GetBudget(workerID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(budget)
+		_ = json.NewEncoder(w).Encode(budget)
 
 	case "PUT":
 		var req struct {
@@ -456,7 +456,7 @@ func (h *Handler) handleBudget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(budget)
+		_ = json.NewEncoder(w).Encode(budget)
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -509,7 +509,7 @@ func (h *Handler) handleGate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(gate)
+		_ = json.NewEncoder(w).Encode(gate)
 		return
 	}
 
@@ -527,23 +527,19 @@ func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, stage Stag
 		req.ApprovedBy = "user"
 	}
 
-	gate, ok := h.Store.GetGate(stage)
-	if !ok {
+	if _, ok := h.Store.GetGate(stage); !ok {
 		http.Error(w, "Gate not found", http.StatusNotFound)
 		return
 	}
 
-	// Check if gate is ready for approval
-	if gate.Status != GateStatusAwaitingApproval && gate.Status != GateStatusClosed {
-		// Allow approval even if closed (manual override)
-	}
+	// Gate approval is allowed for awaiting_approval and closed (manual override) states.
 
 	if err := h.Store.ApproveGate(stage, req.ApprovedBy); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	gate, _ = h.Store.GetGate(stage)
+	gate, _ := h.Store.GetGate(stage)
 	canProceed := h.Store.CanTransition(stage.Next())
 
 	// Notify gate approval
@@ -567,7 +563,7 @@ func (h *Handler) approveGate(w http.ResponseWriter, r *http.Request, stage Stag
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(GateApprovalResponse{
+	_ = json.NewEncoder(w).Encode(GateApprovalResponse{
 		Gate:       gate,
 		CanProceed: canProceed,
 	})
@@ -599,7 +595,7 @@ func (h *Handler) handleCheckpointStatus(w http.ResponseWriter, r *http.Request)
 	status := h.Store.GetSessionStatus()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	_ = json.NewEncoder(w).Encode(status)
 }
 
 func (h *Handler) handleCheckpointHistory(w http.ResponseWriter, r *http.Request) {
@@ -611,7 +607,7 @@ func (h *Handler) handleCheckpointHistory(w http.ResponseWriter, r *http.Request
 	sessions := h.Store.GetSessionHistory()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"sessions": sessions,
 	})
 }
@@ -637,7 +633,7 @@ func (h *Handler) handleCheckpointRestart(w http.ResponseWriter, r *http.Request
 	}
 
 	var req CheckpointRestartRequest
-	json.NewDecoder(r.Body).Decode(&req)
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	result := h.Store.RestartSession(req.FromCheckpointID)
 
@@ -653,5 +649,5 @@ func (h *Handler) handleCheckpointRestart(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }

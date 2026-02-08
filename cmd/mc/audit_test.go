@@ -16,7 +16,7 @@ func TestAuditWriteAndRead(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	missionDir := filepath.Join(tmpDir, ".mission")
-	os.MkdirAll(missionDir, 0755)
+	_ = os.MkdirAll(missionDir, 0755)
 
 	// Write some entries
 	writeAuditLog(missionDir, AuditTaskCreated, "cli", map[string]interface{}{
@@ -68,7 +68,7 @@ func TestAuditLogFormat(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	missionDir := filepath.Join(tmpDir, ".mission")
-	os.MkdirAll(missionDir, 0755)
+	_ = os.MkdirAll(missionDir, 0755)
 
 	writeAuditLog(missionDir, AuditWorkerSpawned, "cli", map[string]interface{}{
 		"worker_id": "w1",
@@ -107,7 +107,7 @@ func TestAuditReadEmpty(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	missionDir := filepath.Join(tmpDir, ".mission")
-	os.MkdirAll(missionDir, 0755)
+	_ = os.MkdirAll(missionDir, 0755)
 
 	// No audit.jsonl exists
 	entries, err := readAuditLog(missionDir)
@@ -127,8 +127,8 @@ func TestAuditInitCreatesEntry(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	err = runInit(nil, nil)
 	if err != nil {
@@ -158,8 +158,8 @@ func TestAuditIntegrationWithStageAndGate(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	originalDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalDir)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	err = runInit(nil, nil)
 	if err != nil {

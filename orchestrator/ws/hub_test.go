@@ -108,7 +108,7 @@ func TestWebSocketConnection(t *testing.T) {
 	defer ws.Close()
 
 	// Should receive initial state (agent_list)
-	ws.SetReadDeadline(time.Now().Add(time.Second))
+	_ = ws.SetReadDeadline(time.Now().Add(time.Second))
 	_, message, err := ws.ReadMessage()
 	if err != nil {
 		t.Fatalf("Failed to read message: %v", err)
@@ -142,7 +142,7 @@ func TestWebSocketReceivesZoneList(t *testing.T) {
 	defer ws.Close()
 
 	// Read messages until we get zone_list
-	ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
 	foundZoneList := false
 
 	for i := 0; i < 5; i++ {
@@ -152,7 +152,7 @@ func TestWebSocketReceivesZoneList(t *testing.T) {
 		}
 
 		var event map[string]interface{}
-		json.Unmarshal(message, &event)
+		_ = json.Unmarshal(message, &event)
 
 		if event["type"] == "zone_list" {
 			foundZoneList = true
@@ -199,7 +199,7 @@ func TestWebSocketBroadcast(t *testing.T) {
 	hub.Notify(testEvent)
 
 	// Read messages until we get our broadcast or timeout
-	ws1.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = ws1.SetReadDeadline(time.Now().Add(2 * time.Second))
 	found := false
 	for i := 0; i < 10; i++ {
 		_, msg, err := ws1.ReadMessage()
@@ -207,7 +207,7 @@ func TestWebSocketBroadcast(t *testing.T) {
 			break
 		}
 		var event map[string]string
-		json.Unmarshal(msg, &event)
+		_ = json.Unmarshal(msg, &event)
 		if event["type"] == "test_broadcast" {
 			found = true
 			break
@@ -242,10 +242,10 @@ func TestWebSocketCommandRequestSync(t *testing.T) {
 	// Send request_sync command
 	cmd := Command{Type: "request_sync"}
 	cmdData, _ := json.Marshal(cmd)
-	ws.WriteMessage(websocket.TextMessage, cmdData)
+	_ = ws.WriteMessage(websocket.TextMessage, cmdData)
 
 	// Read messages - should get agent_list (from initial or sync)
-	ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
 	foundAgentList := false
 	for i := 0; i < 10; i++ {
 		_, message, err := ws.ReadMessage()
@@ -253,7 +253,7 @@ func TestWebSocketCommandRequestSync(t *testing.T) {
 			break
 		}
 		var event map[string]interface{}
-		json.Unmarshal(message, &event)
+		_ = json.Unmarshal(message, &event)
 		if event["type"] == "agent_list" {
 			foundAgentList = true
 			// Verify it has agents array
