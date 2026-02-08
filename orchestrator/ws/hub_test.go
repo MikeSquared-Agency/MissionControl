@@ -57,7 +57,7 @@ func TestHubAcceptsConnections(t *testing.T) {
 }
 
 func TestBroadcastSendsToAll(t *testing.T) {
-	_, server := setupHub(t)
+	hub, server := setupHub(t)
 	defer server.Close()
 
 	c1 := dialWS(t, server)
@@ -65,20 +65,6 @@ func TestBroadcastSendsToAll(t *testing.T) {
 	c2 := dialWS(t, server)
 	defer c2.Close()
 
-	time.Sleep(50 * time.Millisecond)
-
-	hub := NewHub() // we need the original hub reference
-	// Re-setup to get hub reference
-	c1.Close()
-	c2.Close()
-	server.Close()
-
-	hub, server = setupHub(t)
-	defer server.Close()
-	c1 = dialWS(t, server)
-	defer c1.Close()
-	c2 = dialWS(t, server)
-	defer c2.Close()
 	time.Sleep(50 * time.Millisecond)
 
 	hub.BroadcastRaw("worker", "spawned", map[string]string{"worker_id": "mc-a1b2c"})
@@ -204,7 +190,7 @@ func TestAuthRejectsInvalidToken(t *testing.T) {
 	}
 
 	// Wrong token
-	_, resp, err = websocket.DefaultDialer.Dial(url+"?token=wrong", nil)
+	_, _, err = websocket.DefaultDialer.Dial(url+"?token=wrong", nil)
 	if err == nil {
 		t.Fatal("expected error for wrong token")
 	}
