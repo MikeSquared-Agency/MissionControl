@@ -180,6 +180,9 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		"stage": stage,
 	})
 
+	// Auto-commit gate approval
+	gitAutoCommit(missionDir, CommitCategoryGate, fmt.Sprintf("approve %s", stage))
+
 	// Auto-checkpoint on gate approval (G3.1)
 	if cp, err := createCheckpoint(missionDir, ""); err == nil {
 		fmt.Printf("Checkpoint created: %s\n", cp.ID)
@@ -206,6 +209,8 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		"from_stage": stage,
 		"to_stage":   nextStage,
 	})
+
+	gitAutoCommit(missionDir, CommitCategoryStage, fmt.Sprintf("advance %s → %s (gate approved)", stage, nextStage))
 
 	fmt.Printf("Gate approved: %s → %s\n", stage, nextStage)
 

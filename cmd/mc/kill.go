@@ -76,6 +76,15 @@ func runKill(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to update workers: %w", err)
 	}
 
+	writeAuditLog(missionDir, AuditWorkerKilled, "cli", map[string]interface{}{
+		"worker_id": workerID,
+		"pid":       worker.PID,
+		"force":     force,
+	})
+
+	// Auto-commit worker kill
+	gitAutoCommit(missionDir, CommitCategoryWorker, fmt.Sprintf("kill %s", shortID(workerID)))
+
 	fmt.Printf("Killed worker %s (PID %d)\n", workerID, worker.PID)
 
 	// Also update associated task if exists

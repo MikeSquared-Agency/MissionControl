@@ -138,6 +138,9 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		"pid":       claudeCmd.Process.Pid,
 	})
 
+	// Auto-commit
+	gitAutoCommit(missionDir, CommitCategoryWorker, fmt.Sprintf("spawn %s (%s)", shortID(workerID), persona))
+
 	// Output worker info
 	output, _ := json.MarshalIndent(worker, "", "  ")
 	fmt.Println(string(output))

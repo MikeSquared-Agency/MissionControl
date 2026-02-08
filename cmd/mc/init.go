@@ -193,6 +193,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	writeAuditLog(missionDir, AuditProjectInitialized, "cli", map[string]interface{}{
+		"path":     workDir,
+		"openclaw": initOpenClaw,
+	})
+
 	fmt.Printf("Initialized .mission/ directory at %s\n", workDir)
 	fmt.Println("")
 	fmt.Println("Created:")
@@ -275,9 +280,10 @@ type GatesState struct {
 }
 
 type Config struct {
-	Version  string      `json:"version"`
-	Audience string      `json:"audience"` // personal, external
-	Zones    []string    `json:"zones"`
-	OpenClaw bool        `json:"openclaw"`
-	Matrix   interface{} `json:"matrix,omitempty"`
+	Version    string            `json:"version"`
+	Audience   string            `json:"audience"` // personal, external
+	Zones      []string          `json:"zones"`
+	OpenClaw   bool              `json:"openclaw"`
+	Matrix     interface{}       `json:"matrix,omitempty"`
+	AutoCommit *AutoCommitConfig `json:"auto_commit,omitempty"`
 }
