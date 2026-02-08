@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/mike/mission-control/hashid"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +61,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	}
 
 	// Generate worker ID
-	workerID := uuid.New().String()[:8]
+	workerID := hashid.Generate("worker", taskID, persona, zone)
 
 	// Create worker prompt from template
 	promptPath := filepath.Join(missionDir, "prompts", persona+".md")

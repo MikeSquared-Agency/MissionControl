@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mike/mission-control/hashid"
 )
 
 // Store manages v4 workflow state
@@ -202,8 +203,15 @@ func (s *Store) CreateTask(name string, stage Stage, zone, persona string, deps 
 	defer s.mu.Unlock()
 
 	now := time.Now().Unix()
+	taskID := hashid.Generate("task", name, string(stage), zone, persona)
+
+	// Return existing task if duplicate
+	if existing, ok := s.tasks[taskID]; ok {
+		return existing
+	}
+
 	task := &Task{
-		ID:           uuid.New().String(),
+		ID:           taskID,
 		Name:         name,
 		Stage:        stage,
 		Zone:         zone,

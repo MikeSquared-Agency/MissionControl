@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/mike/mission-control/hashid"
 	"github.com/spf13/cobra"
 )
 
@@ -81,8 +81,17 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
+	taskID := hashid.Generate("task", name, stage, zone, persona)
+
+	// Check for duplicate IDs
+	for _, existing := range state.Tasks {
+		if existing.ID == taskID {
+			return fmt.Errorf("task with this ID already exists: %s (name=%q)", taskID, existing.Name)
+		}
+	}
+
 	task := Task{
-		ID:        uuid.New().String()[:8],
+		ID:        taskID,
 		Name:      name,
 		Stage:     stage,
 		Zone:      zone,
