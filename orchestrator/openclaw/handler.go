@@ -7,9 +7,15 @@ import (
 	"time"
 )
 
+// Broadcaster can push events to the WebSocket hub.
+type Broadcaster interface {
+	BroadcastRaw(topic, eventType string, data interface{})
+}
+
 // Handler exposes REST endpoints for the OpenClaw bridge.
 type Handler struct {
 	bridge *Bridge
+	hub    Broadcaster
 
 	// Pending chat responses keyed by runId
 	chatWaiters   map[string]chan string
@@ -17,9 +23,11 @@ type Handler struct {
 }
 
 // NewHandler creates a new HTTP handler wrapping the bridge.
-func NewHandler(bridge *Bridge) *Handler {
+// If hub is non-nil, chat events are broadcast to WebSocket clients.
+func NewHandler(bridge *Bridge, hub Broadcaster) *Handler {
 	h := &Handler{
 		bridge:      bridge,
+		hub:         hub,
 		chatWaiters: make(map[string]chan string),
 	}
 
@@ -54,15 +62,29 @@ func NewHandler(bridge *Bridge) *Handler {
 					}
 				}
 
-				if text != "" && msg.RunID != "" {
-					h.chatWaitersMu.Lock()
-					if ch, ok := h.chatWaiters[msg.RunID]; ok {
-						select {
-						case ch <- text:
-						default:
-						}
+				if text != "" {
+					// Broadcast to WebSocket hub for real-time UI
+					if h.hub != nil {
+						h.hub.BroadcastRaw("chat", "chat_message", map[string]interface{}{
+							"id":        msg.RunID,
+							"role":      "assistant",
+							"content":   text,
+							"timestamp": time.Now().UTC().Format(time.RFC3339),
+							"event":     event,
+						})
 					}
-					h.chatWaitersMu.Unlock()
+
+					// Resolve pending HTTP waiter
+					if msg.RunID != "" {
+						h.chatWaitersMu.Lock()
+						if ch, ok := h.chatWaiters[msg.RunID]; ok {
+							select {
+							case ch <- text:
+							default:
+							}
+						}
+						h.chatWaitersMu.Unlock()
+					}
 				}
 			}
 		}
@@ -131,6 +153,16 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	if req.Message == "" {
 		http.Error(w, "message is required", http.StatusBadRequest)
 		return
+	}
+
+	// Broadcast user message to hub
+	if h.hub != nil {
+		h.hub.BroadcastRaw("chat", "chat_message", map[string]interface{}{
+			"id":        randomID(),
+			"role":      "user",
+			"content":   req.Message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
 	}
 
 	sessionKey := req.SessionKey
