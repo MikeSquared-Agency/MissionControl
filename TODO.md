@@ -1,46 +1,30 @@
-# TODO — Remaining v6 Items
+# TODO — MissionControl
 
-Items not yet completed from the v6 integration. See CHANGELOG.md for what shipped.
+*From retro 2026-02-09. Prioritised by impact.*
 
-## OpenClaw Integration (B4 — partial)
+## Process Enforcement
 
-The OpenClaw bridge code exists but the orchestrator binary hasn't been rebuilt with it. These items need the orchestrator service restarted with the bridge wired up:
+- [ ] **Reject tasks for future stages** — `mc task create` should error if task.stage > current stage
+- [ ] **Gate criteria per stage** — define what must be true before advancing (all tasks done, findings reviewed, etc.)
+- [ ] **`mc stage` validates gate** — wire `mc-core check-gate` into stage advancement, block if criteria unmet
+- [ ] **Auto-mark tasks done on findings** — watcher detects `findings_ready`, matches task by ID, sets status=done
+- [ ] **Auto-advance stage on gate met** — when all gate criteria satisfied, prompt for advancement (don't auto-advance — gate is a conversation)
 
-- [ ] **B4.1–B4.3** REST endpoints + WS bridge — code merged, needs orchestrator rebuild
-- [ ] **B4.4** Message relay — code merged, needs orchestrator rebuild
-- [ ] **B4.7** `--openclaw-gateway` flag for `mc serve`
-- [ ] **B5.4** Tests for OpenClaw endpoint handlers
+## Worker Lifecycle
 
-## OpenClaw Skill & Config (D)
+- [ ] **Label-based worker registration** — register by label before spawn, match lifecycle events by label instead of sessionKey (which is unknown until spawn returns)
+- [ ] **Worker self-reporting** — workers write a structured status block in findings that the watcher can parse
+- [ ] **Token/cost tracking** — wire OpenClaw session stats into tracker, surface on dashboard
+- [ ] **Worker chain** — auto-include predecessor task findings in briefings based on task dependencies
 
-- [x] **D1** MissionControl skill file (`~/.openclaw/workspace/skills/missioncontrol/SKILL.md`)
-- [x] **D2.1** OpenClaw agent config (model, sub-agents, compaction)
-- [x] **D2.2** Pre-compaction memory flush referencing stages
-- [x] **D2.3** Channel connectivity (WhatsApp, WebChat, Cloudflare Tunnel)
-- [x] **D2.4** Project symlinks
-- [ ] **D3** Agent Teams — test spawning with MC worker personas
+## Developer Experience
 
-## Integration Testing (F)
+- [ ] **Objective.md required** — `mc task create` should warn/error if `.mission/state/objective.md` is empty
+- [ ] **`mc status` after transitions** — CLI should print status summary after `mc stage` and `mc task update`
+- [ ] **Structured findings format** — define minimal schema: status, summary, decisions, blockers, files_changed
+- [ ] **Lean briefings** — reference predecessor findings by path instead of duplicating context
+- [ ] **Checkpoint on compaction** — automatic or prompted checkpoint before context window fills
 
-- [x] **F1** End-to-end: Kai ran full 10-stage pipeline (2026-02-07)
-- [x] **F2** Multi-channel gate approval (integration test)
-- [x] **F3** State persistence (integration test)
-- [x] **F5** v5→v6 migration (integration test)
-- [x] **F6** Full 10-stage walkthrough (integration test)
-- [ ] **F7** Checkpoint round-trip: create → restart → verify briefing → verify state
-- [ ] **F8** Auto-checkpoint: approve gate → verify checkpoint created + git committed
-- [x] **F9** All tests green
+## Process
 
-## Checkpoint Skill (G6)
-
-- [ ] **G6.1** Skill reads `current.json` on startup for briefing
-- [ ] **G6.2** Pre-compaction calls `mc checkpoint` before memory flush
-- [x] **G6.3** Skill documents checkpoint commands
-
-## v5.1 Leftovers
-
-These v5.1 items were superseded by the move to darlington.dev but some are still relevant:
-
-- [ ] Homebrew tap distribution
-- [ ] Dynamic project switching without orchestrator restart
-- [ ] Sort sidebar by `lastOpened` descending
+- [ ] **Retro after every project** — mandatory retrospective after each mission completes, write to `memory/YYYY-MM-DD-{project}-retro.md`, extract lessons into MEMORY.md and update TODO.md
