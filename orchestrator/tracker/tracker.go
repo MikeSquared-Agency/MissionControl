@@ -169,6 +169,48 @@ func (t *Tracker) UpdateTokens(workerID string, tokens int, cost float64) {
 	}
 }
 
+// Register adds a worker to the tracker programmatically (no PID/file needed).
+// Used for gateway-based workers that don't have a local PID.
+func (t *Tracker) Register(workerID, taskID, persona, zone, model string) *TrackedProcess {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	p := &TrackedProcess{
+		WorkerID:  workerID,
+		Persona:   persona,
+		TaskID:    taskID,
+		Zone:      zone,
+		Model:     model,
+		PID:       0, // no local PID for gateway workers
+		Status:    StatusRunning,
+		StartedAt: time.Now(),
+	}
+	t.processes[workerID] = p
+
+	if t.callback != nil {
+		cp := *p
+		t.callback("spawned", &cp)
+	}
+	return p
+}
+
+// Deregister marks a worker as complete (or error) and removes it from tracking.
+func (t *Tracker) Deregister(workerID string, status ProcessStatus) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	p, ok := t.processes[workerID]
+	if !ok {
+		return
+	}
+	p.Status = status
+	if t.callback != nil {
+		cp := *p
+		t.callback("status_changed", &cp)
+	}
+	delete(t.processes, workerID)
+}
+
 // --- internal helpers ---
 
 func (t *Tracker) setStatus(workerID string, status ProcessStatus) {
@@ -278,8 +320,8 @@ func (t *Tracker) poll() {
 			continue
 		}
 
-		// PID health check for running processes.
-		if existing.Status == StatusRunning && !isAlive(existing.PID) {
+		// PID health check for running processes (skip gateway workers with PID <= 0).
+		if existing.Status == StatusRunning && existing.PID > 0 && !isAlive(existing.PID) {
 			existing.Status = StatusError
 			if t.callback != nil {
 				cp := *existing

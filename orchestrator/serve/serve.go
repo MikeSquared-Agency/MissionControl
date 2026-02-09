@@ -45,6 +45,7 @@ var topicMap = map[string]string{
 	"checkpoint":            "checkpoint",
 	"audit":                 "audit",
 	"findings_ready":        "task",
+	"handoff_created":       "task",
 	"memory_updated":        "memory",
 }
 
@@ -155,9 +156,10 @@ func Run(cfg Config) error {
 			defer bridge.Close()
 			bridgeConnected = true
 
-			ocHandler := openclaw.NewHandler(bridge, hub)
+			ocHandler := openclaw.NewHandler(bridge, hub, trk)
 			ocHandler.RegisterRoutes(mux)
 			ocHandler.RegisterChatAlias(mux)
+			ocHandler.RegisterMCRoutes(mux)
 		}
 	}
 	if !bridgeConnected {

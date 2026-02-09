@@ -14,6 +14,7 @@ func createTestDir(t *testing.T) string {
 	stateDir := filepath.Join(dir, "state")
 	os.MkdirAll(stateDir, 0755)
 	os.MkdirAll(filepath.Join(dir, "findings"), 0755)
+	os.MkdirAll(filepath.Join(dir, "handoffs"), 0755)
 
 	os.WriteFile(filepath.Join(stateDir, "stage.json"),
 		[]byte(`{"current":"implement","updated_at":"2026-01-01T00:00:00Z"}`), 0644)
@@ -185,17 +186,85 @@ func TestDetectsFindings(t *testing.T) {
 	// Create a finding
 	finding := map[string]string{"title": "Test finding"}
 	data, _ := json.Marshal(finding)
-	os.WriteFile(filepath.Join(dir, "findings", "test.md"), data, 0644)
+	os.WriteFile(filepath.Join(dir, "findings", "abc123.md"), data, 0644)
 
 	timeout := time.After(3 * time.Second)
 	for {
 		select {
 		case event := <-w.Events():
 			if event.Type == "findings_ready" {
+				// Verify task_id extraction
+				if m, ok := event.Data.(map[string]interface{}); ok {
+					if m["task_id"] != "abc123" {
+						t.Errorf("expected task_id abc123, got %v", m["task_id"])
+					}
+				}
 				return
 			}
 		case <-timeout:
-			t.Fatal("timeout waiting for findings.new event")
+			t.Fatal("timeout waiting for findings_ready event")
+		}
+	}
+}
+
+func TestDetectsHandoffs(t *testing.T) {
+	dir := createTestDir(t)
+	w := NewWatcher(dir)
+	if err := w.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer w.Stop()
+
+	time.Sleep(600 * time.Millisecond)
+
+	// Create a handoff briefing
+	os.WriteFile(filepath.Join(dir, "handoffs", "abc123-briefing.json"), []byte(`{"task_id":"abc123"}`), 0644)
+
+	timeout := time.After(3 * time.Second)
+	for {
+		select {
+		case event := <-w.Events():
+			if event.Type == "handoff_created" {
+				if m, ok := event.Data.(map[string]interface{}); ok {
+					if m["task_id"] != "abc123" {
+						t.Errorf("expected task_id abc123, got %v", m["task_id"])
+					}
+				}
+				return
+			}
+		case <-timeout:
+			t.Fatal("timeout waiting for handoff_created event")
+		}
+	}
+}
+
+func TestIgnoresExistingFindings(t *testing.T) {
+	dir := createTestDir(t)
+
+	// Pre-create a finding before watcher starts
+	os.WriteFile(filepath.Join(dir, "findings", "existing.md"), []byte("old"), 0644)
+
+	w := NewWatcher(dir)
+	if err := w.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer w.Stop()
+
+	time.Sleep(1200 * time.Millisecond)
+
+	// Drain events — should have no findings_ready for "existing"
+	for {
+		select {
+		case event := <-w.Events():
+			if event.Type == "findings_ready" {
+				if m, ok := event.Data.(map[string]interface{}); ok {
+					if m["task_id"] == "existing" {
+						t.Fatal("should not emit findings_ready for pre-existing file")
+					}
+				}
+			}
+		default:
+			return // no more events, pass
 		}
 	}
 }
