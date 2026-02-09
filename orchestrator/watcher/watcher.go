@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -73,21 +74,25 @@ type Watcher struct {
 	mu         sync.RWMutex
 
 	// Last known state for diffing
-	lastStage   StageState
-	lastTasks   map[string]Task
-	lastWorkers map[string]Worker
-	lastGates   map[string]Gate
+	lastStage     StageState
+	lastTasks     map[string]Task
+	lastWorkers   map[string]Worker
+	lastGates     map[string]Gate
+	knownFindings map[string]bool
+	knownHandoffs map[string]bool
 }
 
 // NewWatcher creates a new state watcher
 func NewWatcher(missionDir string) *Watcher {
 	return &Watcher{
-		missionDir:  missionDir,
-		events:      make(chan Event, 100),
-		stopCh:      make(chan struct{}),
-		lastTasks:   make(map[string]Task),
-		lastWorkers: make(map[string]Worker),
-		lastGates:   make(map[string]Gate),
+		missionDir:    missionDir,
+		events:        make(chan Event, 100),
+		stopCh:        make(chan struct{}),
+		lastTasks:     make(map[string]Task),
+		lastWorkers:   make(map[string]Worker),
+		lastGates:     make(map[string]Gate),
+		knownFindings: make(map[string]bool),
+		knownHandoffs: make(map[string]bool),
 	}
 }
 
@@ -168,6 +173,24 @@ func (w *Watcher) loadInitialState() {
 	if data, err := os.ReadFile(filepath.Join(stateDir, "gates.json")); err == nil {
 		_ = json.Unmarshal(data, &gatesState)
 		w.lastGates = gatesState.Gates
+	}
+
+	// Snapshot existing findings
+	if entries, err := os.ReadDir(filepath.Join(w.missionDir, "findings")); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				w.knownFindings[e.Name()] = true
+			}
+		}
+	}
+
+	// Snapshot existing handoffs
+	if entries, err := os.ReadDir(filepath.Join(w.missionDir, "handoffs")); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				w.knownHandoffs[e.Name()] = true
+			}
+		}
 	}
 }
 
@@ -275,8 +298,9 @@ func (w *Watcher) checkForChanges() {
 		w.mu.Unlock()
 	}
 
-	// Check for new findings
+	// Check for new findings and handoffs
 	w.checkFindings()
+	w.checkHandoffs()
 }
 
 // checkFindings checks for new finding files
@@ -288,27 +312,64 @@ func (w *Watcher) checkFindings() {
 		return
 	}
 
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-
-		info, err := entry.Info()
-		if err != nil {
+		name := entry.Name()
+		if w.knownFindings[name] {
 			continue
 		}
-
-		// If file was modified in the last second, emit event
-		if time.Since(info.ModTime()) < 1*time.Second {
-			taskID := entry.Name()
-			if len(taskID) > 5 {
-				taskID = taskID[:len(taskID)-5] // Remove .json
-			}
-			w.emitEvent("findings_ready", map[string]interface{}{
-				"task_id": taskID,
-			})
-		}
+		w.knownFindings[name] = true
+		taskID := stripExt(name)
+		w.emitEvent("findings_ready", map[string]interface{}{
+			"task_id": taskID,
+			"path":    filepath.Join(findingsDir, name),
+		})
 	}
+}
+
+// checkHandoffs checks for new handoff briefing files
+func (w *Watcher) checkHandoffs() {
+	handoffsDir := filepath.Join(w.missionDir, "handoffs")
+
+	entries, err := os.ReadDir(handoffsDir)
+	if err != nil {
+		return
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if w.knownHandoffs[name] {
+			continue
+		}
+		w.knownHandoffs[name] = true
+		taskID := stripExt(name)
+		// Strip "-briefing" suffix if present (e.g. "abc123-briefing" → "abc123")
+		taskID = strings.TrimSuffix(taskID, "-briefing")
+		w.emitEvent("handoff_created", map[string]interface{}{
+			"task_id": taskID,
+			"path":    filepath.Join(handoffsDir, name),
+		})
+	}
+}
+
+// stripExt removes the file extension from a filename.
+func stripExt(name string) string {
+	ext := filepath.Ext(name)
+	if ext != "" {
+		return name[:len(name)-len(ext)]
+	}
+	return name
 }
 
 // emitEvent sends an event to the events channel

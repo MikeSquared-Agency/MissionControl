@@ -125,6 +125,64 @@ Append-only `audit/interactions.jsonl` logs all state mutations with actor, acti
 ### Git Auto-Commit
 All mutations auto-commit with `[mc:{category}]` prefixed messages. Configurable per-category.
 
+## Worker Tracking
+
+The orchestrator tracks worker lifecycle through gateway events and a pre-registration pattern.
+
+### Pre-Registration Pattern
+
+Gateway lifecycle events don't carry task metadata (labels, personas, zones). To solve this, Kai **pre-registers** worker metadata via `POST /api/mc/worker/register` before spawning a sub-agent. The handler stores this in a `workerRegistry` map keyed by `sessionKey`.
+
+### Bridge Lifecycle Event Flow
+
+```
+Kai → POST /api/mc/worker/register {session_key, label, task_id, persona, zone, model}
+Kai → POST /api/openclaw/chat {spawn worker message}
+Gateway → agent event (stream: "lifecycle", phase: "start")
+  → Handler looks up workerRegistry[sessionKey]
+  → Maps runId → sessionKey
+  → Calls tracker.Register(label, taskID, persona, zone, model)
+  → Broadcasts hub topic "workers", type "worker_started"
+  ... worker runs ...
+Gateway → agent event (stream: "lifecycle", phase: "end")
+  → Handler looks up runToSession[runId] → sessionKey
+  → Calls tracker.Deregister(label, "complete")
+  → Broadcasts hub topic "workers", type "worker_stopped"
+  → Cleans up registry and runToSession maps
+```
+
+### Event Buffering (Race Condition Handling)
+
+Fast workers can emit lifecycle events before the registration HTTP request arrives. The handler buffers both start and end events:
+
+- **`pendingStarts`** — Buffers `lifecycle/start` events for unregistered sessions. When `POST /register` arrives, any buffered start is replayed immediately.
+- **`pendingEnds`** — Buffers `lifecycle/end` events when `runToSession` has no entry (start hasn't been processed yet). After a buffered start is processed, any matching buffered end is replayed immediately.
+- **Expiry** — A cleanup goroutine sweeps both buffers every 30s, removing entries older than 60s.
+- **Dedup** — A bounded set of 1000 `(runId, phase)` pairs prevents duplicate event processing.
+
+### Tracker Register/Deregister
+
+The `tracker.Tracker` supports two discovery modes:
+
+1. **File-based polling** — Reads `workers.json` every 2s, detects new/changed/dead workers by PID.
+2. **Programmatic registration** — `Register(workerID, taskID, persona, zone, model)` and `Deregister(workerID, status)` for gateway-based workers (PID=0). PID health checks are skipped for these.
+
+Both modes fire the same `EventCallback` (`"spawned"`, `"status_changed"`, `"heartbeat"`).
+
+### Hub Broadcast Topics
+
+| Topic | Event Type | When |
+|-------|-----------|------|
+| `workers` | `worker_started` | lifecycle/start processed |
+| `workers` | `worker_stopped` | lifecycle/end processed |
+
+### REST Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/mc/worker/register` | POST | Pre-register worker metadata before spawn |
+| `/api/mc/workers` | GET | List active workers from tracker |
+
 ## Stack
 
 | Component | Language | Purpose |
