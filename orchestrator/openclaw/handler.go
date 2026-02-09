@@ -55,6 +55,9 @@ type Handler struct {
 	// Dedup set for processed (runId, phase) pairs
 	processedEvents   map[string]bool
 	processedEventsMu sync.Mutex
+
+	// Shutdown channel for background goroutines
+	stopCh chan struct{}
 }
 
 // NewHandler creates a new HTTP handler wrapping the bridge.
@@ -70,6 +73,7 @@ func NewHandler(bridge *Bridge, hub Broadcaster, trk ...*tracker.Tracker) *Handl
 		pendingStarts:   make(map[string]*agentEventPayload),
 		pendingEnds:     make(map[string]*agentEventPayload),
 		processedEvents: make(map[string]bool),
+		stopCh:          make(chan struct{}),
 	}
 	if len(trk) > 0 && trk[0] != nil {
 		h.tracker = trk[0]
@@ -254,10 +258,13 @@ func (h *Handler) handleWorkerStart(ev *agentEventPayload) {
 }
 
 func (h *Handler) handleWorkerEnd(ev *agentEventPayload) {
+	// Consistent lock ordering: workerRegistryMu before runToSessionMu
+	h.workerRegistryMu.Lock()
 	h.runToSessionMu.Lock()
 	sessionKey, ok := h.runToSession[ev.RunID]
 	if !ok {
 		h.runToSessionMu.Unlock()
+		h.workerRegistryMu.Unlock()
 		// Buffer for later — start hasn't been processed yet (fast worker)
 		h.pendingEndsMu.Lock()
 		h.pendingEnds[ev.SessionKey] = ev
@@ -268,7 +275,6 @@ func (h *Handler) handleWorkerEnd(ev *agentEventPayload) {
 	delete(h.runToSession, ev.RunID)
 	h.runToSessionMu.Unlock()
 
-	h.workerRegistryMu.Lock()
 	meta, hasMeta := h.workerRegistry[sessionKey]
 	if hasMeta {
 		delete(h.workerRegistry, sessionKey)
@@ -297,11 +303,21 @@ func (h *Handler) handleWorkerEnd(ev *agentEventPayload) {
 	log.Printf("[openclaw] worker stopped: %s (task=%s)", meta.Label, meta.TaskID)
 }
 
+// Close stops background goroutines.
+func (h *Handler) Close() {
+	close(h.stopCh)
+}
+
 // cleanupPendingStarts removes stale buffered lifecycle events.
 func (h *Handler) cleanupPendingStarts() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
+	for {
+		select {
+		case <-h.stopCh:
+			return
+		case <-ticker.C:
+		}
 		now := time.Now()
 		h.pendingStartsMu.Lock()
 		for key, ev := range h.pendingStarts {

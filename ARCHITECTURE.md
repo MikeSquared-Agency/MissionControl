@@ -135,7 +135,7 @@ Gateway lifecycle events don't carry task metadata (labels, personas, zones). To
 
 ### Bridge Lifecycle Event Flow
 
-```
+```text
 Kai → POST /api/mc/worker/register {session_key, label, task_id, persona, zone, model}
 Kai → POST /api/openclaw/chat {spawn worker message}
 Gateway → agent event (stream: "lifecycle", phase: "start")
