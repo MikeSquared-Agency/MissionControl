@@ -3,16 +3,99 @@ package openclaw
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
+	"time"
 )
+
+// Broadcaster can push events to the WebSocket hub.
+type Broadcaster interface {
+	BroadcastRaw(topic, eventType string, data interface{})
+}
 
 // Handler exposes REST endpoints for the OpenClaw bridge.
 type Handler struct {
 	bridge *Bridge
+	hub    Broadcaster
+
+	// Pending chat responses keyed by runId
+	chatWaiters   map[string]chan string
+	chatWaitersMu sync.Mutex
 }
 
 // NewHandler creates a new HTTP handler wrapping the bridge.
-func NewHandler(bridge *Bridge) *Handler {
-	return &Handler{bridge: bridge}
+// If hub is non-nil, chat events are broadcast to WebSocket clients.
+func NewHandler(bridge *Bridge, hub Broadcaster) *Handler {
+	h := &Handler{
+		bridge:      bridge,
+		hub:         hub,
+		chatWaiters: make(map[string]chan string),
+	}
+
+	// Listen for events from the bridge to capture chat responses
+	prevHandler := bridge.EventHandler
+	bridge.EventHandler = func(event string, payload json.RawMessage) {
+		// Check for agent response events
+		if event == "agent.reply" || event == "chat.message" || event == "agent.turn.complete" {
+			var msg struct {
+				RunID      string `json:"runId"`
+				SessionKey string `json:"sessionKey"`
+				Text       string `json:"text"`
+				Content    string `json:"content"`
+				Message    struct {
+					Content []struct {
+						Type string `json:"type"`
+						Text string `json:"text"`
+					} `json:"content"`
+				} `json:"message"`
+			}
+			if json.Unmarshal(payload, &msg) == nil {
+				text := msg.Text
+				if text == "" {
+					text = msg.Content
+				}
+				if text == "" && len(msg.Message.Content) > 0 {
+					for _, c := range msg.Message.Content {
+						if c.Type == "text" && c.Text != "" {
+							text = c.Text
+							break
+						}
+					}
+				}
+
+				if text != "" {
+					// Broadcast to WebSocket hub for real-time UI
+					if h.hub != nil {
+						h.hub.BroadcastRaw("chat", "chat_message", map[string]interface{}{
+							"id":        msg.RunID,
+							"role":      "assistant",
+							"content":   text,
+							"timestamp": time.Now().UTC().Format(time.RFC3339),
+							"event":     event,
+						})
+					}
+
+					// Resolve pending HTTP waiter
+					if msg.RunID != "" {
+						h.chatWaitersMu.Lock()
+						if ch, ok := h.chatWaiters[msg.RunID]; ok {
+							select {
+							case ch <- text:
+							default:
+							}
+						}
+						h.chatWaitersMu.Unlock()
+					}
+				}
+			}
+		}
+
+		// Pass through to previous handler
+		if prevHandler != nil {
+			prevHandler(event, payload)
+		}
+	}
+
+	return h
 }
 
 // RegisterRoutes registers /api/openclaw/* routes on the given mux.
@@ -20,6 +103,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/openclaw/status", h.handleStatus)
 	mux.HandleFunc("/api/openclaw/send", h.handleSend)
 	mux.HandleFunc("/api/openclaw/chat", h.handleChat)
+}
+
+// RegisterChatAlias registers /api/chat as an alias for /api/openclaw/chat.
+func (h *Handler) RegisterChatAlias(mux *http.ServeMux) {
+	mux.HandleFunc("/api/chat", h.handleChat)
 }
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -51,11 +139,6 @@ type ChatResponse struct {
 	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
-// RegisterChatAlias registers /api/chat as an alias for /api/openclaw/chat.
-func (h *Handler) RegisterChatAlias(mux *http.ServeMux) {
-	mux.HandleFunc("/api/chat", h.handleChat)
-}
-
 func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -72,7 +155,16 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build chat.send params
+	// Broadcast user message to hub
+	if h.hub != nil {
+		h.hub.BroadcastRaw("chat", "chat_message", map[string]interface{}{
+			"id":        randomID(),
+			"role":      "user",
+			"content":   req.Message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+
 	sessionKey := req.SessionKey
 	if sessionKey == "" {
 		sessionKey = "webchat"
@@ -92,7 +184,6 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the gateway returned an error
 	if resp.OK != nil && !*resp.OK {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
@@ -100,23 +191,43 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract reply text from payload if possible
-	var payload struct {
-		Reply string `json:"reply"`
-		Text  string `json:"text"`
+	// Extract runId from the response
+	var started struct {
+		RunID  string `json:"runId"`
+		Status string `json:"status"`
 	}
-	reply := ""
 	if resp.Payload != nil {
-		if err := json.Unmarshal(resp.Payload, &payload); err == nil {
-			reply = payload.Reply
-			if reply == "" {
-				reply = payload.Text
-			}
+		json.Unmarshal(resp.Payload, &started)
+	}
+
+	// If we got a runId, wait for the async response (up to 60s)
+	if started.RunID != "" {
+		replyCh := make(chan string, 1)
+		h.chatWaitersMu.Lock()
+		h.chatWaiters[started.RunID] = replyCh
+		h.chatWaitersMu.Unlock()
+
+		defer func() {
+			h.chatWaitersMu.Lock()
+			delete(h.chatWaiters, started.RunID)
+			h.chatWaitersMu.Unlock()
+		}()
+
+		select {
+		case reply := <-replyCh:
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(ChatResponse{OK: true, Reply: reply})
+			return
+		case <-time.After(60 * time.Second):
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(ChatResponse{OK: true, Reply: "(still thinking...)", Payload: resp.Payload})
+			return
 		}
 	}
 
+	// Fallback: return whatever we got
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ChatResponse{OK: true, Reply: reply, Payload: resp.Payload})
+	json.NewEncoder(w).Encode(ChatResponse{OK: true, Payload: resp.Payload})
 }
 
 func (h *Handler) handleSend(w http.ResponseWriter, r *http.Request) {

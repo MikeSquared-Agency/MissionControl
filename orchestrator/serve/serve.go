@@ -155,7 +155,7 @@ func Run(cfg Config) error {
 			defer bridge.Close()
 			bridgeConnected = true
 
-			ocHandler := openclaw.NewHandler(bridge)
+			ocHandler := openclaw.NewHandler(bridge, hub)
 			ocHandler.RegisterRoutes(mux)
 			ocHandler.RegisterChatAlias(mux)
 		}
