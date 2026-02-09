@@ -223,22 +223,38 @@ func buildState(missionDir string, trk *tracker.Tracker, acc *tokens.Accumulator
 		}
 	}
 
-	// Gates
+	// Gates — file is {"gates": {...}}, unwrap to just the inner map
 	if data, err := os.ReadFile(filepath.Join(missionPath, "gates.json")); err == nil {
-		var gates interface{}
-		if json.Unmarshal(data, &gates) == nil {
-			state["gates"] = gates
+		var wrapper map[string]interface{}
+		if json.Unmarshal(data, &wrapper) == nil {
+			if inner, ok := wrapper["gates"]; ok {
+				state["gates"] = inner
+			} else {
+				state["gates"] = wrapper
+			}
 		}
 	}
 
-	// Tasks (JSONL)
-	if tasks, err := readJSONL(filepath.Join(missionPath, "tasks.jsonl")); err == nil {
+	// Tasks — try JSONL first, then JSON
+	// File may be {"tasks": [...]} (wrapped) or bare JSONL
+	if tasks, err := readJSONL(filepath.Join(missionPath, "tasks.jsonl")); err == nil && len(tasks) > 0 {
 		state["tasks"] = tasks
 	}
-	// Fallback to tasks.json
 	if _, ok := state["tasks"]; !ok {
-		if tasks, err := readJSONL(filepath.Join(missionPath, "tasks.json")); err == nil {
-			state["tasks"] = tasks
+		if data, err := os.ReadFile(filepath.Join(missionPath, "tasks.json")); err == nil {
+			var wrapper map[string]interface{}
+			if json.Unmarshal(data, &wrapper) == nil {
+				if inner, ok := wrapper["tasks"]; ok {
+					state["tasks"] = inner
+				}
+			}
+			// If not wrapped, try as array
+			if _, ok := state["tasks"]; !ok {
+				var arr []interface{}
+				if json.Unmarshal(data, &arr) == nil {
+					state["tasks"] = arr
+				}
+			}
 		}
 	}
 
