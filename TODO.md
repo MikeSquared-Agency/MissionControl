@@ -25,6 +25,14 @@
 - [ ] **Lean briefings** — reference predecessor findings by path instead of duplicating context
 - [ ] **Checkpoint on compaction** — automatic or prompted checkpoint before context window fills
 
+## Dashboard Integration
+
+- [ ] **Verify dashboard shows live data after .mission reset** — buildState/watcher may cache stale tasks after reinit
+- [ ] **Register workers with tracking API** — every `sessions_spawn` should call `POST /api/mc/worker/register` so workers appear on mission screen
+
 ## Process
 
+- [ ] **Hard stop at every gate** — no batching stage transitions, one approval per stage
+- [ ] **Never skip stages** — every stage exists for a reason, even if the output seems obvious
+- [ ] **Planning produces a plan, not code** — planning stage output is task breakdown + approach, not implementation
 - [ ] **Retro after every project** — mandatory retrospective after each mission completes, write to `memory/YYYY-MM-DD-{project}-retro.md`, extract lessons into MEMORY.md and update TODO.md
