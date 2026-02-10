@@ -95,10 +95,13 @@ func runStage(cmd *cobra.Command, args []string) error {
 	}
 
 	var force bool
+	var programmatic bool
 	var stderr io.Writer = os.Stderr
 	if cmd != nil {
 		force, _ = cmd.Flags().GetBool("force")
 		stderr = cmd.ErrOrStderr()
+	} else {
+		programmatic = true
 	}
 
 	if args[0] == "next" {
@@ -108,32 +111,14 @@ func runStage(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to read stage: %w", err)
 		}
 
-		// Gate check before advancing — first try gates.json, then fall back to mc-core
-		if !force {
-			gatesFile, gatesErr := loadGates(missionDir)
-			if gatesErr == nil && allCriteriaMet(&gatesFile, state.Current) {
-				// All criteria satisfied in gates.json — allow advance
-				fmt.Fprintf(stderr, "✓ All gate criteria met for %s (gates.json)\n", state.Current)
-			} else {
-				// Fall back to mc-core check
-				gateResult, err := checkGateViaCore(missionDir, state.Current)
-				if err != nil {
-					fmt.Fprintf(stderr, "⚠ Gate check unavailable: %v\n", err)
-				} else if !gateResult.CanApprove {
-					fmt.Fprintf(stderr, "✗ Gate blocked for %s:\n", state.Current)
-					for _, c := range gateResult.Criteria {
-						icon := "✓"
-						if !c.Satisfied {
-							icon = "✗"
-						}
-						fmt.Fprintf(stderr, "  %s %s\n", icon, c.Description)
-					}
-					fmt.Fprintf(stderr, "\nUse --force to bypass.\n")
-					return fmt.Errorf("gate criteria not met for stage %q", state.Current)
-				}
-			}
-		} else {
-			fmt.Fprintf(stderr, "⚠ --force: bypassing gate check for %s\n", state.Current)
+		// Stage enforcement checks (zero-task, velocity, mandatory tasks)
+		if err := advanceStageChecked(missionDir, state.Current, force || programmatic); err != nil {
+			return err
+		}
+
+		// Gate check
+		if err := enforceGate(missionDir, state.Current, force, stderr); err != nil {
+			return err
 		}
 
 		nextStage, err := getNextStage(state.Current)
@@ -176,31 +161,15 @@ func runStage(cmd *cobra.Command, args []string) error {
 	if err := readJSON(stagePath, &currentState); err == nil {
 		currentIdx := stageIndex(currentState.Current)
 		targetIdx := stageIndex(targetStage)
-		if currentIdx >= 0 && targetIdx > currentIdx && !force {
-			// Forward advancement — gate check required; try gates.json first
-			gatesFile, gatesErr := loadGates(missionDir)
-			if gatesErr == nil && allCriteriaMet(&gatesFile, currentState.Current) {
-				fmt.Fprintf(stderr, "✓ All gate criteria met for %s (gates.json)\n", currentState.Current)
-			} else {
-				gateResult, gateErr := checkGateViaCore(missionDir, currentState.Current)
-				if gateErr != nil {
-					fmt.Fprintf(stderr, "⚠ Gate check unavailable: %v\n", gateErr)
-				} else if !gateResult.CanApprove {
-					fmt.Fprintf(stderr, "✗ Gate blocked for %s:\n", currentState.Current)
-					for _, c := range gateResult.Criteria {
-						icon := "✓"
-						if !c.Satisfied {
-							icon = "✗"
-						}
-						fmt.Fprintf(stderr, "  %s %s\n", icon, c.Description)
-					}
-					fmt.Fprintf(stderr, "\nUse --force to bypass.\n")
-					return fmt.Errorf("gate criteria not met for stage %q", currentState.Current)
-				}
+		if currentIdx >= 0 && targetIdx > currentIdx {
+			// Stage enforcement checks (zero-task, velocity, mandatory tasks)
+			if err := advanceStageChecked(missionDir, currentState.Current, force || programmatic); err != nil {
+				return err
 			}
-		}
-		if currentIdx >= 0 && targetIdx > currentIdx && force {
-			fmt.Fprintf(stderr, "⚠ --force: bypassing gate check for %s\n", currentState.Current)
+			// Gate check
+			if err := enforceGate(missionDir, currentState.Current, force, stderr); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -226,6 +195,100 @@ func runStage(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Stage set to: %s\n", targetStage)
 	printStatusSummary(missionDir, cmd)
+	return nil
+}
+
+// enforceGate checks gate criteria before allowing stage advancement.
+// It tries gates.json first, falls back to mc-core, and handles --force bypass.
+func enforceGate(missionDir, stage string, force bool, stderr io.Writer) error {
+	if force {
+		fmt.Fprintf(stderr, "⚠ --force: bypassing gate check for %s\n", stage)
+		return nil
+	}
+
+	gatesFile, gatesErr := loadGates(missionDir)
+	if gatesErr == nil && allCriteriaMet(&gatesFile, stage) {
+		fmt.Fprintf(stderr, "✓ All gate criteria met for %s (gates.json)\n", stage)
+		return nil
+	}
+
+	// Fall back to mc-core check
+	gateResult, err := checkGateViaCore(missionDir, stage)
+	if err != nil {
+		fmt.Fprintf(stderr, "⚠ Gate check unavailable: %v\n", err)
+		return nil
+	}
+
+	if !gateResult.CanApprove {
+		fmt.Fprintf(stderr, "✗ Gate blocked for %s:\n", stage)
+		for _, c := range gateResult.Criteria {
+			icon := "✓"
+			if !c.Satisfied {
+				icon = "✗"
+			}
+			fmt.Fprintf(stderr, "  %s %s\n", icon, c.Description)
+		}
+		fmt.Fprintf(stderr, "\nUse --force to bypass.\n")
+		return fmt.Errorf("gate criteria not met for stage %q", stage)
+	}
+
+	return nil
+}
+
+// advanceStageChecked validates pre-conditions before allowing stage advancement.
+func advanceStageChecked(missionDir string, currentStage string, force bool) error {
+	if force {
+		return nil
+	}
+
+	// Exempt stages don't require tasks
+	exemptStages := map[string]bool{
+		"goal": true, "requirements": true, "planning": true, "design": true,
+	}
+
+	// Load tasks for the current stage
+	tasks, _ := loadTasks(missionDir)
+	var stageTasks []Task
+	var completedTasks int
+	for _, t := range tasks {
+		if t.Stage == currentStage {
+			stageTasks = append(stageTasks, t)
+			if t.Status == "done" {
+				completedTasks++
+			}
+		}
+	}
+
+	// Velocity check: stage lasted <10s with no completed tasks
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	var state StageState
+	if err := readJSON(stagePath, &state); err == nil {
+		if updatedAt, err := time.Parse(time.RFC3339, state.UpdatedAt); err == nil {
+			if time.Since(updatedAt) < 10*time.Second && completedTasks == 0 {
+				return fmt.Errorf("stage %s lasted <10s with no completed tasks — are you rubber-stamping?", currentStage)
+			}
+		}
+	}
+
+	// Zero-task block (non-exempt stages)
+	if !exemptStages[currentStage] && len(stageTasks) == 0 {
+		return fmt.Errorf("stage %s has no tasks — create at least one or use --force", currentStage)
+	}
+
+	// Mandatory reviewer for verify stage
+	if currentStage == "verify" {
+		hasReviewer := false
+		for _, t := range stageTasks {
+			if t.Persona == "reviewer" && t.Status == "done" {
+				hasReviewer = true
+				break
+			}
+		}
+		if !hasReviewer {
+			return fmt.Errorf("verify stage requires at least one reviewer task")
+		}
+	}
+
 	return nil
 }
 

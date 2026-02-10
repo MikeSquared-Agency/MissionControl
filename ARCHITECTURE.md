@@ -58,6 +58,16 @@ flowchart TB
 
 **Key insight:** The King is an OpenClaw agent (Kai) with a system prompt. The Go bridge spawns worker processes and relays events — no custom LLM API calls. Rust core handles deterministic operations (validation, token counting, checkpoint compilation) that shouldn't consume LLM tokens.
 
+## Status Values
+
+### Task Statuses
+Tasks progress through: **pending** → **active** → **done**
+
+### Gate Statuses
+Gates progress through: **pending** → **approved**
+
+> **Note:** `"complete"` is NOT a valid status. It appeared in legacy dead code and should not be used anywhere. The correct terminal status for tasks is `"done"`.
+
 ## Key Concepts
 
 ### King Agent (Kai)
