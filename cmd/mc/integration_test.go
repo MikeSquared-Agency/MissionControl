@@ -71,7 +71,7 @@ func TestF2_MultiChannelGateApproval_CLI(t *testing.T) {
 	}
 
 	// Approve via CLI function
-	if err := runGateApprove(nil, []string{"discovery"}); err != nil {
+	if err := runGateApproveWithNote("discovery", "test approval"); err != nil {
 		t.Fatalf("CLI gate approve failed: %v", err)
 	}
 
@@ -142,7 +142,7 @@ func TestF2_MultiChannelGateApproval_SequentialStages(t *testing.T) {
 
 		if i%2 == 0 {
 			// CLI channel
-			if err := runGateApprove(nil, []string{stage}); err != nil {
+			if err := runGateApproveWithNote(stage, "test approval"); err != nil {
 				t.Fatalf("Step %d: CLI approve failed: %v", i, err)
 			}
 		} else {
@@ -181,12 +181,12 @@ func TestF2_GateApprovalIdempotent(t *testing.T) {
 	defer cleanup()
 
 	// Approve once
-	if err := runGateApprove(nil, []string{"discovery"}); err != nil {
+	if err := runGateApproveWithNote("discovery", "test approval"); err != nil {
 		t.Fatalf("First approve failed: %v", err)
 	}
 
 	// Approve again — should not error (idempotent)
-	err := runGateApprove(nil, []string{"discovery"})
+	err := runGateApproveWithNote("discovery", "test approval")
 	_ = err // Whether it errors or not, we just verify no panic/corruption
 }
 
@@ -248,7 +248,7 @@ func TestF3_StatePersistenceAfterGateApproval(t *testing.T) {
 	saveTasks(missionDir, []Task{{ID: "t1", Name: "Test task", Stage: "discovery", Status: "complete"}})
 
 	// Approve gate
-	if err := runGateApprove(nil, []string{"discovery"}); err != nil {
+	if err := runGateApproveWithNote("discovery", "test approval"); err != nil {
 		t.Fatalf("gate approve failed: %v", err)
 	}
 
@@ -292,7 +292,7 @@ func TestF3_CheckpointCapturesFullState(t *testing.T) {
 		{ID: "t2", Name: "Task B", Stage: "goal", Status: "pending"},
 	})
 
-	runGateApprove(nil, []string{"discovery"})
+	runGateApproveWithNote("discovery", "test approval")
 
 	// Create explicit checkpoint
 	cp, err := createCheckpoint(missionDir, "test-session-f3")
@@ -348,7 +348,7 @@ func TestF3_StateConsistencyAcrossMultipleOperations(t *testing.T) {
 	})
 
 	// 2. Approve discovery gate (→ goal)
-	runGateApprove(nil, []string{"discovery"})
+	runGateApproveWithNote("discovery", "test approval")
 
 	// 3. Add more tasks for goal stage
 	existingTasks, _ := loadTasks(missionDir)
@@ -356,7 +356,7 @@ func TestF3_StateConsistencyAcrossMultipleOperations(t *testing.T) {
 	saveTasks(missionDir, existingTasks)
 
 	// 4. Approve goal gate (→ requirements)
-	runGateApprove(nil, []string{"goal"})
+	runGateApproveWithNote("goal", "test approval")
 
 	// 5. Create checkpoint
 	cp, err := createCheckpoint(missionDir, "e2e-session")
