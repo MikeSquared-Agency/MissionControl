@@ -2,6 +2,20 @@
 
 All notable changes to MissionControl are documented in this file.
 
+## v6.11 — Process Purity Phase 2 (2026-02-10)
+
+### Trusted Validator (CI)
+- Two-step CI build: `main` branch produces a trusted `mc` binary, PR validation uses that pre-built binary
+- Prevents PRs from modifying the validator to bypass their own checks
+- `mc-validate` workflow updated to fetch trusted artifact before running `--strict`
+
+### Agent Tool Policies (OpenClaw)
+- Per-persona tool restrictions in OpenClaw agent config
+- Developers cannot approve gates; reviewers cannot write implementation files
+- Enforces separation of duties at the agent level, not just workflow level
+
+---
+
 ## v6.10 — Process Purity Phase 1 (2026-02-10)
 
 ### Strict Validation (`--strict` flag)

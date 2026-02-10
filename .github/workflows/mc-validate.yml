@@ -7,31 +7,60 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Step 1: Checkout main and build trusted mc
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mc-trusted
+
       - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            core/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            mc-trusted/core/target
+          key: ${{ runner.os }}-cargo-main-${{ hashFiles('mc-trusted/**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-main-
 
-      - name: Build mc + mc-core
+      - name: Build trusted mc from main
+        id: build-trusted
+        working-directory: mc-trusted
         run: make build-ci
+        continue-on-error: true
 
-      - name: Add built binaries to PATH
-        run: echo "${{ github.workspace }}/dist" >> $GITHUB_PATH
+      # Step 2: Checkout PR branch
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: pr-source
 
+      # Step 3: Bootstrap fallback — build from PR if main has no mc yet
+      - name: Fallback - build mc from PR branch (bootstrap only)
+        if: steps.build-trusted.outcome == 'failure'
+        working-directory: pr-source
+        run: |
+          echo "::warning::main branch build failed. Building mc from PR branch as fallback. This should only happen during bootstrap (first PR introducing mc source)."
+          make build-ci
+          mkdir -p ${{ github.workspace }}/mc-trusted/dist
+          cp dist/mc dist/mc-core ${{ github.workspace }}/mc-trusted/dist/ 2>/dev/null || cp dist/mc ${{ github.workspace }}/mc-trusted/dist/
+
+      - name: Verify mc binary exists
+        run: |
+          if [ ! -f mc-trusted/dist/mc ]; then
+            echo "::error::No mc binary available from either main or PR branch"
+            exit 1
+          fi
+
+      # Step 4: Validate PR's mission state with trusted mc
       - name: Validate mission state
-        run: mc commit --validate-only --strict
+        working-directory: pr-source
+        run: |
+          export PATH="${{ github.workspace }}/mc-trusted/dist:$PATH"
+          mc commit --validate-only --strict
