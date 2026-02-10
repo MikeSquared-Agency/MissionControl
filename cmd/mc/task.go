@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -23,6 +25,7 @@ func init() {
 	taskCreateCmd.Flags().StringP("zone", "z", "", "Zone for the task")
 	taskCreateCmd.Flags().String("persona", "", "Persona to assign")
 	taskCreateCmd.Flags().StringSlice("depends-on", nil, "Task IDs this task depends on")
+	taskCreateCmd.Flags().Bool("force", false, "Bypass stage validation")
 
 	// task list flags
 	taskListCmd.Flags().String("stage", "", "Filter by stage")
@@ -88,11 +91,34 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	persona, _ := cmd.Flags().GetString("persona")
 	dependsOn, _ := cmd.Flags().GetStringSlice("depends-on")
 
-	// Read current stage if not specified
+	force, _ := cmd.Flags().GetBool("force")
+
+	// Read current stage
+	var currentStage string
+	var stageState StageState
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	if err := readJSON(stagePath, &stageState); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("failed to read stage: %w", err)
+		}
+	} else {
+		currentStage = stageState.Current
+	}
+
+	// Default task stage to current stage if not specified
 	if stage == "" {
-		var stageState StageState
-		if err := readJSON(filepath.Join(missionDir, "state", "stage.json"), &stageState); err == nil {
-			stage = stageState.Current
+		stage = currentStage
+	}
+
+	// Validate: reject tasks for stages ahead of current stage
+	if currentStage != "" && stage != "" {
+		taskIdx := stageIndex(stage)
+		curIdx := stageIndex(currentStage)
+		if taskIdx > curIdx && curIdx >= 0 && taskIdx >= 0 {
+			if !force {
+				return fmt.Errorf("cannot create task for stage %q — current stage is %q.\n       Advance to %q first, or use --force to bypass", stage, currentStage, stage)
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: creating task for future stage %q (current: %q). This bypasses progressive refinement.\n", stage, currentStage)
 		}
 	}
 

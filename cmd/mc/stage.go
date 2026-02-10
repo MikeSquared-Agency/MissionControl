@@ -128,6 +128,15 @@ func getPrevStage(current string) string {
 	return ""
 }
 
+func stageIndex(name string) int {
+	for i, s := range stages {
+		if s == name {
+			return i
+		}
+	}
+	return -1
+}
+
 func isValidStage(stage string) bool {
 	for _, s := range stages {
 		if s == stage {
