@@ -8,7 +8,7 @@
 - [x] **Gate criteria per stage** — `mc-core check-gate` returns per-stage criteria
 - [x] **`mc stage` validates gate** — calls `mc-core check-gate`, blocks with clear error, `--force` to bypass
 - [x] **Auto-mark tasks done on findings** — watcher `findings_ready` → task status update in serve.go
-- [ ] **Auto-advance stage on gate met** — when all gate criteria satisfied, prompt for advancement (don't auto-advance — gate is a conversation)
+- [x] **Auto-advance stage on gate met** — `mc stage` checks gates.json, advances without --force when all criteria met — PR #38
 
 ## Worker Lifecycle
 
@@ -45,12 +45,16 @@
 - [ ] **Don't rubber-stamp stages** — if a stage genuinely doesn't apply, explain why at the gate. Don't silently advance through 4 stages in 3 seconds.
 - [ ] **Role removal is a design decision** — removing roles (Security, QA, etc.) must be flagged at Design stage and approved before implementing
 - [ ] **Small changes still need Verify** — a 3-file change that removes security roles is exactly when review catches mistakes
+- [ ] **Scope paths need type awareness** — if a task modifies a function using types from another file, include both files in scope_paths
 
 ## Gate UX
 
-- [ ] **`mc gate satisfy <criterion>`** — manually mark gate criteria as verified, stop abusing --force on every transition
+- [x] **`mc gate satisfy <criterion>`** — fuzzy match + `--all` flag, writes to gates.json — PR #38
+- [x] **`mc gate status`** — shows ✓/✗ per criterion for current stage — PR #38
+- [x] **`auto_mode` in config.json** — King can run without human gate approval — PR #38
 - [ ] **Document canonical status values** — "done" not "complete", single source of truth, referenced in CONTRIBUTING or ARCHITECTURE
 - [ ] **Enforce structured findings format** — validate Summary header on write, or add a linter. Workers that skip it break the briefing chain.
+- [ ] **mc-core graceful fallback** — check-gate should handle stages without specific criteria instead of erroring
 
 ## Process
 
