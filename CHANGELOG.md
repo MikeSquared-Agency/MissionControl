@@ -2,6 +2,30 @@
 
 All notable changes to MissionControl are documented in this file.
 
+## v6.13 — Process Purity Phase 5 (2026-02-10)
+
+### Mandatory Task Binding (`mc commit --task`)
+- `mc commit` now **requires** `--task <id>` — no more unattributed commits
+- `--no-task --reason <reason>` escape hatch for infrastructure changes outside the task graph
+- `--task` and `--no-task` are mutually exclusive; omitting both fails with a clear error
+
+### Empty Scope Restriction
+- Tasks with no `scope_paths` defined can only touch `.mission/` files
+- Prevents workers from making unbounded changes when no scope is specified
+
+### `scope_exempt_paths` Configuration
+- New `scope_exempt_paths` array in `.mission/config.json`
+- Listed files/patterns bypass scope validation (e.g. `go.sum`, `.gitignore`, `Makefile`)
+
+### Selective Staging
+- Scope validation runs against `git diff --cached` (staged files only)
+- Workers stage only the files their task covers, commit cleanly, then stage the rest separately
+
+### Testing
+- `commit_test.go` — unit tests for `validateCommitFlags` (mandatory task, no-task+reason, mutual exclusivity, missing reason)
+
+---
+
 ## v6.12 — Process Purity Phase 3 (2026-02-10)
 
 ### Provenance Trailers (`mc commit --task`)
