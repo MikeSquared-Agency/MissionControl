@@ -42,6 +42,9 @@
 ## Stage Discipline
 
 - [ ] **Don't skip validate** — validate = real environment testing (rebuild, restart service, spawn real worker, check dashboard). Verify = unit tests pass. Both matter.
+- [ ] **Don't rubber-stamp stages** — if a stage genuinely doesn't apply, explain why at the gate. Don't silently advance through 4 stages in 3 seconds.
+- [ ] **Role removal is a design decision** — removing roles (Security, QA, etc.) must be flagged at Design stage and approved before implementing
+- [ ] **Small changes still need Verify** — a 3-file change that removes security roles is exactly when review catches mistakes
 
 ## Process
 
