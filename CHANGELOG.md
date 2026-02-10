@@ -2,6 +2,30 @@
 
 All notable changes to MissionControl are documented in this file.
 
+## v6.9 — Gate UX (2026-02-10)
+
+### Gate Satisfy & Status Commands
+- `mc gate satisfy <substring>` — mark a single gate criterion as satisfied by substring match
+- `mc gate satisfy --all` — satisfy all criteria for the current stage at once
+- `mc gate status` — display current stage gate criteria with ✓/✗ status and progress count
+
+### Gate-Aware Stage Advance
+- `mc stage next` now checks `gates.json` before advancing — if all criteria are satisfied, the gate passes automatically
+- Eliminates the need for `--force` in normal workflows; satisfy criteria, then advance
+- Falls back to `mc-core check-gate` if `gates.json` has no entry for the stage
+
+### Configuration
+- `auto_mode` field in `.mission/config.json` — enables autonomous workflow mode
+
+### Legacy Compatibility
+- `loadGates()` auto-detects and converts legacy `gates.json` format (plain string criteria → structured `{description, satisfied}` objects)
+- Malformed or null gates handled gracefully
+
+### Testing
+- 16 gate tests covering: satisfy by exact/substring match, ambiguous match rejection, missing stage/criterion errors, `--all` bulk satisfy, `allCriteriaMet` logic, legacy format loading, corrupt JSON handling, null gates, empty substring rejection, `gate status` output, and `initGateForStage`
+
+---
+
 ## v6.8 — Briefing Generation, Scope Paths & Integrator Gate (2026-02-10)
 
 ### Briefing Generation

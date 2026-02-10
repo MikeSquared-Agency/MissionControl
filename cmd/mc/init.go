@@ -293,6 +293,7 @@ type Config struct {
 	AutoCommit     *AutoCommitConfig `json:"auto_commit,omitempty"`
 	TokenThreshold int               `json:"token_threshold,omitempty"`
 	Teams          map[string]Team   `json:"teams,omitempty"`
+	AutoMode       bool              `json:"auto_mode,omitempty"`
 }
 
 const defaultTokenThreshold = 150000

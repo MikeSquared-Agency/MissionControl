@@ -122,6 +122,24 @@ Tasks support a `scope_paths` field (`--scope-paths` flag on `mc task create`) l
 ### Task Dependencies
 Tasks support `blocks`/`blockedBy` relationships with cycle detection. `mc ready` shows tasks with no open blockers.
 
+### Gate Management
+
+Gates control stage transitions. Each stage has a gate with named criteria stored in `.mission/state/gates.json`.
+
+**Workflow:**
+1. `mc gate status` — view criteria for the current stage (✓/✗ per criterion, progress count)
+2. Workers or the King satisfy criteria as work completes: `mc gate satisfy "unit tests"` (substring match)
+3. `mc gate satisfy --all` — bulk-satisfy all criteria (useful after manual verification)
+4. `mc stage next` — checks `gates.json` first; if all criteria are met, advances automatically without `--force`
+
+**Data flow:**
+- `initGateForStage()` calls `mc-core check-gate <stage>` to get the canonical criteria list and writes it to `gates.json`
+- `satisfyCriterion()` finds a criterion by substring match (exactly one must match; ambiguous or zero matches error)
+- `allCriteriaMet()` is checked by `mc stage next` before allowing advancement
+- If `gates.json` has no entry for the stage, falls back to `mc-core check-gate` for validation
+
+**Legacy compatibility:** The loader auto-detects the old format (plain string arrays) and converts to the structured `{description, satisfied}` format on read.
+
 ### Checkpoints & Session Continuity
 State snapshots saved at key moments (gate approvals, token thresholds, graceful shutdown). `mc checkpoint restart` compiles a ~500 token briefing and restarts the King session with full context preserved.
 
@@ -256,6 +274,9 @@ Both modes fire the same `EventCallback` (`"spawned"`, `"status_changed"`, `"hea
 | `mc workers` | List active workers |
 | `mc handoff <file>` | Validate and store handoff |
 | `mc gate check/approve <stage>` | Gate management |
+| `mc gate satisfy <substring>` | Satisfy a gate criterion by substring match |
+| `mc gate satisfy --all` | Satisfy all criteria for current stage |
+| `mc gate status` | Show gate criteria status for current stage |
 | `mc checkpoint` | Create checkpoint snapshot |
 | `mc checkpoint restart` | Restart with compiled briefing |
 | `mc checkpoint status` | Session health |

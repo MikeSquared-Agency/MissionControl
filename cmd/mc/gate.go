@@ -3,16 +3,172 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 )
 
+// --- New gate management types and functions (TDD GREEN) ---
+
+type GateCriterion struct {
+	Description string `json:"description"`
+	Satisfied   bool   `json:"satisfied"`
+}
+
+type StageGate struct {
+	Criteria []GateCriterion `json:"criteria"`
+}
+
+type GatesFile struct {
+	Gates map[string]StageGate `json:"gates"`
+}
+
+func loadGates(missionDir string) (GatesFile, error) {
+	p := filepath.Join(missionDir, "state", "gates.json")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return GatesFile{Gates: map[string]StageGate{}}, nil
+		}
+		return GatesFile{}, err
+	}
+	var gf GatesFile
+	if err := json.Unmarshal(data, &gf); err != nil {
+		// Try legacy format where criteria are plain strings
+		var legacy struct {
+			Gates map[string]struct {
+				Stage    string   `json:"stage"`
+				Status   string   `json:"status"`
+				Criteria []string `json:"criteria"`
+			} `json:"gates"`
+		}
+		if err2 := json.Unmarshal(data, &legacy); err2 != nil {
+			return GatesFile{}, err // return original error
+		}
+		gf.Gates = make(map[string]StageGate)
+		for name, sg := range legacy.Gates {
+			var criteria []GateCriterion
+			for _, c := range sg.Criteria {
+				criteria = append(criteria, GateCriterion{Description: c, Satisfied: false})
+			}
+			gf.Gates[name] = StageGate{Criteria: criteria}
+		}
+	}
+	if gf.Gates == nil {
+		gf.Gates = map[string]StageGate{}
+	}
+	return gf, nil
+}
+
+func saveGates(missionDir string, gates GatesFile) error {
+	p := filepath.Join(missionDir, "state", "gates.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(gates, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, data, 0o644)
+}
+
+func satisfyCriterion(gates *GatesFile, stage string, substring string) (string, error) {
+	sg, ok := gates.Gates[stage]
+	if !ok {
+		return "", fmt.Errorf("stage %q not found in gates", stage)
+	}
+	var matches []int
+	for i, c := range sg.Criteria {
+		if strings.Contains(c.Description, substring) {
+			matches = append(matches, i)
+		}
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no criterion matching %q", substring)
+	}
+	if len(matches) > 1 {
+		return "", fmt.Errorf("ambiguous match for %q: %d criteria match", substring, len(matches))
+	}
+	sg.Criteria[matches[0]].Satisfied = true
+	gates.Gates[stage] = sg
+	return sg.Criteria[matches[0]].Description, nil
+}
+
+func initGateForStage(missionDir string, stage string) error {
+	// Find mc-core binary
+	var mcCorePath string
+	if exePath, err := os.Executable(); err == nil {
+		// Try same directory as mc binary (e.g. dist/mc-core alongside dist/mc)
+		candidate := filepath.Join(filepath.Dir(exePath), "mc-core")
+		if _, err := os.Stat(candidate); err == nil {
+			mcCorePath = candidate
+		}
+	}
+	if mcCorePath == "" {
+		var err error
+		mcCorePath, err = exec.LookPath("mc-core")
+		if err != nil {
+			return fmt.Errorf("mc-core not found: %w", err)
+		}
+	}
+
+	cmd := exec.Command(mcCorePath, "check-gate", stage, "--mission-dir", missionDir)
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("mc-core check-gate failed: %w", err)
+	}
+
+	var resp struct {
+		Criteria []struct {
+			Description string `json:"description"`
+			Satisfied   bool   `json:"satisfied"`
+		} `json:"criteria"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return fmt.Errorf("failed to parse mc-core output: %w", err)
+	}
+
+	gf, err := loadGates(missionDir)
+	if err != nil {
+		return err
+	}
+
+	var criteria []GateCriterion
+	for _, c := range resp.Criteria {
+		criteria = append(criteria, GateCriterion{Description: c.Description, Satisfied: c.Satisfied})
+	}
+	gf.Gates[stage] = StageGate{Criteria: criteria}
+
+	return saveGates(missionDir, gf)
+}
+
+func allCriteriaMet(gates *GatesFile, stage string) bool {
+	sg, ok := gates.Gates[stage]
+	if !ok {
+		return false
+	}
+	if len(sg.Criteria) == 0 {
+		return false
+	}
+	for _, c := range sg.Criteria {
+		if !c.Satisfied {
+			return false
+		}
+	}
+	return true
+}
+
 func init() {
 	rootCmd.AddCommand(gateCmd)
 	gateCmd.AddCommand(gateCheckCmd)
 	gateCmd.AddCommand(gateApproveCmd)
+	gateCmd.AddCommand(gateSatisfyCmd)
+	gateCmd.AddCommand(gateStatusCmd)
+	gateSatisfyCmd.Flags().Bool("all", false, "Satisfy all criteria at once")
 }
 
 var gateCmd = &cobra.Command{
@@ -71,17 +227,22 @@ func runGateCheck(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Read gates
-	gatesPath := filepath.Join(missionDir, "state", "gates.json")
-	var gatesState GatesState
-	if err := readJSON(gatesPath, &gatesState); err != nil {
+	// Read gates via compat loader
+	gf, err := loadGates(missionDir)
+	if err != nil {
 		return fmt.Errorf("failed to read gates: %w", err)
 	}
 
-	gate, ok := gatesState.Gates[stage]
+	sg, ok := gf.Gates[stage]
 	if !ok {
 		return fmt.Errorf("gate not found: %s", stage)
 	}
+	// Convert to legacy Gate for downstream compat
+	var criteriaStrings []string
+	for _, c := range sg.Criteria {
+		criteriaStrings = append(criteriaStrings, c.Description)
+	}
+	gate := Gate{Stage: stage, Status: "pending", Criteria: criteriaStrings}
 
 	// Read tasks to calculate summary
 	tasks, err := loadTasks(missionDir)
@@ -166,11 +327,23 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot approve gate for %q: current stage is %q (gate approval only allowed for the current stage)", stage, currentStage.Current)
 	}
 
-	// Update gate status
+	// Update gate status — read via compat loader, write back as legacy format for other consumers
 	gatesPath := filepath.Join(missionDir, "state", "gates.json")
 	var gatesState GatesState
 	if err := readJSON(gatesPath, &gatesState); err != nil {
-		return fmt.Errorf("failed to read gates: %w", err)
+		// Try loading via compat loader and convert
+		gf, err2 := loadGates(missionDir)
+		if err2 != nil {
+			return fmt.Errorf("failed to read gates: %w", err)
+		}
+		gatesState.Gates = make(map[string]Gate)
+		for name, sg := range gf.Gates {
+			var cs []string
+			for _, c := range sg.Criteria {
+				cs = append(cs, c.Description)
+			}
+			gatesState.Gates[name] = Gate{Stage: name, Status: "pending", Criteria: cs}
+		}
 	}
 
 	gate, ok := gatesState.Gates[stage]
@@ -229,4 +402,91 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Gate approved: %s → %s\n", stage, nextStage)
 
 	return nil
+}
+
+var gateSatisfyCmd = &cobra.Command{
+	Use:   "satisfy [substring]",
+	Short: "Satisfy a gate criterion by substring match",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		missionDir, err := findMissionDir()
+		if err != nil {
+			return err
+		}
+		gf, err := loadGates(missionDir)
+		if err != nil {
+			return err
+		}
+		stagePath := filepath.Join(missionDir, "state", "stage.json")
+		var currentStage StageState
+		if err := readJSON(stagePath, &currentStage); err != nil {
+			return fmt.Errorf("failed to read current stage: %w", err)
+		}
+		stage := currentStage.Current
+
+		satisfyAll, _ := cmd.Flags().GetBool("all")
+		if satisfyAll {
+			sg, ok := gf.Gates[stage]
+			if !ok {
+				return fmt.Errorf("no gate for stage %q", stage)
+			}
+			for i := range sg.Criteria {
+				sg.Criteria[i].Satisfied = true
+			}
+			gf.Gates[stage] = sg
+			fmt.Printf("All criteria for %s satisfied\n", stage)
+		} else if len(args) > 0 {
+			desc, err := satisfyCriterion(&gf, stage, args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Satisfied: %s\n", desc)
+		} else {
+			return fmt.Errorf("provide a criterion substring or use --all")
+		}
+		return saveGates(missionDir, gf)
+	},
+}
+
+var gateStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show gate status for current stage",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		missionDir, err := findMissionDir()
+		if err != nil {
+			return err
+		}
+		gf, err := loadGates(missionDir)
+		if err != nil {
+			return err
+		}
+		// Read current stage
+		stagePath := filepath.Join(missionDir, "state", "stage.json")
+		var currentStage struct {
+			Current string `json:"current"`
+		}
+		if err := readJSON(stagePath, &currentStage); err != nil {
+			return fmt.Errorf("failed to read current stage: %w", err)
+		}
+		stage := currentStage.Current
+		sg, ok := gf.Gates[stage]
+		if !ok {
+			fmt.Printf("No gate criteria for stage: %s\n", stage)
+			return nil
+		}
+		satisfied := 0
+		total := len(sg.Criteria)
+		fmt.Printf("\n── Gate: %s ─────────────────────\n", stage)
+		for _, c := range sg.Criteria {
+			mark := "✗"
+			if c.Satisfied {
+				mark = "✓"
+				satisfied++
+			}
+			fmt.Printf("  %s %s\n", mark, c.Description)
+		}
+		fmt.Printf("\nStatus: %d/%d criteria met\n", satisfied, total)
+		fmt.Println("────────────────────────────────────────")
+		return nil
+	},
 }
