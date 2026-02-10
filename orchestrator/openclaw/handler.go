@@ -4,12 +4,17 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/DarlingtonDeveloper/MissionControl/tracker"
 )
+
+// tokenRe matches token usage lines like "tokens 12.5k (in 8500 / out 4000)"
+var tokenRe = regexp.MustCompile(`tokens (\d+\.?\d*)k \(in (\d+) / out (\d+)\)`)
 
 // Broadcaster can push events to the WebSocket hub.
 type Broadcaster interface {
@@ -36,9 +41,13 @@ type Handler struct {
 	chatWaiters   map[string]chan string
 	chatWaitersMu sync.Mutex
 
-	// Worker registry: sessionKey → WorkerMeta (pre-registered before spawn)
+	// Worker registry: label → WorkerMeta (registered before spawn)
 	workerRegistry   map[string]*WorkerMeta
 	workerRegistryMu sync.RWMutex
+
+	// Reverse index: sessionKey → label (populated by /link or combined register)
+	sessionToLabel   map[string]string
+	sessionToLabelMu sync.RWMutex
 
 	// runId → sessionKey mapping for lifecycle event lookup
 	runToSession   map[string]string
@@ -69,6 +78,7 @@ func NewHandler(bridge *Bridge, hub Broadcaster, trk ...*tracker.Tracker) *Handl
 		hub:             hub,
 		chatWaiters:     make(map[string]chan string),
 		workerRegistry:  make(map[string]*WorkerMeta),
+		sessionToLabel:  make(map[string]string),
 		runToSession:    make(map[string]string),
 		pendingStarts:   make(map[string]*agentEventPayload),
 		pendingEnds:     make(map[string]*agentEventPayload),
@@ -114,6 +124,9 @@ func NewHandler(bridge *Bridge, hub Broadcaster, trk ...*tracker.Tracker) *Handl
 				}
 
 				if text != "" {
+					// Try to parse token usage from subagent sessions
+					h.tryParseTokens(msg.SessionKey, text)
+
 					// Broadcast to WebSocket hub for real-time UI
 					if h.hub != nil {
 						h.hub.BroadcastRaw("chat", "chat_message", map[string]interface{}{
@@ -206,18 +219,27 @@ func (h *Handler) handleLifecycleEvent(payload json.RawMessage) {
 }
 
 func (h *Handler) handleWorkerStart(ev *agentEventPayload) {
-	h.workerRegistryMu.Lock()
-	meta, ok := h.workerRegistry[ev.SessionKey]
-	if !ok {
-		h.workerRegistryMu.Unlock()
-		// Buffer for later — registration hasn't arrived yet
+	// Look up label via sessionKey
+	h.sessionToLabelMu.RLock()
+	label, linked := h.sessionToLabel[ev.SessionKey]
+	h.sessionToLabelMu.RUnlock()
+
+	if !linked {
+		// Buffer for later — /link hasn't arrived yet
 		h.pendingStartsMu.Lock()
 		h.pendingStarts[ev.SessionKey] = ev
 		h.pendingStartsMu.Unlock()
-		log.Printf("[openclaw] lifecycle/start for unregistered session %s (runId=%s), buffering", ev.SessionKey, ev.RunID)
+		log.Printf("[openclaw] lifecycle/start for unlinked session %s (runId=%s), buffering", ev.SessionKey, ev.RunID)
 		return
 	}
-	h.workerRegistryMu.Unlock()
+
+	h.workerRegistryMu.RLock()
+	meta, ok := h.workerRegistry[label]
+	h.workerRegistryMu.RUnlock()
+	if !ok {
+		log.Printf("[openclaw] lifecycle/start: label %s not in registry (session=%s)", label, ev.SessionKey)
+		return
+	}
 
 	// Map runId → sessionKey
 	h.runToSessionMu.Lock()
@@ -258,13 +280,11 @@ func (h *Handler) handleWorkerStart(ev *agentEventPayload) {
 }
 
 func (h *Handler) handleWorkerEnd(ev *agentEventPayload) {
-	// Consistent lock ordering: workerRegistryMu before runToSessionMu
-	h.workerRegistryMu.Lock()
+	// Look up sessionKey from runId
 	h.runToSessionMu.Lock()
 	sessionKey, ok := h.runToSession[ev.RunID]
 	if !ok {
 		h.runToSessionMu.Unlock()
-		h.workerRegistryMu.Unlock()
 		// Buffer for later — start hasn't been processed yet (fast worker)
 		h.pendingEndsMu.Lock()
 		h.pendingEnds[ev.SessionKey] = ev
@@ -275,9 +295,22 @@ func (h *Handler) handleWorkerEnd(ev *agentEventPayload) {
 	delete(h.runToSession, ev.RunID)
 	h.runToSessionMu.Unlock()
 
-	meta, hasMeta := h.workerRegistry[sessionKey]
+	// Look up label from sessionKey
+	h.sessionToLabelMu.Lock()
+	label, hasLabel := h.sessionToLabel[sessionKey]
+	if hasLabel {
+		delete(h.sessionToLabel, sessionKey)
+	}
+	h.sessionToLabelMu.Unlock()
+
+	if !hasLabel {
+		return
+	}
+
+	h.workerRegistryMu.Lock()
+	meta, hasMeta := h.workerRegistry[label]
 	if hasMeta {
-		delete(h.workerRegistry, sessionKey)
+		delete(h.workerRegistry, label)
 	}
 	h.workerRegistryMu.Unlock()
 
@@ -351,6 +384,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 // RegisterMCRoutes registers /api/mc/* routes for worker lifecycle management.
 func (h *Handler) RegisterMCRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/mc/worker/register", h.handleWorkerRegister)
+	mux.HandleFunc("/api/mc/worker/link", h.handleWorkerLink)
 	mux.HandleFunc("/api/mc/workers", h.handleWorkersList)
 }
 
@@ -517,6 +551,12 @@ type workerRegisterRequest struct {
 	Model      string `json:"model"`
 }
 
+// workerLinkRequest is the JSON body for POST /api/mc/worker/link.
+type workerLinkRequest struct {
+	Label      string `json:"label"`
+	SessionKey string `json:"session_key"`
+}
+
 func (h *Handler) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -528,8 +568,8 @@ func (h *Handler) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if req.SessionKey == "" || req.Label == "" {
-		http.Error(w, "session_key and label are required", http.StatusBadRequest)
+	if req.Label == "" {
+		http.Error(w, "label is required", http.StatusBadRequest)
 		return
 	}
 
@@ -543,10 +583,68 @@ func (h *Handler) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.workerRegistryMu.Lock()
-	h.workerRegistry[req.SessionKey] = meta
+	h.workerRegistry[req.Label] = meta
 	h.workerRegistryMu.Unlock()
 
-	log.Printf("[openclaw] registered worker %s for session %s (task=%s)", req.Label, req.SessionKey, req.TaskID)
+	// If session_key provided, do combined register+link (backward compat)
+	if req.SessionKey != "" {
+		h.sessionToLabelMu.Lock()
+		h.sessionToLabel[req.SessionKey] = req.Label
+		h.sessionToLabelMu.Unlock()
+
+		log.Printf("[openclaw] registered+linked worker %s for session %s (task=%s)", req.Label, req.SessionKey, req.TaskID)
+
+		// Check if we have a buffered lifecycle/start for this session
+		h.pendingStartsMu.Lock()
+		pendingEv, hasPending := h.pendingStarts[req.SessionKey]
+		if hasPending {
+			delete(h.pendingStarts, req.SessionKey)
+		}
+		h.pendingStartsMu.Unlock()
+
+		if hasPending {
+			log.Printf("[openclaw] processing buffered lifecycle/start for session %s", req.SessionKey)
+			h.handleWorkerStart(pendingEv)
+		}
+	} else {
+		log.Printf("[openclaw] registered worker %s (task=%s), awaiting link", req.Label, req.TaskID)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (h *Handler) handleWorkerLink(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req workerLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Label == "" || req.SessionKey == "" {
+		http.Error(w, "label and session_key are required", http.StatusBadRequest)
+		return
+	}
+
+	// Check label exists in registry
+	h.workerRegistryMu.RLock()
+	_, ok := h.workerRegistry[req.Label]
+	h.workerRegistryMu.RUnlock()
+	if !ok {
+		http.Error(w, "label not registered", http.StatusNotFound)
+		return
+	}
+
+	// Store reverse index
+	h.sessionToLabelMu.Lock()
+	h.sessionToLabel[req.SessionKey] = req.Label
+	h.sessionToLabelMu.Unlock()
+
+	log.Printf("[openclaw] linked worker %s to session %s", req.Label, req.SessionKey)
 
 	// Check if we have a buffered lifecycle/start for this session
 	h.pendingStartsMu.Lock()
@@ -563,6 +661,34 @@ func (h *Handler) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// tryParseTokens extracts token usage from subagent chat text and updates the tracker.
+func (h *Handler) tryParseTokens(sessionKey, text string) {
+	if !strings.Contains(sessionKey, "subagent:") {
+		return
+	}
+	matches := tokenRe.FindStringSubmatch(text)
+	if matches == nil {
+		return
+	}
+
+	totalK, _ := strconv.ParseFloat(matches[1], 64)
+	totalTokens := int(totalK * 1000)
+
+	h.sessionToLabelMu.RLock()
+	label, ok := h.sessionToLabel[sessionKey]
+	h.sessionToLabelMu.RUnlock()
+	if !ok {
+		return
+	}
+
+	cost := totalK * 0.01 // placeholder
+
+	if h.tracker != nil {
+		h.tracker.UpdateTokens(label, totalTokens, cost)
+	}
+	log.Printf("[openclaw] tokens for %s: %d (cost $%.4f)", label, totalTokens, cost)
 }
 
 func (h *Handler) handleWorkersList(w http.ResponseWriter, r *http.Request) {
