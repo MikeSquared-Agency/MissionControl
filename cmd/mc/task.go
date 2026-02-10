@@ -27,6 +27,7 @@ func init() {
 	taskCreateCmd.Flags().String("persona", "", "Persona to assign")
 	taskCreateCmd.Flags().StringSlice("depends-on", nil, "Task IDs this task depends on")
 	taskCreateCmd.Flags().Bool("force", false, "Bypass stage validation")
+	taskCreateCmd.Flags().String("scope-paths", "", "Comma-separated list of file paths in scope for this task")
 
 	// task list flags
 	taskListCmd.Flags().String("stage", "", "Filter by stage")
@@ -98,6 +99,16 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	zone, _ := cmd.Flags().GetString("zone")
 	persona, _ := cmd.Flags().GetString("persona")
 	dependsOn, _ := cmd.Flags().GetStringSlice("depends-on")
+	scopePathsStr, _ := cmd.Flags().GetString("scope-paths")
+	var scopePaths []string
+	if scopePathsStr != "" {
+		for _, p := range strings.Split(scopePathsStr, ",") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				scopePaths = append(scopePaths, p)
+			}
+		}
+	}
 
 	force, _ := cmd.Flags().GetBool("force")
 
@@ -146,15 +157,16 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	task := Task{
-		ID:        taskID,
-		Name:      name,
-		Stage:     stage,
-		Zone:      zone,
-		Persona:   persona,
-		Status:    "pending",
-		DependsOn: dependsOn,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:         taskID,
+		Name:       name,
+		Stage:      stage,
+		Zone:       zone,
+		Persona:    persona,
+		Status:     "pending",
+		DependsOn:  dependsOn,
+		ScopePaths: scopePaths,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
 	tasks = append(tasks, task)
@@ -296,7 +308,7 @@ func isReady(task Task, taskMap map[string]Task) bool {
 	}
 	for _, depID := range task.DependsOn {
 		dep, ok := taskMap[depID]
-		if !ok || dep.Status != "complete" {
+		if !ok || dep.Status != "done" {
 			return false
 		}
 	}
@@ -348,7 +360,7 @@ func printDepTree(task Task, taskMap map[string]Task, prefix string, isLast bool
 
 	statusIcon := "○"
 	switch task.Status {
-	case "complete":
+	case "done":
 		statusIcon = "●"
 	case "in_progress":
 		statusIcon = "◐"

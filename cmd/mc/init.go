@@ -237,16 +237,17 @@ type StageState struct {
 }
 
 type Task struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Stage     string   `json:"stage"`
-	Zone      string   `json:"zone"`
-	Persona   string   `json:"persona"`
-	Status    string   `json:"status"` // pending, in_progress, complete, blocked
-	DependsOn []string `json:"depends_on,omitempty"`
-	WorkerID  string   `json:"worker_id,omitempty"`
-	CreatedAt string   `json:"created_at"`
-	UpdatedAt string   `json:"updated_at"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Stage      string   `json:"stage"`
+	Zone       string   `json:"zone"`
+	Persona    string   `json:"persona"`
+	Status     string   `json:"status"` // pending, in_progress, complete, blocked
+	DependsOn  []string `json:"depends_on,omitempty"`
+	ScopePaths []string `json:"scope_paths,omitempty"`
+	WorkerID   string   `json:"worker_id,omitempty"`
+	CreatedAt  string   `json:"created_at"`
+	UpdatedAt  string   `json:"updated_at"`
 }
 
 type TasksState struct {
