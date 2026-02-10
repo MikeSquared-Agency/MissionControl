@@ -3,7 +3,7 @@ VERSION ?= 0.5.0
 PLATFORMS := darwin-amd64 darwin-arm64 linux-amd64 linux-arm64
 DIST_DIR := dist
 
-.PHONY: all build build-mc build-mc-core build-orchestrator build-web clean release test test-go test-rust test-web test-integration test-e2e test-all lint fmt
+.PHONY: all build build-mc build-mc-noweb build-mc-core build-ci build-orchestrator build-web clean release test test-go test-rust test-web test-integration test-e2e test-all lint fmt
 
 all: build
 
@@ -17,6 +17,19 @@ build-mc: build-web
 	rm -rf cmd/mc/dist
 	cp -r web/dist cmd/mc/dist
 	cd cmd/mc && go build -ldflags "-s -w -X main.version=$(VERSION)" -o ../../$(DIST_DIR)/mc .
+
+# Build mc CLI without web UI embedding (for CI — no Node.js required)
+build-mc-noweb: $(DIST_DIR)
+	@echo "Building mc CLI (no web UI)..."
+	mkdir -p cmd/mc/dist
+	echo '<!doctype html><html><body>CI build - no UI</body></html>' > cmd/mc/dist/index.html
+	cd cmd/mc && go build -ldflags "-s -w -X main.version=$(VERSION)" -o ../../$(DIST_DIR)/mc .
+
+# Build mc for CI validation (no Node.js, no web UI)
+# mc-core (Rust) is built separately; include it if cargo is available
+build-ci: build-mc-noweb
+	@if command -v cargo >/dev/null 2>&1; then $(MAKE) build-mc-core; else echo "cargo not found, skipping mc-core (use pre-built binary)"; fi
+	@echo "CI build complete: $(DIST_DIR)/mc"
 
 # Build mc-core (Rust)
 build-mc-core:

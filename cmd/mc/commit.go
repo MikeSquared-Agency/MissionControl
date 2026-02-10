@@ -65,14 +65,36 @@ var commitCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		missionDir, err := findMissionDir()
 		if err != nil {
-			return err
-		}
-
-		if err := validateCommit(missionDir); err != nil {
-			return fmt.Errorf("validation failed: %w", err)
+			fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+			os.Exit(2)
+			return nil
 		}
 
 		validateOnly, _ := cmd.Flags().GetBool("validate-only")
+		strict, _ := cmd.Flags().GetBool("strict")
+
+		if strict && !validateOnly {
+			fmt.Fprintf(os.Stderr, "FAIL: --strict requires --validate-only\n")
+			os.Exit(2)
+			return nil
+		}
+
+		if err := validateCommit(missionDir); err != nil {
+			fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+			os.Exit(1)
+			return nil
+		}
+
+		if strict {
+			if errs := validateStrict(missionDir); len(errs) > 0 {
+				for _, e := range errs {
+					fmt.Fprintf(os.Stderr, "FAIL: %s\n", e)
+				}
+				os.Exit(1)
+				return nil
+			}
+		}
+
 		if validateOnly {
 			fmt.Println("✅ Validation passed")
 			return nil
@@ -109,5 +131,6 @@ var commitCmd = &cobra.Command{
 func init() {
 	commitCmd.Flags().StringP("message", "m", "", "Commit message")
 	commitCmd.Flags().Bool("validate-only", false, "Only run validation, don't commit")
+	commitCmd.Flags().Bool("strict", false, "Enable strict validation (requires --validate-only)")
 	rootCmd.AddCommand(commitCmd)
 }
