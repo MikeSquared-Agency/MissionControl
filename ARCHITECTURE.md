@@ -129,15 +129,23 @@ All mutations auto-commit with `[mc:{category}]` prefixed messages. Configurable
 
 The orchestrator tracks worker lifecycle through gateway events and a pre-registration pattern.
 
-### Pre-Registration Pattern
+### Two-Step Registration (Register + Link)
 
-Gateway lifecycle events don't carry task metadata (labels, personas, zones). To solve this, Kai **pre-registers** worker metadata via `POST /api/mc/worker/register` before spawning a sub-agent. The handler stores this in a `workerRegistry` map keyed by `sessionKey`.
+Gateway lifecycle events don't carry task metadata (labels, personas, zones). Workers are registered in two steps:
+
+1. **Register by label** — `POST /api/mc/worker/register {label, task_id, persona, zone, model}` stores metadata in a `labelRegistry` map keyed by label. No sessionKey needed yet.
+2. **Link after spawn** — `POST /api/mc/worker/link {label, session_key}` binds the label to a sessionKey. Moves metadata from `labelRegistry` to `workerRegistry` (keyed by sessionKey) and builds a reverse index.
+
+This eliminates the race condition where lifecycle events arrive before the operator knows the sessionKey.
+
+The old combined endpoint (`POST /register` with `session_key` in the body) is preserved for backward compatibility.
 
 ### Bridge Lifecycle Event Flow
 
 ```text
-Kai → POST /api/mc/worker/register {session_key, label, task_id, persona, zone, model}
-Kai → POST /api/openclaw/chat {spawn worker message}
+Kai → POST /api/mc/worker/register {label, task_id, persona, zone, model}
+Kai → sessions_spawn → gets sessionKey back
+Kai → POST /api/mc/worker/link {label, session_key}
 Gateway → agent event (stream: "lifecycle", phase: "start")
   → Handler looks up workerRegistry[sessionKey]
   → Maps runId → sessionKey
@@ -151,11 +159,19 @@ Gateway → agent event (stream: "lifecycle", phase: "end")
   → Cleans up registry and runToSession maps
 ```
 
+### Token Tracking
+
+The handler parses token counts from subagent chat events using regex:
+```
+tokens (\d+\.?\d*)k \(in (\d+) / out (\d+)\)
+```
+On match, calls `tracker.UpdateTokens(workerID, totalTokens, costUSD)`. Token data is surfaced via `GET /api/mc/workers` in each worker's `token_count` field.
+
 ### Event Buffering (Race Condition Handling)
 
-Fast workers can emit lifecycle events before the registration HTTP request arrives. The handler buffers both start and end events:
+Fast workers can emit lifecycle events before the link HTTP request arrives. The handler buffers both start and end events:
 
-- **`pendingStarts`** — Buffers `lifecycle/start` events for unregistered sessions. When `POST /register` arrives, any buffered start is replayed immediately.
+- **`pendingStarts`** — Buffers `lifecycle/start` events for unregistered sessions. When `POST /link` arrives, any buffered start is replayed immediately.
 - **`pendingEnds`** — Buffers `lifecycle/end` events when `runToSession` has no entry (start hasn't been processed yet). After a buffered start is processed, any matching buffered end is replayed immediately.
 - **Expiry** — A cleanup goroutine sweeps both buffers every 30s, removing entries older than 60s.
 - **Dedup** — A bounded set of 1000 `(runId, phase)` pairs prevents duplicate event processing.

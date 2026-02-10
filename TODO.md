@@ -23,6 +23,8 @@
 - [x] **`mc status` after transitions** — prints human-friendly status box to stderr after `mc stage` and `mc task update`
 - [x] **Structured findings format** — docs/findings-format.md, markdown header with Task ID, Status, Summary
 - [ ] **Lean briefings** — reference predecessor findings by path instead of duplicating context
+- [ ] **Document stage changes in ARCHITECTURE.md** — gate enforcement, status summary, findings callback not yet documented
+- [ ] **Update docs on every PR** — add to process checklist: ARCHITECTURE.md must reflect any new features
 - [ ] **Checkpoint on compaction** — automatic or prompted checkpoint before context window fills
 
 ## Dashboard Integration
