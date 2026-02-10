@@ -74,6 +74,57 @@ func (s *Server) missionPath(parts ...string) string {
 	return filepath.Join(elems...)
 }
 
+// validateTaskID rejects IDs with path traversal characters.
+func validateTaskID(id string) bool {
+	return id != "" && !strings.Contains(id, "..") && !strings.ContainsAny(id, "/\\")
+}
+
+// handleTaskFindings serves .mission/findings/{id}.md as text/markdown.
+func (s *Server) handleTaskFindings(w http.ResponseWriter, r *http.Request, id string) {
+	if !validateTaskID(id) {
+		respondError(w, http.StatusBadRequest, "invalid task ID")
+		return
+	}
+	path := s.missionPath("findings", id+".md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			respondError(w, http.StatusNotFound, "findings not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to read findings")
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+// handleTaskBriefing serves .mission/handoffs/{id}-briefing.json as application/json.
+func (s *Server) handleTaskBriefing(w http.ResponseWriter, r *http.Request, id string) {
+	if !validateTaskID(id) {
+		respondError(w, http.StatusBadRequest, "invalid task ID")
+		return
+	}
+	path := s.missionPath("handoffs", id+"-briefing.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			respondError(w, http.StatusNotFound, "briefing not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to read briefing")
+		return
+	}
+	if !json.Valid(data) {
+		respondError(w, http.StatusInternalServerError, "briefing file contains invalid JSON")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
 // --- GET handlers ---
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +133,19 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	result := map[string]interface{}{}
+
+	// Read current stage
+	var stage map[string]interface{}
+	if err := readJSON(s.statePath("stage.json"), &stage); err == nil {
+		result["stage"] = stage
+	} else {
+		// Fallback: try stages.jsonl and use last entry
+		if entries, err := readJSONL(s.statePath("stages.jsonl")); err == nil && len(entries) > 0 {
+			result["stage"] = entries[len(entries)-1]
+		} else {
+			result["stage"] = nil
+		}
+	}
 
 	// Read tasks
 	tasks, _ := readJSONL(s.statePath("tasks.jsonl"))
