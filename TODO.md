@@ -12,17 +12,19 @@
 
 ## Worker Lifecycle
 
-- [ ] **Label-based worker registration** — register by label before spawn, match lifecycle events by label instead of sessionKey (which is unknown until spawn returns)
-- [ ] **Worker self-reporting** — workers write a structured status block in findings that the watcher can parse
-- [ ] **Token/cost tracking** — wire OpenClaw session stats into tracker, surface on dashboard
+- [x] **Label-based worker registration** — two-step register/link flow, register by label then bind sessionKey after spawn
+- [x] **Worker self-reporting** — structured findings header with Task ID, Status, Summary
+- [x] **Token/cost tracking** — regex parse from announcement text, calls tracker.UpdateTokens()
 - [ ] **Worker chain** — auto-include predecessor task findings in briefings based on task dependencies
 
 ## Developer Experience
 
 - [x] **Objective.md required** — `mc task create` warns if objective.md is missing/empty
 - [x] **`mc status` after transitions** — prints human-friendly status box to stderr after `mc stage` and `mc task update`
-- [ ] **Structured findings format** — define minimal schema: status, summary, decisions, blockers, files_changed
+- [x] **Structured findings format** — docs/findings-format.md, markdown header with Task ID, Status, Summary
 - [ ] **Lean briefings** — reference predecessor findings by path instead of duplicating context
+- [ ] **Document stage changes in ARCHITECTURE.md** — gate enforcement, status summary, findings callback not yet documented
+- [ ] **Update docs on every PR** — add to process checklist: ARCHITECTURE.md must reflect any new features
 - [ ] **Checkpoint on compaction** — automatic or prompted checkpoint before context window fills
 
 ## Dashboard Integration

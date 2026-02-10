@@ -49,6 +49,7 @@ func newTestHandler(t *testing.T, hub Broadcaster, trk *tracker.Tracker) *Handle
 	return NewHandler(bridge, hub, trk)
 }
 
+// registerWorker does a combined register+link (backward compat style).
 func registerWorker(t *testing.T, mux *http.ServeMux, sessionKey, label, taskID, persona, zone, model string) {
 	t.Helper()
 	body, _ := json.Marshal(workerRegisterRequest{
@@ -65,6 +66,41 @@ func registerWorker(t *testing.T, mux *http.ServeMux, sessionKey, label, taskID,
 	mux.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("register worker: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// registerWorkerOnly registers without session_key (new two-step style).
+func registerWorkerOnly(t *testing.T, mux *http.ServeMux, label, taskID, persona, zone, model string) {
+	t.Helper()
+	body, _ := json.Marshal(workerRegisterRequest{
+		Label:   label,
+		TaskID:  taskID,
+		Persona: persona,
+		Zone:    zone,
+		Model:   model,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/mc/worker/register", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("register worker (no link): expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// linkWorker links a label to a session key.
+func linkWorker(t *testing.T, mux *http.ServeMux, label, sessionKey string, expectCode int) {
+	t.Helper()
+	body, _ := json.Marshal(workerLinkRequest{
+		Label:      label,
+		SessionKey: sessionKey,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/mc/worker/link", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != expectCode {
+		t.Fatalf("link worker: expected %d, got %d: %s", expectCode, w.Code, w.Body.String())
 	}
 }
 
@@ -230,13 +266,13 @@ func TestRegisterEndpointValidation(t *testing.T) {
 	mux := http.NewServeMux()
 	h.RegisterMCRoutes(mux)
 
-	// Missing required fields
-	body, _ := json.Marshal(map[string]string{"label": "x"})
+	// Missing required fields (no label)
+	body, _ := json.Marshal(map[string]string{"session_key": "x"})
 	req := httptest.NewRequest(http.MethodPost, "/api/mc/worker/register", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing session_key, got %d", w.Code)
+		t.Fatalf("expected 400 for missing label, got %d", w.Code)
 	}
 
 	// GET not allowed
@@ -297,6 +333,163 @@ func TestNonSubagentEventsIgnored(t *testing.T) {
 
 	if len(trk.List()) != 0 {
 		t.Fatalf("main session events should be ignored")
+	}
+}
+
+func TestRegisterThenLinkFlow(t *testing.T) {
+	hub := &mockBroadcaster{}
+	trk := tracker.NewTracker(t.TempDir(), nil)
+	h := newTestHandler(t, hub, trk)
+	mux := http.NewServeMux()
+	h.RegisterMCRoutes(mux)
+
+	// Step 1: Register by label only (no session_key)
+	registerWorkerOnly(t, mux, "worker-twostep", "task-2step", "coder", "backend", "claude-4")
+
+	// Step 2: Link label to session
+	sessionKey := "agent:main:subagent:twostep1"
+	linkWorker(t, mux, "worker-twostep", sessionKey, http.StatusOK)
+
+	// Step 3: Lifecycle start should work
+	simulateLifecycleEvent(h, sessionKey, "run-2step", "start")
+
+	workers := trk.List()
+	if len(workers) != 1 {
+		t.Fatalf("expected 1 worker, got %d", len(workers))
+	}
+	if workers[0].WorkerID != "worker-twostep" {
+		t.Fatalf("unexpected worker: %+v", workers[0])
+	}
+}
+
+func TestLinkThenLifecycleBuffered(t *testing.T) {
+	hub := &mockBroadcaster{}
+	trk := tracker.NewTracker(t.TempDir(), nil)
+	h := newTestHandler(t, hub, trk)
+	mux := http.NewServeMux()
+	h.RegisterMCRoutes(mux)
+
+	sessionKey := "agent:main:subagent:linkbuf1"
+
+	// Register by label
+	registerWorkerOnly(t, mux, "worker-buf", "task-buf", "coder", "backend", "claude-4")
+
+	// Lifecycle arrives before link
+	simulateLifecycleEvent(h, sessionKey, "run-buf", "start")
+	if len(trk.List()) != 0 {
+		t.Fatalf("expected 0 workers before link")
+	}
+
+	// Link triggers buffered start
+	linkWorker(t, mux, "worker-buf", sessionKey, http.StatusOK)
+
+	workers := trk.List()
+	if len(workers) != 1 {
+		t.Fatalf("expected 1 worker after link, got %d", len(workers))
+	}
+}
+
+func TestLinkUnknownLabel(t *testing.T) {
+	h := newTestHandler(t, nil, nil)
+	mux := http.NewServeMux()
+	h.RegisterMCRoutes(mux)
+
+	// Link without prior register → 404
+	linkWorker(t, mux, "nonexistent", "agent:main:subagent:x", http.StatusNotFound)
+}
+
+func TestLinkEndpointValidation(t *testing.T) {
+	h := newTestHandler(t, nil, nil)
+	mux := http.NewServeMux()
+	h.RegisterMCRoutes(mux)
+
+	// Missing fields
+	body, _ := json.Marshal(map[string]string{"label": "x"})
+	req := httptest.NewRequest(http.MethodPost, "/api/mc/worker/link", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+
+	// GET not allowed
+	req = httptest.NewRequest(http.MethodGet, "/api/mc/worker/link", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", w.Code)
+	}
+}
+
+func TestTokenParsing(t *testing.T) {
+	trk := tracker.NewTracker(t.TempDir(), nil)
+	h := newTestHandler(t, nil, trk)
+	mux := http.NewServeMux()
+	h.RegisterMCRoutes(mux)
+
+	sessionKey := "agent:main:subagent:tok1"
+	registerWorker(t, mux, sessionKey, "worker-tok", "task-tok", "coder", "backend", "claude-4")
+	simulateLifecycleEvent(h, sessionKey, "run-tok", "start")
+
+	// Simulate token text
+	h.tryParseTokens(sessionKey, "Session complete. tokens 12.5k (in 8500 / out 4000)")
+
+	p, ok := trk.Get("worker-tok")
+	if !ok {
+		t.Fatalf("worker not found in tracker")
+	}
+	if p.TokenCount != 12500 {
+		t.Fatalf("expected 12500 tokens, got %d", p.TokenCount)
+	}
+	if p.CostUSD == 0 {
+		t.Fatalf("expected non-zero cost")
+	}
+}
+
+func TestTokenParsingNonSubagentIgnored(t *testing.T) {
+	trk := tracker.NewTracker(t.TempDir(), nil)
+	h := newTestHandler(t, nil, trk)
+
+	// Main session — should be ignored
+	h.tryParseTokens("agent:main:main", "tokens 5.0k (in 3000 / out 2000)")
+	// No crash, no updates — just verify it doesn't panic
+}
+
+func TestTokenParsingNoMatch(t *testing.T) {
+	trk := tracker.NewTracker(t.TempDir(), nil)
+	h := newTestHandler(t, nil, trk)
+
+	// Subagent but no token text
+	h.tryParseTokens("agent:main:subagent:x", "hello world")
+	// No crash
+}
+
+func TestBackwardCompatRegisterWithSessionKey(t *testing.T) {
+	hub := &mockBroadcaster{}
+	trk := tracker.NewTracker(t.TempDir(), nil)
+	h := newTestHandler(t, hub, trk)
+	mux := http.NewServeMux()
+	h.RegisterMCRoutes(mux)
+
+	sessionKey := "agent:main:subagent:compat1"
+	// Old-style combined register (with session_key)
+	registerWorker(t, mux, sessionKey, "worker-compat", "task-compat", "coder", "backend", "claude-4")
+
+	// Lifecycle should work immediately (no separate link needed)
+	simulateLifecycleEvent(h, sessionKey, "run-compat", "start")
+
+	workers := trk.List()
+	if len(workers) != 1 {
+		t.Fatalf("expected 1 worker, got %d", len(workers))
+	}
+	if workers[0].WorkerID != "worker-compat" {
+		t.Fatalf("unexpected worker: %+v", workers[0])
+	}
+
+	// End should also work
+	simulateLifecycleEvent(h, sessionKey, "run-compat", "end")
+	if len(trk.List()) != 0 {
+		t.Fatalf("expected 0 workers after end")
 	}
 }
 
