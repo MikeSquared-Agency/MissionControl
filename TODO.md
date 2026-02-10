@@ -15,14 +15,14 @@
 - [x] **Label-based worker registration** — two-step register/link flow, register by label then bind sessionKey after spawn
 - [x] **Worker self-reporting** — structured findings header with Task ID, Status, Summary
 - [x] **Token/cost tracking** — regex parse from announcement text, calls tracker.UpdateTokens()
-- [ ] **Worker chain** — auto-include predecessor task findings in briefings based on task dependencies
+- [x] **Worker chain** — `mc briefing generate` auto-includes predecessor findings paths + summaries — PR #37
 
 ## Developer Experience
 
 - [x] **Objective.md required** — `mc task create` warns if objective.md is missing/empty
 - [x] **`mc status` after transitions** — prints human-friendly status box to stderr after `mc stage` and `mc task update`
 - [x] **Structured findings format** — docs/findings-format.md, markdown header with Task ID, Status, Summary
-- [ ] **Lean briefings** — reference predecessor findings by path instead of duplicating context
+- [x] **Lean briefings** — `mc briefing generate` references findings by path, extracts summaries — PR #37
 - [ ] **Document stage changes in ARCHITECTURE.md** — gate enforcement, status summary, findings callback not yet documented
 - [ ] **Update docs on every PR** — add to process checklist: ARCHITECTURE.md must reflect any new features
 - [ ] **Checkpoint on compaction** — automatic or prompted checkpoint before context window fills
@@ -34,10 +34,10 @@
 
 ## Worker Coordination
 
-- [ ] **Design for parallelism** — split features across files/packages so workers don't collide. If everything lands in one file, use one worker.
-- [ ] **Parallel worker boundaries** — when running parallel workers, either assign one worker per file or give explicit function-level modification instructions to avoid overlaps
-- [ ] **Integration step after parallel workers** — mandatory review of all parallel worker output together before marking implement as done
-- [ ] **TDD flow** — tester persona writes tests first in implement stage, then developer persona implements against them. Naturally parallel-safe (test files vs source files).
+- [x] **Design for parallelism** — split features across files/packages so workers don't collide. If everything lands in one file, use one worker.
+- [x] **Parallel worker boundaries** — `--scope-paths` flag on `mc task create` assigns file-level boundaries — PR #37
+- [x] **Integration step after parallel workers** — integrator gate check in Rust enforces done integrator task when >1 implement task — PR #37
+- [x] **TDD flow** — documented in SKILL.md, used successfully in PR #37 (tester → developer via --depends-on)
 
 ## Stage Discipline
 
@@ -45,6 +45,12 @@
 - [ ] **Don't rubber-stamp stages** — if a stage genuinely doesn't apply, explain why at the gate. Don't silently advance through 4 stages in 3 seconds.
 - [ ] **Role removal is a design decision** — removing roles (Security, QA, etc.) must be flagged at Design stage and approved before implementing
 - [ ] **Small changes still need Verify** — a 3-file change that removes security roles is exactly when review catches mistakes
+
+## Gate UX
+
+- [ ] **`mc gate satisfy <criterion>`** — manually mark gate criteria as verified, stop abusing --force on every transition
+- [ ] **Document canonical status values** — "done" not "complete", single source of truth, referenced in CONTRIBUTING or ARCHITECTURE
+- [ ] **Enforce structured findings format** — validate Summary header on write, or add a linter. Workers that skip it break the briefing chain.
 
 ## Process
 
