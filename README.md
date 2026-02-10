@@ -205,6 +205,15 @@ mc commit --validate-only --strict
 - `mc commit --validate-only --validate-provenance` — verifies the latest commit contains valid provenance trailers
 - **Scope-path enforcement** — when a task has `scope_paths`, staged files must fall within those paths or the commit is rejected
 
+
+**Mandatory Task Binding (Phase 5):**
+- `mc commit` now requires `--task <id>` — every commit must link to a mission task
+- `--no-task --reason <reason>` escape hatch for infrastructure/config changes outside the task graph
+- `--task` and `--no-task` are mutually exclusive; `--no-task` requires `--reason`
+- **Empty scope restriction** — tasks with no `scope_paths` can only touch `.mission/` files
+- **`scope_exempt_paths`** — config array in `.mission/config.json` for files that bypass scope checks (e.g. `go.sum`, `.gitignore`)
+- **Selective staging** — scope validation runs against `git diff --cached`, so stage only what the task covers
+
 ## Development
 
 ```bash

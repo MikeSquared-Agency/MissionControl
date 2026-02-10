@@ -42,18 +42,15 @@ func findTaskByID(missionDir string, taskID string) (Task, error) {
 }
 
 func validateCommit(missionDir string) error {
-	// Check .mission/ exists
 	if _, err := os.Stat(missionDir); os.IsNotExist(err) {
 		return fmt.Errorf("no mission directory found at %s", missionDir)
 	}
 
-	// Read current stage
 	var stageState StageState
 	if err := readJSON(filepath.Join(missionDir, "state", "stage.json"), &stageState); err != nil {
 		return fmt.Errorf("failed to read stage: %w", err)
 	}
 
-	// Load tasks and filter to current stage
 	tasks, err := loadTasks(missionDir)
 	if err != nil {
 		return fmt.Errorf("failed to load tasks: %w", err)
@@ -70,7 +67,6 @@ func validateCommit(missionDir string) error {
 		return fmt.Errorf("no task entries found for stage %q", stageState.Current)
 	}
 
-	// Check findings for done tasks
 	for _, t := range stageTasks {
 		if t.Status != "done" {
 			continue
@@ -96,7 +92,6 @@ func validateProvenance(missionDir string) []string {
 
 	out, err := exec.Command("git", "-C", projectDir, "rev-list", "--no-merges", "main..HEAD").Output()
 	if err != nil {
-		// No commits or main doesn't exist — pass
 		return nil
 	}
 
@@ -113,21 +108,44 @@ func validateProvenance(missionDir string) []string {
 			continue
 		}
 		msg := string(msgOut)
-		var missing []string
+
+		// A commit is valid if it has task trailers OR a no-task reason
+		hasTaskTrailers := true
 		for _, prefix := range []string{"MC-Task:", "MC-Persona:", "MC-Stage:"} {
 			if !strings.Contains(msg, prefix) {
-				missing = append(missing, prefix)
+				hasTaskTrailers = false
+				break
 			}
 		}
-		if len(missing) > 0 {
+		hasNoTaskReason := strings.Contains(msg, "MC-NoTask-Reason:")
+
+		if !hasTaskTrailers && !hasNoTaskReason {
 			shortSha := sha
 			if len(shortSha) > 10 {
 				shortSha = shortSha[:10]
 			}
-			errs = append(errs, fmt.Sprintf("commit %s missing trailers: %s", shortSha, strings.Join(missing, ", ")))
+			errs = append(errs, fmt.Sprintf("commit %s missing MC-Task trailers or MC-NoTask-Reason", shortSha))
 		}
 	}
 	return errs
+}
+
+// matchesSelectiveScope returns true if file should be staged for a task.
+func matchesSelectiveScope(file string, scopePaths, exemptPaths []string) bool {
+	if strings.HasPrefix(file, ".mission/") {
+		return true
+	}
+	for _, p := range scopePaths {
+		if matchesScopePath(file, p) {
+			return true
+		}
+	}
+	for _, p := range exemptPaths {
+		if matchesScopePath(file, p) {
+			return true
+		}
+	}
+	return false
 }
 
 var commitCmd = &cobra.Command{
@@ -188,15 +206,38 @@ var commitCmd = &cobra.Command{
 			return nil
 		}
 
+		// --- Guard logic for mandatory task binding ---
+		taskFlag, _ := cmd.Flags().GetString("task")
+		noTask, _ := cmd.Flags().GetBool("no-task")
+		reason, _ := cmd.Flags().GetString("reason")
+
+		if taskFlag != "" && noTask {
+			fmt.Fprintf(os.Stderr, "FAIL: --task and --no-task are mutually exclusive\n")
+			os.Exit(1)
+			return nil
+		}
+
+		if taskFlag == "" && !noTask {
+			fmt.Fprintf(os.Stderr, "FAIL: mc commit requires --task <id> or --no-task --reason <reason>\n")
+			os.Exit(1)
+			return nil
+		}
+
+		if noTask && reason == "" {
+			fmt.Fprintf(os.Stderr, "FAIL: --no-task requires --reason\n")
+			os.Exit(1)
+			return nil
+		}
+
 		message, _ := cmd.Flags().GetString("message")
 		if message == "" {
 			return fmt.Errorf("commit message required (use -m)")
 		}
 
 		// Task-based provenance trailers
-		taskFlag, _ := cmd.Flags().GetString("task")
-		if taskFlag != "" {
-			// Read current stage
+		if noTask {
+			message = fmt.Sprintf("%s\n\nMC-NoTask-Reason: %s", message, reason)
+		} else if taskFlag != "" {
 			var stageState StageState
 			if err := readJSON(filepath.Join(missionDir, "state", "stage.json"), &stageState); err != nil {
 				fmt.Fprintf(os.Stderr, "FAIL: cannot read stage: %v\n", err)
@@ -211,7 +252,6 @@ var commitCmd = &cobra.Command{
 				return nil
 			}
 
-			// Task must belong to current stage
 			if task.Stage != stageState.Current {
 				fmt.Fprintf(os.Stderr, "FAIL: task %s belongs to stage %q, current stage is %q\n",
 					task.ID, task.Stage, stageState.Current)
@@ -219,24 +259,64 @@ var commitCmd = &cobra.Command{
 				return nil
 			}
 
-			// Append trailers to commit message
 			message = fmt.Sprintf("%s\n\nMC-Task: %s\nMC-Persona: %s\nMC-Stage: %s",
 				message, task.ID, task.Persona, task.Stage)
 		}
 
 		projectDir := filepath.Dir(missionDir)
 
-		gitAdd := exec.Command("git", "add", "-A")
-		gitAdd.Dir = projectDir
-		gitAdd.Stdout = os.Stdout
-		gitAdd.Stderr = os.Stderr
-		if err := gitAdd.Run(); err != nil {
-			return fmt.Errorf("git add failed: %w", err)
-		}
+		// --- Staging ---
+		if noTask {
+			gitAdd := exec.Command("git", "add", "-A")
+			gitAdd.Dir = projectDir
+			gitAdd.Stdout = os.Stdout
+			gitAdd.Stderr = os.Stderr
+			if err := gitAdd.Run(); err != nil {
+				return fmt.Errorf("git add failed: %w", err)
+			}
+		} else {
+			// Selective staging based on task scope
+			task, _ := findTaskByID(missionDir, taskFlag)
+			exemptPaths := loadScopeExemptPaths(missionDir)
 
-		// Scope validation: after git add, before git commit
-		if taskFlag != "" {
-			stagedFiles, err := getStagedFiles()
+			statusCmd := exec.Command("git", "status", "--porcelain")
+			statusCmd.Dir = projectDir
+			statusOut, err := statusCmd.Output()
+			if err != nil {
+				return fmt.Errorf("git status failed: %w", err)
+			}
+
+			var toStage []string
+			for _, line := range strings.Split(strings.TrimSpace(string(statusOut)), "\n") {
+				if len(line) < 4 {
+					continue
+				}
+				file := strings.TrimSpace(line[3:])
+				if idx := strings.Index(file, " -> "); idx >= 0 {
+					file = file[idx+4:]
+				}
+				if matchesSelectiveScope(file, task.ScopePaths, exemptPaths) {
+					toStage = append(toStage, file)
+				}
+			}
+
+			if len(toStage) > 0 {
+				fmt.Printf("Staging %d file(s) matching task scope:\n", len(toStage))
+				for _, f := range toStage {
+					fmt.Printf("  + %s\n", f)
+				}
+				gitAddArgs := append([]string{"add", "--"}, toStage...)
+				gitAdd := exec.Command("git", gitAddArgs...)
+				gitAdd.Dir = projectDir
+				gitAdd.Stdout = os.Stdout
+				gitAdd.Stderr = os.Stderr
+				if err := gitAdd.Run(); err != nil {
+					return fmt.Errorf("git add failed: %w", err)
+				}
+			}
+
+			// Scope validation after staging
+			stagedFiles, err := getStagedFiles(projectDir)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
 				os.Exit(1)
@@ -267,8 +347,24 @@ var commitCmd = &cobra.Command{
 func init() {
 	commitCmd.Flags().StringP("message", "m", "", "Commit message")
 	commitCmd.Flags().StringP("task", "t", "", "Task ID to link this commit to (appends MC trailers)")
+	commitCmd.Flags().Bool("no-task", false, "Commit without task attribution (requires --reason)")
+	commitCmd.Flags().String("reason", "", "Reason for --no-task commit")
 	commitCmd.Flags().Bool("validate-only", false, "Only run validation, don't commit")
 	commitCmd.Flags().Bool("strict", false, "Enable strict validation (requires --validate-only)")
 	commitCmd.Flags().Bool("validate-provenance", false, "Validate MC trailers on all non-merge commits (requires --validate-only)")
 	rootCmd.AddCommand(commitCmd)
+}
+
+// validateCommitFlags checks the mutual exclusion and dependency rules for commit flags.
+func validateCommitFlags(task string, noTask bool, reason string) error {
+	if task != "" && noTask {
+		return fmt.Errorf("--task and --no-task are mutually exclusive")
+	}
+	if task == "" && !noTask {
+		return fmt.Errorf("mc commit requires --task <id> or --no-task --reason <reason>")
+	}
+	if noTask && reason == "" {
+		return fmt.Errorf("--no-task requires --reason")
+	}
+	return nil
 }
