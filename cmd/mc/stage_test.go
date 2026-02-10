@@ -64,7 +64,7 @@ func TestStageAdvance_ZeroTaskBlock(t *testing.T) {
 	// Advancing from "implement" with zero tasks should be blocked.
 	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-60*time.Second), nil, nil)
 
-	err := advanceStageChecked(missionDir, "implement", false)
+	err := advanceStageChecked(missionDir, "implement", false, "")
 	if err == nil {
 		t.Fatal("expected error when advancing from implement with zero tasks, got nil")
 	}
@@ -77,22 +77,25 @@ func TestStageAdvance_ZeroTaskBlock_WithForce(t *testing.T) {
 	// Same scenario but with force — should succeed.
 	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-60*time.Second), nil, nil)
 
-	err := advanceStageChecked(missionDir, "implement", true)
+	err := advanceStageChecked(missionDir, "implement", true, "test bypass")
 	if err != nil {
 		t.Fatalf("expected force to bypass zero-task block, got: %v", err)
 	}
 }
 
 func TestStageAdvance_ZeroTaskBlock_ExemptStages(t *testing.T) {
-	// King-only stages (goal, requirements, planning, design) should NOT require tasks.
-	exemptStages := []string{"goal", "requirements", "planning", "design"}
-	for _, stage := range exemptStages {
+	// Previously exempt stages now require tasks like all other stages.
+	formerlyExempt := []string{"goal", "requirements", "planning", "design"}
+	for _, stage := range formerlyExempt {
 		t.Run(stage, func(t *testing.T) {
 			missionDir := setupStageTestMission(t, stage, time.Now().Add(-60*time.Second), nil, nil)
 
-			err := advanceStageChecked(missionDir, stage, false)
-			if err != nil {
-				t.Fatalf("stage %q should be exempt from zero-task block, got: %v", stage, err)
+			err := advanceStageChecked(missionDir, stage, false, "")
+			if err == nil {
+				t.Fatalf("stage %q should now block on zero tasks, but got nil", stage)
+			}
+			if !contains(err.Error(), "no tasks") {
+				t.Errorf("expected 'no tasks' error for %q, got: %s", stage, err.Error())
 			}
 		})
 	}
@@ -107,7 +110,7 @@ func TestStageAdvance_VelocityCheck(t *testing.T) {
 	}
 	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-5*time.Second), tasks, nil)
 
-	err := advanceStageChecked(missionDir, "implement", false)
+	err := advanceStageChecked(missionDir, "implement", false, "")
 	if err == nil {
 		t.Fatal("expected velocity check to block advance (stage lasted <10s, zero completed tasks)")
 	}
@@ -121,11 +124,12 @@ func TestStageAdvance_VelocityCheck_OK(t *testing.T) {
 	// Stage lasted 30s — velocity check should pass.
 	// Still need at least one task for implement stage (or completed tasks).
 	tasks := []Task{
-		{ID: "t1", Name: "build it", Stage: "implement", Status: "complete", Persona: "developer"},
+		{ID: "t1", Name: "build it", Stage: "implement", Status: "done", Persona: "developer"},
 	}
 	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-30*time.Second), tasks, nil)
+	writeFindingsFile(t, missionDir, "t1")
 
-	err := advanceStageChecked(missionDir, "implement", false)
+	err := advanceStageChecked(missionDir, "implement", false, "")
 	if err != nil {
 		t.Fatalf("expected velocity check to pass (30s elapsed), got: %v", err)
 	}
@@ -136,11 +140,12 @@ func TestStageAdvance_VelocityCheck_OK(t *testing.T) {
 func TestStageAdvance_MandatoryReviewer(t *testing.T) {
 	// verify stage with tasks but none having persona "reviewer" → gate failure.
 	tasks := []Task{
-		{ID: "t1", Name: "test it", Stage: "verify", Status: "complete", Persona: "tester"},
+		{ID: "t1", Name: "test it", Stage: "verify", Status: "done", Persona: "tester"},
 	}
 	missionDir := setupStageTestMission(t, "verify", time.Now().Add(-60*time.Second), tasks, nil)
+	writeFindingsFile(t, missionDir, "t1")
 
-	err := advanceStageChecked(missionDir, "verify", false)
+	err := advanceStageChecked(missionDir, "verify", false, "")
 	if err == nil {
 		t.Fatal("expected error: verify stage requires at least one task with persona 'reviewer'")
 	}
@@ -156,7 +161,7 @@ func TestStageAdvance_MandatoryDiscoveryTask(t *testing.T) {
 	// discovery stage with zero tasks should block (discovery is NOT in the exempt list).
 	missionDir := setupStageTestMission(t, "discovery", time.Now().Add(-60*time.Second), nil, nil)
 
-	err := advanceStageChecked(missionDir, "discovery", false)
+	err := advanceStageChecked(missionDir, "discovery", false, "")
 	if err == nil {
 		t.Fatal("expected error: discovery stage with zero tasks should block")
 	}
@@ -175,7 +180,7 @@ func TestStageAdvance_ReviewerNotDone(t *testing.T) {
 	}
 	missionDir := setupStageTestMission(t, "verify", time.Now().Add(-60*time.Second), tasks, nil)
 
-	err := advanceStageChecked(missionDir, "verify", false)
+	err := advanceStageChecked(missionDir, "verify", false, "")
 	if err == nil {
 		t.Fatal("expected error: reviewer task not done should block verify")
 	}
@@ -191,7 +196,12 @@ func TestStageAdvance_ReviewerDone(t *testing.T) {
 	}
 	missionDir := setupStageTestMission(t, "verify", time.Now().Add(-60*time.Second), tasks, nil)
 
-	err := advanceStageChecked(missionDir, "verify", false)
+	// Create findings file for the done task
+	findingsDir := filepath.Join(missionDir, "findings")
+	os.MkdirAll(findingsDir, 0o755)
+	os.WriteFile(filepath.Join(findingsDir, "t1.md"), []byte(strings.Repeat("x", 250)), 0o644)
+
+	err := advanceStageChecked(missionDir, "verify", false, "")
 	if err != nil {
 		t.Fatalf("expected done reviewer to pass, got: %v", err)
 	}
@@ -206,7 +216,7 @@ func TestStageAdvance_WrongStageTasks(t *testing.T) {
 	}
 	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-60*time.Second), tasks, nil)
 
-	err := advanceStageChecked(missionDir, "implement", false)
+	err := advanceStageChecked(missionDir, "implement", false, "")
 	if err == nil {
 		t.Fatal("expected zero-task block for implement (tasks are in wrong stage)")
 	}
@@ -224,7 +234,12 @@ func TestStageAdvance_VelocityBypassWithCompletedTasks(t *testing.T) {
 	}
 	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-5*time.Second), tasks, nil)
 
-	err := advanceStageChecked(missionDir, "implement", false)
+	// Create findings file for the done task
+	findingsDir := filepath.Join(missionDir, "findings")
+	os.MkdirAll(findingsDir, 0o755)
+	os.WriteFile(filepath.Join(findingsDir, "t1.md"), []byte(strings.Repeat("x", 250)), 0o644)
+
+	err := advanceStageChecked(missionDir, "implement", false, "")
 	if err != nil {
 		t.Fatalf("expected velocity bypass with completed tasks, got: %v", err)
 	}
@@ -236,10 +251,75 @@ func TestStageAdvance_ForceBypassesVelocity(t *testing.T) {
 	// Force should bypass velocity check even with zero completed tasks.
 	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-2*time.Second), nil, nil)
 
-	err := advanceStageChecked(missionDir, "implement", true)
+	err := advanceStageChecked(missionDir, "implement", true, "test bypass")
 	if err != nil {
 		t.Fatalf("expected force to bypass velocity check, got: %v", err)
 	}
+}
+
+// --- Tests for findings content validation ---
+
+func TestStageAdvance_FindingsRequired(t *testing.T) {
+	// Done task without findings file → error.
+	tasks := []Task{
+		{ID: "t1", Name: "build it", Stage: "implement", Status: "done", Persona: "developer"},
+	}
+	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-60*time.Second), tasks, nil)
+
+	err := advanceStageChecked(missionDir, "implement", false, "")
+	if err == nil {
+		t.Fatal("expected error: done task without findings file")
+	}
+	if !contains(err.Error(), "findings file missing") {
+		t.Errorf("expected 'findings file missing' error, got: %s", err.Error())
+	}
+}
+
+func TestStageAdvance_FindingsMinSize(t *testing.T) {
+	// Done task with tiny findings (<200 bytes) → error.
+	tasks := []Task{
+		{ID: "t1", Name: "build it", Stage: "implement", Status: "done", Persona: "developer"},
+	}
+	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-60*time.Second), tasks, nil)
+
+	findingsDir := filepath.Join(missionDir, "findings")
+	os.MkdirAll(findingsDir, 0o755)
+	os.WriteFile(filepath.Join(findingsDir, "t1.md"), []byte("too small"), 0o644)
+
+	err := advanceStageChecked(missionDir, "implement", false, "")
+	if err == nil {
+		t.Fatal("expected error: findings file too small")
+	}
+	if !contains(err.Error(), "too small") {
+		t.Errorf("expected 'too small' error, got: %s", err.Error())
+	}
+}
+
+func TestStageAdvance_FindingsValid(t *testing.T) {
+	// Done task with >200 byte findings → pass.
+	tasks := []Task{
+		{ID: "t1", Name: "build it", Stage: "implement", Status: "done", Persona: "developer"},
+	}
+	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-60*time.Second), tasks, nil)
+
+	findingsDir := filepath.Join(missionDir, "findings")
+	os.MkdirAll(findingsDir, 0o755)
+	content := strings.Repeat("x", 250)
+	os.WriteFile(filepath.Join(findingsDir, "t1.md"), []byte(content), 0o644)
+
+	err := advanceStageChecked(missionDir, "implement", false, "")
+	if err != nil {
+		t.Fatalf("expected findings validation to pass, got: %v", err)
+	}
+}
+
+// writeFindingsFile creates a >200 byte findings file for a task.
+func writeFindingsFile(t *testing.T, missionDir, taskID string) {
+	t.Helper()
+	findingsDir := filepath.Join(missionDir, "findings")
+	os.MkdirAll(findingsDir, 0o755)
+	content := "Summary: Test findings.\n\n" + strings.Repeat("Detailed findings content. ", 10)
+	os.WriteFile(filepath.Join(findingsDir, taskID+".md"), []byte(content), 0o644)
 }
 
 // contains is a simple substring check helper.

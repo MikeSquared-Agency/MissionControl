@@ -14,7 +14,8 @@ import (
 )
 
 func init() {
-	stageCmd.Flags().Bool("force", false, "Bypass gate check when advancing stages")
+	stageCmd.Flags().Bool("force", false, "Bypass gate check when advancing stages (requires --reason)")
+	stageCmd.Flags().String("reason", "", "Reason for using --force (required with --force, logged to audit trail)")
 	rootCmd.AddCommand(stageCmd)
 	rootCmd.AddCommand(phaseCmd)
 }
@@ -95,13 +96,18 @@ func runStage(cmd *cobra.Command, args []string) error {
 	}
 
 	var force bool
-	var programmatic bool
+	var forceReason string
 	var stderr io.Writer = os.Stderr
 	if cmd != nil {
 		force, _ = cmd.Flags().GetBool("force")
+		forceReason, _ = cmd.Flags().GetString("reason")
 		stderr = cmd.ErrOrStderr()
-	} else {
-		programmatic = true
+	}
+	// Programmatic callers (cmd=nil) no longer get implicit --force.
+	// They must go through the same gate/stage checks as CLI users.
+
+	if force && forceReason == "" {
+		return fmt.Errorf("--force requires --reason \"...\" (so the audit trail captures why)")
 	}
 
 	if args[0] == "next" {
@@ -112,12 +118,12 @@ func runStage(cmd *cobra.Command, args []string) error {
 		}
 
 		// Stage enforcement checks (zero-task, velocity, mandatory tasks)
-		if err := advanceStageChecked(missionDir, state.Current, force || programmatic); err != nil {
+		if err := advanceStageChecked(missionDir, state.Current, force, forceReason); err != nil {
 			return err
 		}
 
 		// Gate check
-		if err := enforceGate(missionDir, state.Current, force, stderr); err != nil {
+		if err := enforceGate(missionDir, state.Current, force, forceReason, stderr); err != nil {
 			return err
 		}
 
@@ -163,11 +169,11 @@ func runStage(cmd *cobra.Command, args []string) error {
 		targetIdx := stageIndex(targetStage)
 		if currentIdx >= 0 && targetIdx > currentIdx {
 			// Stage enforcement checks (zero-task, velocity, mandatory tasks)
-			if err := advanceStageChecked(missionDir, currentState.Current, force || programmatic); err != nil {
+			if err := advanceStageChecked(missionDir, currentState.Current, force, forceReason); err != nil {
 				return err
 			}
 			// Gate check
-			if err := enforceGate(missionDir, currentState.Current, force, stderr); err != nil {
+			if err := enforceGate(missionDir, currentState.Current, force, forceReason, stderr); err != nil {
 				return err
 			}
 		}
@@ -200,9 +206,13 @@ func runStage(cmd *cobra.Command, args []string) error {
 
 // enforceGate checks gate criteria before allowing stage advancement.
 // Checks both gates.json criteria AND mc-core structural checks (integrator, reviewer).
-func enforceGate(missionDir, stage string, force bool, stderr io.Writer) error {
+func enforceGate(missionDir, stage string, force bool, forceReason string, stderr io.Writer) error {
 	if force {
-		fmt.Fprintf(stderr, "⚠ --force: bypassing gate check for %s\n", stage)
+		fmt.Fprintf(stderr, "⚠ --force: bypassing gate check for %s (reason: %s)\n", stage, forceReason)
+		writeAuditLog(missionDir, "gate_forced", "cli", map[string]interface{}{
+			"stage":  stage,
+			"reason": forceReason,
+		})
 		return nil
 	}
 
@@ -217,11 +227,8 @@ func enforceGate(missionDir, stage string, force bool, stderr io.Writer) error {
 	// that gates.json doesn't know about
 	gateResult, coreErr := checkGateViaCore(missionDir, stage)
 	if coreErr != nil {
-		// mc-core unavailable — fall back to gates.json alone
-		if !gatesOK {
-			fmt.Fprintf(stderr, "⚠ Gate check unavailable: %v\n", coreErr)
-		}
-		return nil
+		// mc-core unavailable — hard error, not silent fallback
+		return fmt.Errorf("mc-core gate check failed: %w (install mc-core or use --force --reason to bypass)", coreErr)
 	}
 
 	// mc-core returned a result — enforce it
@@ -242,18 +249,17 @@ func enforceGate(missionDir, stage string, force bool, stderr io.Writer) error {
 }
 
 // advanceStageChecked validates pre-conditions before allowing stage advancement.
-func advanceStageChecked(missionDir string, currentStage string, force bool) error {
+func advanceStageChecked(missionDir string, currentStage string, force bool, forceReason string) error {
 	if force {
+		fmt.Fprintf(os.Stderr, "⚠ --force: bypassing stage checks for %s (reason: %s)\n", currentStage, forceReason)
 		return nil
 	}
 
-	// Exempt stages don't require tasks
-	exemptStages := map[string]bool{
-		"goal": true, "requirements": true, "planning": true, "design": true,
-	}
-
 	// Load tasks for the current stage
-	tasks, _ := loadTasks(missionDir)
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
+		return fmt.Errorf("failed to load tasks: %w", err)
+	}
 	var stageTasks []Task
 	var completedTasks int
 	for _, t := range tasks {
@@ -265,21 +271,35 @@ func advanceStageChecked(missionDir string, currentStage string, force bool) err
 		}
 	}
 
-	// Zero-task block (non-exempt stages)
-	if !exemptStages[currentStage] && len(stageTasks) == 0 {
+	// Zero-task block — ALL stages require at least one task
+	if len(stageTasks) == 0 {
 		return fmt.Errorf("stage %s has no tasks — create at least one or use --force", currentStage)
 	}
 
-	// Velocity check: stage lasted <10s with no completed tasks (non-exempt stages only)
-	if !exemptStages[currentStage] {
-		stagePath := filepath.Join(missionDir, "state", "stage.json")
-		var state StageState
-		if err := readJSON(stagePath, &state); err == nil {
-			if updatedAt, err := time.Parse(time.RFC3339, state.UpdatedAt); err == nil {
-				if time.Since(updatedAt) < 10*time.Second && completedTasks == 0 {
-					return fmt.Errorf("stage %s lasted <10s with no completed tasks — are you rubber-stamping?", currentStage)
-				}
+	// Velocity check: stage lasted <10s with no completed tasks
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	var state StageState
+	if err := readJSON(stagePath, &state); err == nil {
+		if updatedAt, err := time.Parse(time.RFC3339, state.UpdatedAt); err == nil {
+			if time.Since(updatedAt) < 10*time.Second && completedTasks == 0 {
+				return fmt.Errorf("stage %s lasted <10s with no completed tasks — are you rubber-stamping?", currentStage)
 			}
+		}
+	}
+
+	// Findings content validation: each done task must have a findings file >200 bytes
+	findingsDir := filepath.Join(missionDir, "findings")
+	for _, t := range stageTasks {
+		if t.Status != "done" {
+			continue
+		}
+		fPath := filepath.Join(findingsDir, t.ID+".md")
+		info, err := os.Stat(fPath)
+		if err != nil {
+			return fmt.Errorf("task %s is done but findings file missing: %s", t.ID, fPath)
+		}
+		if info.Size() < 200 {
+			return fmt.Errorf("task %s findings file too small (%d bytes < 200 minimum): %s", t.ID, info.Size(), fPath)
 		}
 	}
 
