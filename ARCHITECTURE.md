@@ -223,6 +223,16 @@ Both modes fire the same `EventCallback` (`"spawned"`, `"status_changed"`, `"hea
 | `/api/mc/worker/register` | POST | Pre-register worker metadata before spawn |
 | `/api/mc/workers` | GET | List active workers from tracker |
 
+## Status Values
+
+### Task Statuses
+Tasks progress through: **pending** → **active** → **done**
+
+### Gate Statuses
+Gates progress through: **pending** → **approved**
+
+> **Note:** `"complete"` is **not** a valid status. It appeared in legacy dead code and has been removed. The canonical terminal status for tasks is `"done"`.
+
 ## Stack
 
 | Component | Language | Purpose |

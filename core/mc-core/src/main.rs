@@ -197,9 +197,16 @@ fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
         }
 
         #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum CriterionEntry {
+            Object { description: String, satisfied: bool },
+            Plain(String),
+        }
+
+        #[derive(Deserialize)]
         struct GateState {
             status: String,
-            criteria: Vec<String>,
+            criteria: Vec<CriterionEntry>,
             approved_at: Option<String>,
         }
 
@@ -208,13 +215,40 @@ fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
         if let Some(state) = gates.gates.get(stage_str) {
             // Build gate from state
             let mut gate = Gate::new(stage);
-            // Map criteria - mark as satisfied if status indicates completion
+            // Map criteria from state, respecting per-criterion satisfaction
             for (i, criterion) in gate.criteria.iter_mut().enumerate() {
-                // Check if we have enough criteria in state
                 if i < state.criteria.len() {
-                    // For now, consider criteria satisfied if gate is awaiting_approval or approved
-                    if state.status == "awaiting_approval" || state.status == "approved" {
-                        criterion.satisfy();
+                    match &state.criteria[i] {
+                        CriterionEntry::Object { description, satisfied } => {
+                            criterion.description = description.clone();
+                            if *satisfied {
+                                criterion.satisfy();
+                            }
+                        }
+                        CriterionEntry::Plain(desc) => {
+                            criterion.description = desc.clone();
+                            // Legacy format: infer satisfaction from gate status
+                            if state.status == "awaiting_approval" || state.status == "approved" {
+                                criterion.satisfy();
+                            }
+                        }
+                    }
+                }
+            }
+            // Handle case where state has more criteria than defaults
+            for entry in state.criteria.iter().skip(gate.criteria.len()) {
+                match entry {
+                    CriterionEntry::Object { description, satisfied } => {
+                        let mut c = workflow::GateCriterion::new(description.clone());
+                        if *satisfied { c.satisfy(); }
+                        gate.criteria.push(c);
+                    }
+                    CriterionEntry::Plain(desc) => {
+                        let mut c = workflow::GateCriterion::new(desc.clone());
+                        if state.status == "awaiting_approval" || state.status == "approved" {
+                            c.satisfy();
+                        }
+                        gate.criteria.push(c);
                     }
                 }
             }

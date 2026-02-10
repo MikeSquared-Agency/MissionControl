@@ -275,7 +275,7 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 
 	// Audit after successful persistence
 	auditAction := AuditTaskUpdated
-	if newStatus == "complete" {
+	if newStatus == "done" {
 		auditAction = AuditTaskCompleted
 	}
 	writeAuditLog(missionDir, auditAction, "cli", map[string]interface{}{
