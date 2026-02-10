@@ -30,6 +30,11 @@
 - [ ] **Verify dashboard shows live data after .mission reset** — buildState/watcher may cache stale tasks after reinit
 - [ ] **Register workers with tracking API** — every `sessions_spawn` should call `POST /api/mc/worker/register` so workers appear on mission screen
 
+## Worker Coordination
+
+- [ ] **Parallel worker boundaries** — when running parallel workers, either assign one worker per file or give explicit function-level modification instructions to avoid overlaps
+- [ ] **Integration step after parallel workers** — mandatory review of all parallel worker output together before marking implement as done
+
 ## Process
 
 - [ ] **Hard stop at every gate** — no batching stage transitions, one approval per stage
