@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/DarlingtonDeveloper/MissionControl/hashid"
@@ -83,6 +84,13 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	missionDir, err := findMissionDir()
 	if err != nil {
 		return err
+	}
+
+	// Warn if objective.md is missing or empty
+	objPath := filepath.Join(missionDir, "state", "objective.md")
+	objContent, objErr := os.ReadFile(objPath)
+	if objErr != nil || len(strings.TrimSpace(string(objContent))) == 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "⚠ Warning: objective.md is missing or empty — consider defining the mission objective first\n")
 	}
 
 	name := args[0]
@@ -266,6 +274,8 @@ func runTaskUpdate(cmd *cobra.Command, args []string) error {
 
 	// Auto-commit
 	gitAutoCommit(missionDir, CommitCategoryTask, taskCommitMsg("update", taskID, newStatus))
+
+	printStatusSummary(missionDir, cmd)
 
 	return nil
 }

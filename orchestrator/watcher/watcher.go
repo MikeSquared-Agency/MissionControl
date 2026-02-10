@@ -101,6 +101,11 @@ func (w *Watcher) Events() <-chan Event {
 	return w.events
 }
 
+// MissionDir returns the .mission directory path this watcher monitors.
+func (w *Watcher) MissionDir() string {
+	return w.missionDir
+}
+
 // Start begins watching for file changes
 func (w *Watcher) Start() error {
 	stateDir := filepath.Join(w.missionDir, "state")

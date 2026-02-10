@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -130,6 +132,73 @@ func findMissionDir() (string, error) {
 	}
 
 	return "", fmt.Errorf(".mission/ not found - run 'mc init' first")
+}
+
+// printStatusSummary prints a human-friendly status summary to stderr.
+// It is called after stage and task mutations so the user gets immediate feedback
+// without breaking JSON output on stdout.
+func printStatusSummary(missionDir string, cmd *cobra.Command) {
+	var w io.Writer = os.Stderr
+	if cmd != nil {
+		w = cmd.ErrOrStderr()
+	}
+
+	// Read current stage
+	var state StageState
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	if err := readJSON(stagePath, &state); err != nil {
+		return // silently skip if we can't read stage
+	}
+
+	// Load tasks and count by status for current stage
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
+		return
+	}
+
+	counts := map[string]int{}
+	total := 0
+	for _, t := range tasks {
+		if t.Stage == state.Current {
+			counts[t.Status]++
+			total++
+		}
+	}
+
+	idx := stageIndex(state.Current)
+
+	fmt.Fprintf(w, "\n── Mission Status ──────────────────────\n")
+	fmt.Fprintf(w, "Stage: %s (%d/%d)\n", state.Current, idx+1, len(stages))
+
+	// Tasks line — only show non-zero buckets
+	var parts []string
+	for _, s := range []string{"complete", "in_progress", "pending", "blocked"} {
+		if c := counts[s]; c > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", c, s))
+		}
+	}
+	if len(parts) > 0 {
+		fmt.Fprintf(w, "Tasks: %s  (%d total)\n", strings.Join(parts, " · "), total)
+	} else {
+		fmt.Fprintf(w, "Tasks: none\n")
+	}
+
+	// Gate line
+	var gates GatesState
+	if err := readJSON(filepath.Join(missionDir, "state", "gates.json"), &gates); err == nil {
+		if gate, ok := gates.Gates[state.Current]; ok {
+			switch gate.Status {
+			case "approved":
+				fmt.Fprintf(w, "Gate:  ✓ approved\n")
+			case "ready":
+				fmt.Fprintf(w, "Gate:  ✓ ready for approval\n")
+			default:
+				fmt.Fprintf(w, "Gate:  · %s\n", gate.Status)
+			}
+		}
+	}
+
+	fmt.Fprintf(w, "────────────────────────────────────────\n")
 }
 
 func readJSON(path string, v interface{}) error {
