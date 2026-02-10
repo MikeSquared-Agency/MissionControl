@@ -68,6 +68,9 @@ The orchestrator connects to Kai via the OpenClaw gateway WebSocket. Messages fr
 ### Workers
 Workers are ephemeral Claude Code sessions. They receive a **briefing** (~300 tokens), do their task, output **findings**, and die. This keeps context lean and costs low.
 
+### Briefing Generation
+`mc briefing generate <task-id>` auto-composes a worker briefing from task metadata and predecessor findings. It loads the task from `tasks.jsonl`, validates all dependencies are complete, reads their findings files from `.mission/findings/`, extracts the Summary header from each, and outputs a briefing JSON to `.mission/handoffs/<task-id>-briefing.json`. This replaces the previous fully-manual briefing authoring workflow.
+
 ### 10-Stage Workflow
 
 ```mermaid
@@ -112,6 +115,9 @@ Zones organize the codebase into bounded areas. Workers are assigned to zones an
 | Shared | Cross-cutting utilities, types |
 
 Zones support CRUD (create, edit, split, merge) and workers are assigned via `mc spawn <persona> <task> --zone <zone>`. This prevents workers from stepping on each other's files.
+
+### Task Scope Paths
+Tasks support a `scope_paths` field (`--scope-paths` flag on `mc task create`) listing specific files/directories a worker should touch. This provides finer-grained boundaries than zones — workers know exactly which files are in scope and stay within them.
 
 ### Task Dependencies
 Tasks support `blocks`/`blockedBy` relationships with cycle detection. `mc ready` shows tasks with no open blockers.
@@ -258,6 +264,7 @@ Both modes fire the same `EventCallback` (`"spawned"`, `"status_changed"`, `"hea
 | `mc team` | Agent team management |
 | `mc project link/list` | Project symlinks |
 | `mc audit` | Query audit trail |
+| `mc briefing generate <task-id>` | Auto-compose briefing from task metadata + predecessor findings |
 | `mc migrate` | Convert v5 → v6 |
 | `mc serve` | Start orchestrator |
 
@@ -270,6 +277,12 @@ mc-core count-tokens <file>          # Token counting (tiktoken)
 mc-core checkpoint-compile <file>    # Compile checkpoint → briefing
 mc-core checkpoint-validate <file>   # Validate checkpoint schema
 ```
+
+### Integrator Gate Check (Implement Stage)
+When multiple tasks exist in the implement stage, the gate checker (`Gate::check_integrator_requirement`) requires at least one task with `persona == "integrator"` to be completed before the gate can pass. This ensures an integration verification step always runs when work is parallelized. Single-task implement stages skip this requirement.
+
+### JSONL Compatibility Deserializer
+The Rust core uses a lightweight `JsonlTask` struct to deserialize Go-written JSONL task lines, which use string representations for dates and status values. This avoids schema mismatches between the Go CLI (which writes tasks) and the Rust core (which reads them for gate checking). Lines that fail to parse are silently skipped, ensuring forward compatibility.
 
 ## .mission/ Directory
 

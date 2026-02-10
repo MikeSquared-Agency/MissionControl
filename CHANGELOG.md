@@ -2,6 +2,32 @@
 
 All notable changes to MissionControl are documented in this file.
 
+## v6.8 — Briefing Generation, Scope Paths & Integrator Gate (2026-02-10)
+
+### Briefing Generation
+- `mc briefing generate <task-id>` — auto-compose worker briefings from task metadata + predecessor findings
+- Validates all dependencies are complete before generating
+- Extracts Summary headers from predecessor findings and includes them in the briefing
+- Output: `.mission/handoffs/<task-id>-briefing.json`
+
+### Task Scope Paths
+- `scope_paths` field on tasks (`--scope-paths` flag on `mc task create`)
+- Comma-separated list of files/directories a worker should touch
+- Finer-grained than zones — file-level worker boundaries
+
+### Integrator Gate Check (Implement Stage)
+- `Gate::check_integrator_requirement()` in Rust core
+- When multiple implement-stage tasks exist, requires at least one `integrator` persona task to be done
+- Ensures integration verification always runs for parallelized work
+- Single-task implement stages skip this requirement
+
+### JSONL Compatibility Deserializer (mc-core)
+- Lightweight `JsonlTask` struct for cross-language JSONL compatibility
+- Handles Go-written string dates/status values in Rust gate checker
+- Silently skips malformed lines for forward compatibility
+
+---
+
 ## v6 — State Management & OpenClaw Integration (2026-02-08)
 
 Major release: 10-stage workflow, JSONL storage, task dependencies, OpenClaw bridge, auto-checkpoint, CI pipeline. Merged to main 2026-02-08.

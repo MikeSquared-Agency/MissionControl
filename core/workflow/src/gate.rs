@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::stage::Stage;
+use crate::task::Task;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -134,6 +135,30 @@ impl Gate {
             false
         }
     }
+
+    /// Check implement stage gate: if there are multiple implement tasks,
+    /// at least one must be an integrator task with status done.
+    /// Returns a list of failure messages (empty = pass).
+    pub fn check_integrator_requirement(tasks: &[Task]) -> Vec<String> {
+        let implement_tasks: Vec<&Task> = tasks
+            .iter()
+            .filter(|t| t.stage == Stage::Implement)
+            .collect();
+
+        if implement_tasks.len() > 1 {
+            let has_done_integrator = implement_tasks
+                .iter()
+                .any(|t| t.persona == "integrator" && t.is_done());
+
+            if !has_done_integrator {
+                return vec![
+                    "Integration task required: multiple implement tasks but no completed integrator task".to_string(),
+                ];
+            }
+        }
+
+        vec![]
+    }
 }
 
 #[cfg(test)]
@@ -183,5 +208,44 @@ mod tests {
         let json = serde_json::to_string(&gate).unwrap();
         let parsed: Gate = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.stage, Stage::Implement);
+    }
+
+    #[test]
+    fn test_integrator_requirement_fails_without_integrator() {
+        use crate::task::{Task, TaskStatus};
+
+        let mut t1 = Task::new("t1", "Build API", Stage::Implement, "backend", "developer");
+        t1.status = TaskStatus::Done;
+        let mut t2 = Task::new("t2", "Build UI", Stage::Implement, "frontend", "developer");
+        t2.status = TaskStatus::Done;
+        let t3 = Task::new("t3", "Build DB", Stage::Implement, "backend", "developer");
+
+        let failures = Gate::check_integrator_requirement(&[t1, t2, t3]);
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("Integration task required"));
+    }
+
+    #[test]
+    fn test_integrator_requirement_passes_with_done_integrator() {
+        use crate::task::{Task, TaskStatus};
+
+        let mut t1 = Task::new("t1", "Build API", Stage::Implement, "backend", "developer");
+        t1.status = TaskStatus::Done;
+        let mut t2 = Task::new("t2", "Build UI", Stage::Implement, "frontend", "developer");
+        t2.status = TaskStatus::Done;
+        let mut t3 = Task::new("t3", "Integrate all", Stage::Implement, "backend", "integrator");
+        t3.status = TaskStatus::Done;
+
+        let failures = Gate::check_integrator_requirement(&[t1, t2, t3]);
+        assert!(failures.is_empty());
+    }
+
+    #[test]
+    fn test_integrator_requirement_skipped_for_single_task() {
+        use crate::task::Task;
+
+        let t1 = Task::new("t1", "Build API", Stage::Implement, "backend", "developer");
+        let failures = Gate::check_integrator_requirement(&[t1]);
+        assert!(failures.is_empty());
     }
 }

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use workflow::{Gate, GateStatus, Stage};
+use workflow::{Gate, GateStatus, Stage, Task};
 
 #[derive(Parser)]
 #[command(name = "mc-core")]
@@ -229,7 +229,7 @@ fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
         Gate::new(stage)
     };
 
-    let criteria: Vec<CriterionResult> = gate
+    let mut criteria: Vec<CriterionResult> = gate
         .criteria
         .iter()
         .map(|c| CriterionResult {
@@ -237,6 +237,43 @@ fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
             satisfied: c.satisfied,
         })
         .collect();
+
+    // For implement stage, check integrator requirement
+    if stage == Stage::Implement {
+        let tasks_file = mission_dir.join("state/tasks.jsonl");
+        if tasks_file.exists() {
+            let content = fs::read_to_string(&tasks_file)?;
+            // Use a lightweight struct for JSONL compat (Go writes strings for dates, "done" for status)
+            #[derive(Deserialize)]
+            struct JsonlTask {
+                id: String,
+                name: String,
+                stage: Option<String>,
+                persona: Option<String>,
+                status: Option<String>,
+            }
+            let tasks: Vec<Task> = content
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .filter_map(|l| serde_json::from_str::<JsonlTask>(l).ok())
+                .filter(|t| t.stage.as_deref() == Some("implement"))
+                .map(|t| {
+                    let mut task = Task::new(&t.id, &t.name, Stage::Implement, "", t.persona.as_deref().unwrap_or(""));
+                    if t.status.as_deref() == Some("done") {
+                        task.status = workflow::TaskStatus::Done;
+                    }
+                    task
+                })
+                .collect();
+            let failures = Gate::check_integrator_requirement(&tasks);
+            for f in &failures {
+                criteria.push(CriterionResult {
+                    description: f.clone(),
+                    satisfied: false,
+                });
+            }
+        }
+    }
 
     let status = match gate.status {
         GateStatus::Open => "open",
