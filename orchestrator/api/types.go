@@ -40,7 +40,8 @@ type TaskDepRequest struct {
 
 // StageOverrideRequest is the request for POST /api/stages/override
 type StageOverrideRequest struct {
-	Stage string `json:"stage"`
+	Stage  string `json:"stage"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // ProjectSwitchRequest is the request for POST /api/projects/switch

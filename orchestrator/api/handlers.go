@@ -54,8 +54,11 @@ func readJSON(path string, target interface{}) error {
 }
 
 func (s *Server) runMC(args ...string) (string, error) {
+	s.mu.RLock()
+	dir := s.missionDir
+	s.mu.RUnlock()
 	cmd := exec.Command("mc", args...)
-	cmd.Dir = s.missionDir
+	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
@@ -64,13 +67,19 @@ func respondError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, ErrorResponse{Error: msg})
 }
 
+func (s *Server) getMissionDir() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.missionDir
+}
+
 func (s *Server) statePath(parts ...string) string {
-	elems := append([]string{s.missionDir, ".mission", "state"}, parts...)
+	elems := append([]string{s.getMissionDir(), ".mission", "state"}, parts...)
 	return filepath.Join(elems...)
 }
 
 func (s *Server) missionPath(parts ...string) string {
-	elems := append([]string{s.missionDir, ".mission"}, parts...)
+	elems := append([]string{s.getMissionDir(), ".mission"}, parts...)
 	return filepath.Join(elems...)
 }
 
@@ -164,6 +173,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		zones = deriveZones(tasks)
 	}
 	result["zones"] = zones
+
+	// Checkpoints
+	result["checkpoints"] = s.loadCheckpoints()
 
 	// Workers and tokens from injected deps
 	if s.tracker != nil {
@@ -393,37 +405,53 @@ func deriveZones(tasks []map[string]interface{}) []string {
 	return zones
 }
 
+// loadCheckpoints reads checkpoint JSON files from .mission/orchestrator/checkpoints/.
+func (s *Server) loadCheckpoints() []map[string]interface{} {
+	dir := s.missionPath("orchestrator", "checkpoints")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []map[string]interface{}{}
+	}
+
+	var checkpoints []map[string]interface{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".json")
+		path := filepath.Join(dir, e.Name())
+		var cpData map[string]interface{}
+		if err := readJSON(path, &cpData); err != nil {
+			continue
+		}
+		cp := map[string]interface{}{
+			"id":         name,
+			"created_at": name,
+		}
+		if stage, ok := cpData["stage"].(string); ok {
+			cp["stage"] = stage
+		}
+		if tc, ok := cpData["task_count"].(float64); ok {
+			cp["task_count"] = int(tc)
+		}
+		if auto, ok := cpData["auto"].(bool); ok {
+			cp["auto"] = auto
+		}
+		checkpoints = append(checkpoints, cp)
+	}
+	if checkpoints == nil {
+		checkpoints = []map[string]interface{}{}
+	}
+	return checkpoints
+}
+
 func (s *Server) handleCheckpoints(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		s.handleCreateCheckpoint(w, r)
 		return
 	}
 
-	dir := s.missionPath("checkpoints")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			writeJSON(w, http.StatusOK, []CheckpointInfo{})
-			return
-		}
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	var checkpoints []CheckpointInfo
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		ts := strings.TrimPrefix(name, "cp-")
-		checkpoints = append(checkpoints, CheckpointInfo{ID: name, Timestamp: ts})
-	}
-	if checkpoints == nil {
-		checkpoints = []CheckpointInfo{}
-	}
-
-	writeJSON(w, http.StatusOK, checkpoints)
+	writeJSON(w, http.StatusOK, s.loadCheckpoints())
 }
 
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
@@ -491,13 +519,38 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	home, _ := os.UserHomeDir()
-	configPath := filepath.Join(home, ".mission-control", "config.json")
-	var config interface{}
-	if err := readJSON(configPath, &config); err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"projects": []interface{}{}})
+	registryPath := filepath.Join(home, ".mc", "projects.json")
+
+	var registry struct {
+		Projects map[string]string `json:"projects"`
+	}
+	if err := readJSON(registryPath, &registry); err != nil {
+		writeJSON(w, http.StatusOK, []interface{}{})
 		return
 	}
-	writeJSON(w, http.StatusOK, config)
+	if registry.Projects == nil {
+		writeJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+
+	type projectInfo struct {
+		Name   string `json:"name"`
+		Path   string `json:"path"`
+		Active bool   `json:"active"`
+	}
+	currentDir := s.getMissionDir()
+	var projects []projectInfo
+	for name, path := range registry.Projects {
+		projects = append(projects, projectInfo{
+			Name:   name,
+			Path:   path,
+			Active: path == currentDir,
+		})
+	}
+	sort.Slice(projects, func(i, j int) bool {
+		return projects[i].Name < projects[j].Name
+	})
+	writeJSON(w, http.StatusOK, projects)
 }
 
 func (s *Server) handleOpenClawStatus(w http.ResponseWriter, r *http.Request) {
@@ -760,10 +813,18 @@ func (s *Server) handleStageOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := s.runMC("stage", "set", req.Stage)
+	args := []string{"stage", "set", req.Stage}
+	if req.Reason != "" {
+		args = append(args, "--reason", req.Reason)
+	}
+
+	out, err := s.runMC(args...)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("mc stage set failed: %s", out))
 		return
+	}
+	if s.hub != nil {
+		s.hub.BroadcastRaw("stage", "stage_changed", map[string]string{"stage": req.Stage, "reason": req.Reason})
 	}
 	writeJSON(w, http.StatusOK, CommandResult{Success: true, Output: out})
 }
@@ -779,15 +840,41 @@ func (s *Server) handleProjectSwitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate path against project registry
+	home, _ := os.UserHomeDir()
+	registryPath := filepath.Join(home, ".mc", "projects.json")
+	var registry struct {
+		Projects map[string]string `json:"projects"`
+	}
+	if err := readJSON(registryPath, &registry); err != nil {
+		respondError(w, http.StatusInternalServerError, "cannot read project registry")
+		return
+	}
+
+	registered := false
+	for _, p := range registry.Projects {
+		if p == req.Path {
+			registered = true
+			break
+		}
+	}
+	if !registered {
+		respondError(w, http.StatusForbidden, "path is not a registered project")
+		return
+	}
+
 	// Validate path has .mission directory
 	if _, err := os.Stat(filepath.Join(req.Path, ".mission")); err != nil {
 		respondError(w, http.StatusBadRequest, "path does not contain a .mission directory")
 		return
 	}
 
+	s.mu.Lock()
 	s.missionDir = req.Path
+	s.mu.Unlock()
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":    true,
-		"missionDir": s.missionDir,
+		"missionDir": req.Path,
 	})
 }

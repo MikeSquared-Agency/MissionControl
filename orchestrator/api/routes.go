@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/DarlingtonDeveloper/MissionControl/tokens"
 	"github.com/DarlingtonDeveloper/MissionControl/tracker"
@@ -13,6 +14,7 @@ import (
 // All external dependencies are injected via interfaces.
 type Server struct {
 	missionDir string
+	mu         sync.RWMutex // protects missionDir
 	hub        HubBroadcaster
 	tracker    TrackerReader
 	tokens     TokenReader

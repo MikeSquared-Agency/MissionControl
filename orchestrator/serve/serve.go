@@ -371,6 +371,47 @@ func buildState(missionDir string, trk *tracker.Tracker, acc *tokens.Accumulator
 		}
 	}
 
+	// Checkpoints
+	cpDir := filepath.Join(missionDir, ".mission", "orchestrator", "checkpoints")
+	if cpEntries, err := os.ReadDir(cpDir); err == nil {
+		var checkpoints []map[string]interface{}
+		for _, e := range cpEntries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			name := strings.TrimSuffix(e.Name(), ".json")
+			cpPath := filepath.Join(cpDir, e.Name())
+			data, err := os.ReadFile(cpPath)
+			if err != nil {
+				continue
+			}
+			var cpData map[string]interface{}
+			if json.Unmarshal(data, &cpData) != nil {
+				continue
+			}
+			cp := map[string]interface{}{
+				"id":         name,
+				"created_at": name,
+			}
+			if stage, ok := cpData["stage"].(string); ok {
+				cp["stage"] = stage
+			}
+			if tc, ok := cpData["task_count"].(float64); ok {
+				cp["task_count"] = int(tc)
+			}
+			if auto, ok := cpData["auto"].(bool); ok {
+				cp["auto"] = auto
+			}
+			checkpoints = append(checkpoints, cp)
+		}
+		if checkpoints == nil {
+			checkpoints = []map[string]interface{}{}
+		}
+		state["checkpoints"] = checkpoints
+	} else {
+		state["checkpoints"] = []map[string]interface{}{}
+	}
+
 	// Audit
 	if audit, err := readJSONL(filepath.Join(missionDir, ".mission", "audit.jsonl")); err == nil {
 		state["audit"] = audit

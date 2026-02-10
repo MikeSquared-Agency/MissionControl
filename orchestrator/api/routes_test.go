@@ -22,8 +22,8 @@ func newTestServer(t *testing.T) (*Server, string) {
 		t.Fatal(err)
 	}
 
-	// Create .mission/checkpoints directory
-	cpDir := filepath.Join(dir, ".mission", "checkpoints")
+	// Create .mission/orchestrator/checkpoints directory
+	cpDir := filepath.Join(dir, ".mission", "orchestrator", "checkpoints")
 	if err := os.MkdirAll(cpDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -248,9 +248,11 @@ func TestOpenClawStatus(t *testing.T) {
 func TestCheckpointsList(t *testing.T) {
 	s, dir := newTestServer(t)
 
-	// Create a checkpoint dir
-	cpDir := filepath.Join(dir, ".mission", "checkpoints", "cp-20260208-221853")
+	// Create a checkpoint JSON file in .mission/orchestrator/checkpoints/
+	cpDir := filepath.Join(dir, ".mission", "orchestrator", "checkpoints")
 	os.MkdirAll(cpDir, 0755)
+	cpData := `{"stage":"implement","task_count":5,"auto":false}`
+	os.WriteFile(filepath.Join(cpDir, "cp-20260208-221853.json"), []byte(cpData), 0644)
 
 	routes := s.Routes()
 
@@ -262,13 +264,15 @@ func TestCheckpointsList(t *testing.T) {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
 
-	var cps []CheckpointInfo
+	var cps []map[string]interface{}
 	_ = json.Unmarshal(w.Body.Bytes(), &cps)
 	if len(cps) != 1 {
 		t.Errorf("Expected 1 checkpoint, got %d", len(cps))
 	}
-	if cps[0].ID != "cp-20260208-221853" {
-		t.Errorf("Expected checkpoint id cp-20260208-221853, got %s", cps[0].ID)
+	if len(cps) > 0 {
+		if id, ok := cps[0]["id"].(string); !ok || id != "cp-20260208-221853" {
+			t.Errorf("Expected checkpoint id cp-20260208-221853, got %v", cps[0]["id"])
+		}
 	}
 }
 
