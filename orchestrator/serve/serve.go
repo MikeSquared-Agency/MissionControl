@@ -376,6 +376,17 @@ func buildState(missionDir string, trk *tracker.Tracker, acc *tokens.Accumulator
 		state["audit"] = audit
 	}
 
+	// Graph — compute from tasks for initial sync
+	if rawTasks, ok := state["tasks"].([]interface{}); ok {
+		taskMaps := make([]map[string]interface{}, 0, len(rawTasks))
+		for _, rt := range rawTasks {
+			if m, ok := rt.(map[string]interface{}); ok {
+				taskMaps = append(taskMaps, m)
+			}
+		}
+		state["graph"] = api.BuildGraph(taskMaps)
+	}
+
 	return state
 }
 

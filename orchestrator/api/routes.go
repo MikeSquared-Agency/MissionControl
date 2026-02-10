@@ -96,7 +96,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/requirements", s.methodGET(s.handleRequirements))
 	mux.HandleFunc("/api/requirements/coverage", s.methodGET(s.handleRequirementsCoverage))
 	mux.HandleFunc("/api/specs", s.methodGET(s.handleSpecs))
-	mux.HandleFunc("/api/specs/orphans", s.methodGET(s.handleSpecsOrphans))
+	mux.HandleFunc("/api/specs/", s.handleSpecRouter)
 
 	return mux
 }
@@ -281,6 +281,19 @@ func (s *Server) handleProjectsRouter(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *Server) handleSpecRouter(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/specs/")
+	if path == "orphans" {
+		s.handleSpecsOrphans(w, r)
+		return
+	}
+	s.handleSpecByID(w, r, path)
 }
 
 // --- Method helpers ---
