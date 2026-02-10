@@ -41,18 +41,19 @@
 
 ## Stage Discipline
 
-- [ ] **Don't skip validate** — validate = real environment testing (rebuild, restart service, spawn real worker, check dashboard). Verify = unit tests pass. Both matter.
-- [ ] **Don't rubber-stamp stages** — if a stage genuinely doesn't apply, explain why at the gate. Don't silently advance through 4 stages in 3 seconds.
+- [x] **Don't skip validate** — now code-enforced: zero-task block + velocity check on non-exempt stages — PR #40
+- [x] **Don't rubber-stamp stages** — now code-enforced: velocity check (<10s), zero-task block, mandatory reviewer/integrator — PR #40
 - [ ] **Role removal is a design decision** — removing roles (Security, QA, etc.) must be flagged at Design stage and approved before implementing
 - [ ] **Small changes still need Verify** — a 3-file change that removes security roles is exactly when review catches mistakes
 - [ ] **Scope paths need type awareness** — if a task modifies a function using types from another file, include both files in scope_paths
+- [ ] **Don't inflate retro scores** — score honestly at time of retro, don't revise upward later. Kai scored retro 6 as 8 in memory but it was 4 at the time.
 
 ## Gate UX
 
 - [x] **`mc gate satisfy <criterion>`** — fuzzy match + `--all` flag, writes to gates.json — PR #38
 - [x] **`mc gate status`** — shows ✓/✗ per criterion for current stage — PR #38
 - [x] **`auto_mode` in config.json** — King can run without human gate approval — PR #38
-- [ ] **Document canonical status values** — "done" not "complete", single source of truth, referenced in CONTRIBUTING or ARCHITECTURE
+- [x] **Document canonical status values** — "done" not "complete", added to ARCHITECTURE.md — PR #40
 - [ ] **Enforce structured findings format** — validate Summary header on write, or add a linter. Workers that skip it break the briefing chain.
 - [ ] **mc-core graceful fallback** — check-gate should handle stages without specific criteria instead of erroring
 
