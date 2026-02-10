@@ -2,6 +2,23 @@
 
 All notable changes to MissionControl are documented in this file.
 
+## v6.10 — Process Purity Phase 1 (2026-02-10)
+
+### Strict Validation (`--strict` flag)
+- `mc commit --validate-only --strict` — runs Phase 1 process checks on top of base validation
+- **Verify persona coverage**: verify stage requires `done` tasks for `reviewer`, `security`, and `tester` personas
+- **Integrator requirement**: multi-task implement stages require a `done` integrator task
+
+### CI Pipeline
+- `mc-validate` GitHub Actions workflow — runs `mc commit --validate-only --strict` on all PRs to `main`
+- `make build-ci` — lightweight CI build target (mc + mc-core, no web assets)
+- Pipeline: checkout → Go 1.22 + Rust toolchain → cargo cache → build-ci → validate
+
+### Testing
+- `strict_test.go` — unit tests for verify persona coverage and integrator requirement checks
+
+---
+
 ## v6.9 — Gate UX (2026-02-10)
 
 ### Gate Satisfy & Status Commands

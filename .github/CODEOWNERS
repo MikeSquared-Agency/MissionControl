@@ -1,0 +1,7 @@
+# Protect CI workflow and CODEOWNERS itself
+.github/workflows/mc-validate.yml @DarlingtonDeveloper
+.github/CODEOWNERS @DarlingtonDeveloper
+
+# Core source and build
+cmd/mc/*.go @DarlingtonDeveloper
+Makefile @DarlingtonDeveloper

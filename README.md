@@ -176,6 +176,24 @@ curl -X POST localhost:8080/api/mission/gates/discovery/approve
 - **Audit Trail** — Append-only interaction log
 - **CI Pipeline** — GitHub Actions (build, test, vet, golangci-lint), pre-commit hooks
 
+## Process Enforcement
+
+MissionControl enforces its own workflow via `--strict` validation:
+
+```bash
+mc commit --validate-only --strict
+```
+
+**What `--strict` checks:**
+- **Verify persona coverage** — verify stage must have `done` tasks for `reviewer`, `security`, and `tester` personas
+- **Integrator requirement** — implement stages with multiple tasks require at least one `integrator` persona task to be done
+
+**CI Pipeline (`mc-validate`):**
+- Runs on all PRs to `main` via GitHub Actions
+- Builds `mc` + `mc-core` using `make build-ci` (lightweight, no web assets)
+- Executes `mc commit --validate-only --strict` to enforce process gates
+- PRs that violate workflow rules cannot merge
+
 ## Development
 
 ```bash
