@@ -94,9 +94,9 @@ Each stage has a **gate** with criteria that must be met before advancing.
 | **Requirements** | Document requirements & acceptance criteria | Requirements Engineer | Requirements documented |
 | **Planning** | API contracts, data models, system design | Architect | Architecture approved |
 | **Design** | UI mockups, wireframes, user flows | Designer | Design artifacts approved |
-| **Implement** | Build features | Developer, Debugger | Code complete, builds |
-| **Verify** | Code review & quality checks | Reviewer, Security, Tester | All checks pass |
-| **Validate** | E2E validation, user acceptance | QA | User flows validated |
+| **Implement** | TDD loop: unit-tester writes failing tests, developer makes them pass | Unit-Tester, Developer | All unit tests pass, code compiles |
+| **Verify** | Code review, quality checks, requirements satisfied | Reviewer | Code review complete, review issues addressed, requirements satisfied |
+| **Validate** | E2E integration testing, real environment validation | Integration-Tester | E2E tests pass, real environment validated |
 | **Document** | README + docs | Docs | Docs complete |
 | **Release** | Deploy & verify | DevOps | Deployed, verified |
 
@@ -305,11 +305,10 @@ mc-core checkpoint-validate <file>   # Validate checkpoint schema
 | Requirements Engineer | Requirements | Sonnet | Requirements & criteria |
 | Architect | Planning | Sonnet | API contracts, system design |
 | Designer | Design | Sonnet | UI mockups, wireframes |
-| Developer | Implement | Sonnet | Build features |
-| Debugger | Implement | Sonnet | Fix issues |
-| Reviewer | Verify | Haiku | Code review |
-| Security | Verify | Sonnet | Vulnerability analysis |
-| Tester | Verify | Haiku | Write tests |
+| Unit-Tester | Implement | Sonnet | Write failing tests (TDD red phase) |
+| Developer | Implement | Sonnet | Make tests pass (TDD green phase) |
+| Reviewer | Verify | Sonnet | Code review, quality, requirements |
+| Integration-Tester | Validate | Sonnet | E2E tests, Playwright, real service testing |
 | QA | Validate | Haiku | E2E validation |
 | Docs | Document | Haiku | Documentation |
 | DevOps | Release | Haiku | Deployment |

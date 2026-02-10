@@ -75,16 +75,17 @@ impl Gate {
                 GateCriterion::new("Technical approach approved"),
             ],
             Stage::Implement => vec![
-                GateCriterion::new("All tasks complete"),
-                GateCriterion::new("Code compiles"),
+                GateCriterion::new("All unit tests pass"),
+                GateCriterion::new("Code compiles cleanly"),
             ],
             Stage::Verify => vec![
-                GateCriterion::new("Tests passing"),
-                GateCriterion::new("Review complete"),
+                GateCriterion::new("Code review complete"),
+                GateCriterion::new("All review issues addressed"),
+                GateCriterion::new("Requirements satisfied"),
             ],
             Stage::Validate => vec![
-                GateCriterion::new("Acceptance criteria met"),
-                GateCriterion::new("Stakeholder sign-off"),
+                GateCriterion::new("E2E integration tests pass"),
+                GateCriterion::new("Real environment validated"),
             ],
             Stage::Document => vec![
                 GateCriterion::new("README updated"),
