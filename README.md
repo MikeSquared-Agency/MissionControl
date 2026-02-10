@@ -199,6 +199,12 @@ mc commit --validate-only --strict
 - Prevents PRs from shipping a tampered validator that approves itself
 - OpenClaw agent config enforces per-persona tool policies (e.g. reviewers can't write code, developers can't approve gates)
 
+**Provenance Trailers (Phase 3):**
+- `mc commit --task <id>` — appends `MC-Task`, `MC-Persona`, and `MC-Stage` trailers to the commit message
+- Validates the task belongs to the current stage before committing
+- `mc commit --validate-only --validate-provenance` — verifies the latest commit contains valid provenance trailers
+- **Scope-path enforcement** — when a task has `scope_paths`, staged files must fall within those paths or the commit is rejected
+
 ## Development
 
 ```bash
