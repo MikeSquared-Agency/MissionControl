@@ -5,9 +5,41 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
+
+// findTaskByID loads all tasks and finds one matching the given ID or unambiguous prefix.
+func findTaskByID(missionDir string, taskID string) (Task, error) {
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
+		return Task{}, fmt.Errorf("failed to load tasks: %w", err)
+	}
+
+	var matches []Task
+	for _, t := range tasks {
+		if t.ID == taskID {
+			return t, nil // exact match
+		}
+		if strings.HasPrefix(t.ID, taskID) {
+			matches = append(matches, t)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return Task{}, fmt.Errorf("task not found: %s", taskID)
+	case 1:
+		return matches[0], nil
+	default:
+		ids := make([]string, len(matches))
+		for i, m := range matches {
+			ids[i] = m.ID
+		}
+		return Task{}, fmt.Errorf("ambiguous task prefix %q matches: %s", taskID, strings.Join(ids, ", "))
+	}
+}
 
 func validateCommit(missionDir string) error {
 	// Check .mission/ exists
@@ -59,6 +91,45 @@ func validateCommit(missionDir string) error {
 	return nil
 }
 
+func validateProvenance(missionDir string) []string {
+	projectDir := filepath.Dir(missionDir)
+
+	out, err := exec.Command("git", "-C", projectDir, "rev-list", "--no-merges", "main..HEAD").Output()
+	if err != nil {
+		// No commits or main doesn't exist — pass
+		return nil
+	}
+
+	shas := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(shas) == 0 || (len(shas) == 1 && shas[0] == "") {
+		return nil
+	}
+
+	var errs []string
+	for _, sha := range shas {
+		msgOut, err := exec.Command("git", "-C", projectDir, "log", "-1", "--format=%B", sha).Output()
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("failed to read commit %s: %v", sha[:10], err))
+			continue
+		}
+		msg := string(msgOut)
+		var missing []string
+		for _, prefix := range []string{"MC-Task:", "MC-Persona:", "MC-Stage:"} {
+			if !strings.Contains(msg, prefix) {
+				missing = append(missing, prefix)
+			}
+		}
+		if len(missing) > 0 {
+			shortSha := sha
+			if len(shortSha) > 10 {
+				shortSha = shortSha[:10]
+			}
+			errs = append(errs, fmt.Sprintf("commit %s missing trailers: %s", shortSha, strings.Join(missing, ", ")))
+		}
+	}
+	return errs
+}
+
 var commitCmd = &cobra.Command{
 	Use:   "commit",
 	Short: "Validate mission state and commit changes",
@@ -79,6 +150,13 @@ var commitCmd = &cobra.Command{
 			return nil
 		}
 
+		validateProv, _ := cmd.Flags().GetBool("validate-provenance")
+		if validateProv && !validateOnly {
+			fmt.Fprintf(os.Stderr, "FAIL: --validate-provenance requires --validate-only\n")
+			os.Exit(2)
+			return nil
+		}
+
 		if err := validateCommit(missionDir); err != nil {
 			fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
 			os.Exit(1)
@@ -88,6 +166,16 @@ var commitCmd = &cobra.Command{
 		if strict {
 			if errs := validateStrict(missionDir); len(errs) > 0 {
 				for _, e := range errs {
+					fmt.Fprintf(os.Stderr, "FAIL: %s\n", e)
+				}
+				os.Exit(1)
+				return nil
+			}
+		}
+
+		if validateProv {
+			if provErrs := validateProvenance(missionDir); len(provErrs) > 0 {
+				for _, e := range provErrs {
 					fmt.Fprintf(os.Stderr, "FAIL: %s\n", e)
 				}
 				os.Exit(1)
@@ -105,6 +193,37 @@ var commitCmd = &cobra.Command{
 			return fmt.Errorf("commit message required (use -m)")
 		}
 
+		// Task-based provenance trailers
+		taskFlag, _ := cmd.Flags().GetString("task")
+		if taskFlag != "" {
+			// Read current stage
+			var stageState StageState
+			if err := readJSON(filepath.Join(missionDir, "state", "stage.json"), &stageState); err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL: cannot read stage: %v\n", err)
+				os.Exit(1)
+				return nil
+			}
+
+			task, err := findTaskByID(missionDir, taskFlag)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+				os.Exit(1)
+				return nil
+			}
+
+			// Task must belong to current stage
+			if task.Stage != stageState.Current {
+				fmt.Fprintf(os.Stderr, "FAIL: task %s belongs to stage %q, current stage is %q\n",
+					task.ID, task.Stage, stageState.Current)
+				os.Exit(1)
+				return nil
+			}
+
+			// Append trailers to commit message
+			message = fmt.Sprintf("%s\n\nMC-Task: %s\nMC-Persona: %s\nMC-Stage: %s",
+				message, task.ID, task.Persona, task.Stage)
+		}
+
 		projectDir := filepath.Dir(missionDir)
 
 		gitAdd := exec.Command("git", "add", "-A")
@@ -113,6 +232,23 @@ var commitCmd = &cobra.Command{
 		gitAdd.Stderr = os.Stderr
 		if err := gitAdd.Run(); err != nil {
 			return fmt.Errorf("git add failed: %w", err)
+		}
+
+		// Scope validation: after git add, before git commit
+		if taskFlag != "" {
+			stagedFiles, err := getStagedFiles()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+				os.Exit(1)
+				return nil
+			}
+			if scopeErrs := validateScope(missionDir, taskFlag, stagedFiles); len(scopeErrs) > 0 {
+				for _, e := range scopeErrs {
+					fmt.Fprintf(os.Stderr, "FAIL: %s\n", e)
+				}
+				os.Exit(1)
+				return nil
+			}
 		}
 
 		gitCommit := exec.Command("git", "commit", "-m", message)
@@ -130,7 +266,9 @@ var commitCmd = &cobra.Command{
 
 func init() {
 	commitCmd.Flags().StringP("message", "m", "", "Commit message")
+	commitCmd.Flags().StringP("task", "t", "", "Task ID to link this commit to (appends MC trailers)")
 	commitCmd.Flags().Bool("validate-only", false, "Only run validation, don't commit")
 	commitCmd.Flags().Bool("strict", false, "Enable strict validation (requires --validate-only)")
+	commitCmd.Flags().Bool("validate-provenance", false, "Validate MC trailers on all non-merge commits (requires --validate-only)")
 	rootCmd.AddCommand(commitCmd)
 }

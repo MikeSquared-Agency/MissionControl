@@ -2,6 +2,27 @@
 
 All notable changes to MissionControl are documented in this file.
 
+## v6.12 — Process Purity Phase 3 (2026-02-10)
+
+### Provenance Trailers (`mc commit --task`)
+- `mc commit --task <id>` appends `MC-Task`, `MC-Persona`, and `MC-Stage` trailers to the git commit message
+- Task-stage validation: commit fails if the referenced task doesn't belong to the current stage
+- Trailers provide machine-readable provenance linking every commit to its mission task
+
+### Scope-Path Enforcement
+- `mc commit --task <id>` validates staged files against the task's `scope_paths`
+- Three match modes: directory prefix (`dir/`), glob patterns, and exact match
+- Out-of-scope files are listed and the commit is rejected
+
+### Provenance Validation (`--validate-provenance`)
+- `mc commit --validate-only --validate-provenance` verifies the latest commit contains valid `MC-Task`/`MC-Persona`/`MC-Stage` trailers
+- Designed for CI: ensures no commits bypass provenance requirements
+
+### Testing
+- `scope_test.go` — unit tests for `matchesScopePath` (exact, glob, directory prefix, basename glob) and `validateScope` (happy path, out-of-scope rejection, empty scope skip)
+
+---
+
 ## v6.11 — Process Purity Phase 2 (2026-02-10)
 
 ### Trusted Validator (CI)
