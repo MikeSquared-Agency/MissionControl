@@ -168,13 +168,16 @@ func TestAuditIntegrationWithStageAndGate(t *testing.T) {
 
 	missionDir := filepath.Join(tmpDir, ".mission")
 
-	// Advance stage
-	err = runStage(nil, []string{"next"})
-	if err != nil {
-		t.Fatalf("mc stage next failed: %v", err)
+	// Create+complete task and approve gate for discovery (auto-advances to goal)
+	addTask(t, missionDir, Task{ID: "d1", Name: "discover", Stage: "discovery", Status: "pending", Persona: "researcher", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+	completeTask(t, missionDir, "d1")
+	if err := runGateApprove(nil, []string{"discovery"}); err != nil {
+		t.Fatalf("gate approve for discovery failed: %v", err)
 	}
 
-	// Approve a gate
+	// Approve gate for goal (auto-advances to requirements)
+	addTask(t, missionDir, Task{ID: "g1", Name: "goal", Stage: "goal", Status: "pending", Persona: "dev", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+	completeTask(t, missionDir, "g1")
 	err = runGateApprove(nil, []string{"goal"})
 	if err != nil {
 		t.Fatalf("mc gate approve failed: %v", err)

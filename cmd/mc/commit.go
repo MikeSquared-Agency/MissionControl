@@ -51,8 +51,8 @@ func validateCommit(missionDir string) error {
 		if err != nil {
 			return fmt.Errorf("error checking findings for task %s: %w", t.ID, err)
 		}
-		if info.Size() <= 200 {
-			return fmt.Errorf("findings for task %s is only %d bytes (must be >200 bytes)", t.ID, info.Size())
+		if info.Size() < 200 {
+			return fmt.Errorf("findings for task %s is only %d bytes (must be >=200 bytes)", t.ID, info.Size())
 		}
 	}
 

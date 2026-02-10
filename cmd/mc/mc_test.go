@@ -160,11 +160,14 @@ func TestStageTransition(t *testing.T) {
 		t.Fatalf("mc init failed: %v", err)
 	}
 
-	// Test stage transition using runStage with "next" arg
-	err = runStage(nil, []string{"next"})
-	if err != nil {
-		t.Fatalf("mc stage next failed: %v", err)
+	// Create and complete a task for discovery stage, then approve gate (which auto-advances)
+	missionDir := filepath.Join(tmpDir, ".mission")
+	addTask(t, missionDir, Task{ID: "d1", Name: "discover", Stage: "discovery", Status: "pending", Persona: "researcher", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+	completeTask(t, missionDir, "d1")
+	if err := runGateApprove(nil, []string{"discovery"}); err != nil {
+		t.Fatalf("gate approve failed: %v", err)
 	}
+	// Gate approval auto-advances the stage
 
 	// Verify stage changed
 	stageFile := filepath.Join(tmpDir, ".mission/state/stage.json")
@@ -322,13 +325,20 @@ func TestStageSequence(t *testing.T) {
 	}
 
 	// Test full stage sequence
-	expectedStages := []string{"goal", "requirements", "planning", "design", "implement", "verify", "validate", "document", "release"}
+	missionDir := filepath.Join(tmpDir, ".mission")
+	allStages := []string{"discovery", "goal", "requirements", "planning", "design", "implement", "verify", "validate", "document", "release"}
+	expectedStages := allStages[1:] // after discovery
 
-	for _, expected := range expectedStages {
-		err = runStage(nil, []string{"next"})
-		if err != nil {
-			t.Fatalf("mc stage next failed: %v", err)
+	for i, expected := range expectedStages {
+		// Create+complete task and approve gate for current stage (gate auto-advances)
+		currentStage := allStages[i]
+		taskID := currentStage + "-task"
+		addTask(t, missionDir, Task{ID: taskID, Name: "work", Stage: currentStage, Status: "pending", Persona: "dev", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+		completeTask(t, missionDir, taskID)
+		if err := runGateApprove(nil, []string{currentStage}); err != nil {
+			t.Fatalf("gate approve failed for %s: %v", currentStage, err)
 		}
+		_ = expected // gate approval auto-advances to this stage
 
 		stageFile := filepath.Join(tmpDir, ".mission/state/stage.json")
 		data, err := os.ReadFile(stageFile)
