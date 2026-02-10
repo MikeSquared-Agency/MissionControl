@@ -194,6 +194,11 @@ mc commit --validate-only --strict
 - Executes `mc commit --validate-only --strict` to enforce process gates
 - PRs that violate workflow rules cannot merge
 
+**Trusted Validator (Phase 2):**
+- CI builds from `main` produce a trusted `mc` binary (two-step: build on main → validate on PR)
+- Prevents PRs from shipping a tampered validator that approves itself
+- OpenClaw agent config enforces per-persona tool policies (e.g. reviewers can't write code, developers can't approve gates)
+
 ## Development
 
 ```bash
