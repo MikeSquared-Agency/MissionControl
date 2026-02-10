@@ -34,8 +34,14 @@
 
 ## Worker Coordination
 
+- [ ] **Design for parallelism** — split features across files/packages so workers don't collide. If everything lands in one file, use one worker.
 - [ ] **Parallel worker boundaries** — when running parallel workers, either assign one worker per file or give explicit function-level modification instructions to avoid overlaps
 - [ ] **Integration step after parallel workers** — mandatory review of all parallel worker output together before marking implement as done
+- [ ] **TDD flow** — tester persona writes tests first in implement stage, then developer persona implements against them. Naturally parallel-safe (test files vs source files).
+
+## Stage Discipline
+
+- [ ] **Don't skip validate** — validate = real environment testing (rebuild, restart service, spawn real worker, check dashboard). Verify = unit tests pass. Both matter.
 
 ## Process
 
