@@ -83,21 +83,30 @@ type GraphResponse struct {
 	Nodes        []GraphNode `json:"nodes"`
 	Edges        []GraphEdge `json:"edges"`
 	CriticalPath []string    `json:"critical_path"`
+	BlockedCount int         `json:"blocked_count"`
+	ReadyCount   int         `json:"ready_count"`
 }
 
 // GraphNode is a node in the dependency graph
 type GraphNode struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	Stage  string `json:"stage"`
-	Zone   string `json:"zone"`
+	ID       string `json:"id"`
+	Name     string `json:"name,omitempty"`
+	Title    string `json:"title"`
+	Type     string `json:"type"`
+	Status   string `json:"status"`
+	Stage    string `json:"stage"`
+	Zone     string `json:"zone"`
+	Persona  string `json:"persona"`
+	WorkerID string `json:"worker_id,omitempty"`
 }
 
 // GraphEdge is an edge in the dependency graph
 type GraphEdge struct {
-	From string `json:"from"`
-	To   string `json:"to"`
+	From   string `json:"from,omitempty"`
+	To     string `json:"to,omitempty"`
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Type   string `json:"type"`
 }
 
 // CheckpointInfo represents a checkpoint directory
@@ -125,6 +134,16 @@ type RequirementsCoverage struct {
 // OpenClawStatus is the response for GET /api/openclaw/status
 type OpenClawStatus struct {
 	Connected bool `json:"connected"`
+}
+
+// SpecInfo represents a spec file from .mission/specs/
+type SpecInfo struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Filename    string   `json:"filename"`
+	Stage       string   `json:"stage,omitempty"`
+	LinkedTasks []string `json:"linked_tasks"`
+	IsOrphan    bool     `json:"is_orphan"`
 }
 
 // CommandResult is the response for action endpoints that shell out

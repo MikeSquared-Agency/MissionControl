@@ -243,21 +243,61 @@ func (s *Server) handleTaskByID(w http.ResponseWriter, r *http.Request, id strin
 
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	tasks, _ := readJSONL(s.statePath("tasks.jsonl"))
+	writeJSON(w, http.StatusOK, BuildGraph(tasks))
+}
 
+// BuildGraph constructs a GraphResponse from raw task data.
+// Exported so serve.go can call it from buildState().
+func BuildGraph(tasks []map[string]interface{}) GraphResponse {
 	var nodes []GraphNode
 	var edges []GraphEdge
+	blockedCount := 0
+	readyCount := 0
 
 	for _, t := range tasks {
+		id := fmt.Sprint(t["id"])
+		status := fmt.Sprint(t["status"])
+		name := fmt.Sprint(t["name"])
+		persona := ""
+		if p, ok := t["persona"].(string); ok {
+			persona = p
+		}
+		workerID := ""
+		if w, ok := t["worker_id"].(string); ok {
+			workerID = w
+		}
+
 		nodes = append(nodes, GraphNode{
-			ID:     fmt.Sprint(t["id"]),
-			Name:   fmt.Sprint(t["name"]),
-			Status: fmt.Sprint(t["status"]),
-			Stage:  fmt.Sprint(t["stage"]),
-			Zone:   fmt.Sprint(t["zone"]),
+			ID:       id,
+			Name:     name,
+			Title:    name,
+			Type:     "task",
+			Status:   status,
+			Stage:    fmt.Sprint(t["stage"]),
+			Zone:     fmt.Sprint(t["zone"]),
+			Persona:  persona,
+			WorkerID: workerID,
 		})
+
+		if status == "blocked" {
+			blockedCount++
+		}
+		if status == "pending" {
+			if deps, ok := t["dependencies"].([]interface{}); !ok || len(deps) == 0 {
+				readyCount++
+			}
+		}
+
 		if deps, ok := t["dependencies"].([]interface{}); ok {
 			for _, d := range deps {
-				edges = append(edges, GraphEdge{From: fmt.Sprint(d), To: fmt.Sprint(t["id"])})
+				depStr := fmt.Sprint(d)
+				edges = append(edges, GraphEdge{
+					From:   depStr,
+					To:     id,
+					Source: depStr,
+					Target: id,
+					Type:   "blocks",
+				})
 			}
 		}
 	}
@@ -268,11 +308,13 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		edges = []GraphEdge{}
 	}
 
-	writeJSON(w, http.StatusOK, GraphResponse{
+	return GraphResponse{
 		Nodes:        nodes,
 		Edges:        edges,
 		CriticalPath: []string{},
-	})
+		BlockedCount: blockedCount,
+		ReadyCount:   readyCount,
+	}
 }
 
 func (s *Server) handleWorkers(w http.ResponseWriter, r *http.Request) {
@@ -470,12 +512,97 @@ func (s *Server) handleRequirementsCoverage(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, RequirementsCoverage{Total: 0, Implemented: 0, Coverage: 0.0})
 }
 
+func (s *Server) loadSpecs() []SpecInfo {
+	specsDir := s.missionPath("specs")
+	entries, err := os.ReadDir(specsDir)
+	if err != nil {
+		return []SpecInfo{}
+	}
+
+	tasks, _ := readJSONL(s.statePath("tasks.jsonl"))
+
+	var specs []SpecInfo
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		name := e.Name()
+		id := strings.TrimSuffix(name, ".md")
+
+		// Extract title from first # heading
+		title := strings.ReplaceAll(id, "-", " ")
+		if data, err := os.ReadFile(filepath.Join(specsDir, name)); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "# ") {
+					title = strings.TrimPrefix(line, "# ")
+					break
+				}
+			}
+		}
+
+		// Find linked tasks
+		var linked []string
+		for _, t := range tasks {
+			tid := fmt.Sprint(t["id"])
+			if spec, ok := t["spec"].(string); ok && spec == id {
+				linked = append(linked, tid)
+			}
+		}
+		if linked == nil {
+			linked = []string{}
+		}
+
+		specs = append(specs, SpecInfo{
+			ID:          id,
+			Title:       title,
+			Filename:    name,
+			LinkedTasks: linked,
+			IsOrphan:    len(linked) == 0,
+		})
+	}
+	if specs == nil {
+		specs = []SpecInfo{}
+	}
+	return specs
+}
+
 func (s *Server) handleSpecs(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []interface{}{})
+	writeJSON(w, http.StatusOK, s.loadSpecs())
 }
 
 func (s *Server) handleSpecsOrphans(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []interface{}{})
+	all := s.loadSpecs()
+	var orphans []SpecInfo
+	for _, sp := range all {
+		if sp.IsOrphan {
+			orphans = append(orphans, sp)
+		}
+	}
+	if orphans == nil {
+		orphans = []SpecInfo{}
+	}
+	writeJSON(w, http.StatusOK, orphans)
+}
+
+func (s *Server) handleSpecByID(w http.ResponseWriter, r *http.Request, id string) {
+	if !validateTaskID(id) {
+		respondError(w, http.StatusBadRequest, "invalid spec ID")
+		return
+	}
+	path := s.missionPath("specs", id+".md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			respondError(w, http.StatusNotFound, "spec not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to read spec")
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }
 
 // --- POST/PATCH handlers ---
