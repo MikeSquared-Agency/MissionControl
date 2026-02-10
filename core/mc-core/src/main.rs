@@ -180,6 +180,41 @@ fn validate_handoff(file: &PathBuf) -> Result<ValidationResult> {
     })
 }
 
+/// Lightweight task struct for reading Go-written JSONL (string dates, "done" status).
+#[derive(Deserialize)]
+struct JsonlTask {
+    id: String,
+    name: String,
+    stage: Option<String>,
+    persona: Option<String>,
+    status: Option<String>,
+}
+
+/// Read tasks from JSONL, filter by stage, and convert to workflow::Task.
+fn load_tasks_for_stage(mission_dir: &Path, stage_str: &str, stage: Stage) -> Vec<Task> {
+    let tasks_file = mission_dir.join("state/tasks.jsonl");
+    if !tasks_file.exists() {
+        return vec![];
+    }
+    let content = match fs::read_to_string(&tasks_file) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str::<JsonlTask>(l).ok())
+        .filter(|t| t.stage.as_deref() == Some(stage_str))
+        .map(|t| {
+            let mut task = Task::new(&t.id, &t.name, stage, "", t.persona.as_deref().unwrap_or(""));
+            if t.status.as_deref() == Some("done") {
+                task.status = workflow::TaskStatus::Done;
+            }
+            task
+        })
+        .collect()
+}
+
 fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
     // Parse stage
     let stage: Stage = serde_json::from_str(&format!("\"{}\"", stage_str))
@@ -196,25 +231,43 @@ fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
             gates: std::collections::HashMap<String, GateState>,
         }
 
+        /// A single gate criterion — supports both legacy string format
+        /// and the new structured format with description + satisfied.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum CriterionEntry {
+            Plain(#[allow(dead_code)] String),
+            Structured {
+                #[allow(dead_code)]
+                description: String,
+                satisfied: bool,
+            },
+        }
+
         #[derive(Deserialize)]
         struct GateState {
-            status: String,
-            criteria: Vec<String>,
+            criteria: Vec<CriterionEntry>,
             approved_at: Option<String>,
+            #[allow(dead_code)]
+            status: Option<String>,
         }
 
         let gates: GatesFile = serde_json::from_str(&content)?;
 
         if let Some(state) = gates.gates.get(stage_str) {
-            // Build gate from state
+            // Build gate from state — read per-criterion satisfaction
             let mut gate = Gate::new(stage);
-            // Map criteria - mark as satisfied if status indicates completion
             for (i, criterion) in gate.criteria.iter_mut().enumerate() {
-                // Check if we have enough criteria in state
                 if i < state.criteria.len() {
-                    // For now, consider criteria satisfied if gate is awaiting_approval or approved
-                    if state.status == "awaiting_approval" || state.status == "approved" {
-                        criterion.satisfy();
+                    match &state.criteria[i] {
+                        CriterionEntry::Plain(_) => {
+                            // Legacy string format — can't determine satisfaction, leave unsatisfied
+                        }
+                        CriterionEntry::Structured { satisfied, .. } => {
+                            if *satisfied {
+                                criterion.satisfy();
+                            }
+                        }
                     }
                 }
             }
@@ -240,38 +293,25 @@ fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
 
     // For implement stage, check integrator requirement
     if stage == Stage::Implement {
-        let tasks_file = mission_dir.join("state/tasks.jsonl");
-        if tasks_file.exists() {
-            let content = fs::read_to_string(&tasks_file)?;
-            // Use a lightweight struct for JSONL compat (Go writes strings for dates, "done" for status)
-            #[derive(Deserialize)]
-            struct JsonlTask {
-                id: String,
-                name: String,
-                stage: Option<String>,
-                persona: Option<String>,
-                status: Option<String>,
-            }
-            let tasks: Vec<Task> = content
-                .lines()
-                .filter(|l| !l.trim().is_empty())
-                .filter_map(|l| serde_json::from_str::<JsonlTask>(l).ok())
-                .filter(|t| t.stage.as_deref() == Some("implement"))
-                .map(|t| {
-                    let mut task = Task::new(&t.id, &t.name, Stage::Implement, "", t.persona.as_deref().unwrap_or(""));
-                    if t.status.as_deref() == Some("done") {
-                        task.status = workflow::TaskStatus::Done;
-                    }
-                    task
-                })
-                .collect();
-            let failures = Gate::check_integrator_requirement(&tasks);
-            for f in &failures {
-                criteria.push(CriterionResult {
-                    description: f.clone(),
-                    satisfied: false,
-                });
-            }
+        let tasks = load_tasks_for_stage(mission_dir, "implement", Stage::Implement);
+        let failures = Gate::check_integrator_requirement(&tasks);
+        for f in &failures {
+            criteria.push(CriterionResult {
+                description: f.clone(),
+                satisfied: false,
+            });
+        }
+    }
+
+    // For verify stage, check reviewer requirement
+    if stage == Stage::Verify {
+        let tasks = load_tasks_for_stage(mission_dir, "verify", Stage::Verify);
+        let failures = Gate::check_reviewer_requirement(&tasks);
+        for f in &failures {
+            criteria.push(CriterionResult {
+                description: f.clone(),
+                satisfied: false,
+            });
         }
     }
 
@@ -281,11 +321,14 @@ fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
         GateStatus::AwaitingApproval => "awaiting_approval",
     };
 
+    // can_approve must check ALL criteria including appended integrator/reviewer checks
+    let all_satisfied = criteria.iter().all(|c| c.satisfied);
+
     Ok(GateCheckResult {
         stage: stage_str.to_string(),
         status: status.to_string(),
         criteria,
-        can_approve: gate.all_criteria_satisfied() && gate.approved_at.is_none(),
+        can_approve: all_satisfied && gate.approved_at.is_none(),
     })
 }
 

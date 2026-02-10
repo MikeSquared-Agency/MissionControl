@@ -58,9 +58,22 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read workers: %w", err)
 	}
 
-	// Read gates
-	if err := readJSON(filepath.Join(missionDir, "state", "gates.json"), &status.Gates); err != nil {
-		return fmt.Errorf("failed to read gates: %w", err)
+	// Read gates via compat loader (handles both string and object criteria)
+	gf, gatesErr := loadGates(missionDir)
+	if gatesErr != nil {
+		return fmt.Errorf("failed to read gates: %w", gatesErr)
+	}
+	status.Gates.Gates = make(map[string]Gate)
+	for name, sg := range gf.Gates {
+		var cs []string
+		for _, c := range sg.Criteria {
+			desc := c.Description
+			if c.Satisfied {
+				desc = "✓ " + desc
+			}
+			cs = append(cs, desc)
+		}
+		status.Gates.Gates[name] = Gate{Stage: name, Status: "pending", Criteria: cs}
 	}
 
 	// Output as JSON
@@ -183,18 +196,18 @@ func printStatusSummary(missionDir string, cmd *cobra.Command) {
 		fmt.Fprintf(w, "Tasks: none\n")
 	}
 
-	// Gate line
-	var gates GatesState
-	if err := readJSON(filepath.Join(missionDir, "state", "gates.json"), &gates); err == nil {
-		if gate, ok := gates.Gates[state.Current]; ok {
-			switch gate.Status {
-			case "approved":
-				fmt.Fprintf(w, "Gate:  ✓ approved\n")
-			case "ready":
-				fmt.Fprintf(w, "Gate:  ✓ ready for approval\n")
-			default:
-				fmt.Fprintf(w, "Gate:  · %s\n", gate.Status)
+	// Gate line — use compat loader
+	if gf, err := loadGates(missionDir); err == nil {
+		if allCriteriaMet(&gf, state.Current) {
+			fmt.Fprintf(w, "Gate:  ✓ all criteria met\n")
+		} else if sg, ok := gf.Gates[state.Current]; ok {
+			met := 0
+			for _, c := range sg.Criteria {
+				if c.Satisfied {
+					met++
+				}
 			}
+			fmt.Fprintf(w, "Gate:  · %d/%d criteria met\n", met, len(sg.Criteria))
 		}
 	}
 

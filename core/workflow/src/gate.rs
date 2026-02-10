@@ -159,6 +159,27 @@ impl Gate {
 
         vec![]
     }
+
+    /// Check verify stage gate: at least one task must have persona "reviewer".
+    /// Returns a list of failure messages (empty = pass).
+    pub fn check_reviewer_requirement(tasks: &[Task]) -> Vec<String> {
+        let verify_tasks: Vec<&Task> = tasks
+            .iter()
+            .filter(|t| t.stage == Stage::Verify)
+            .collect();
+
+        let has_reviewer = verify_tasks
+            .iter()
+            .any(|t| t.persona == "reviewer" && t.is_done());
+
+        if !has_reviewer {
+            return vec![
+                "Verify stage requires at least one reviewer task".to_string(),
+            ];
+        }
+
+        vec![]
+    }
 }
 
 #[cfg(test)]
@@ -208,6 +229,42 @@ mod tests {
         let json = serde_json::to_string(&gate).unwrap();
         let parsed: Gate = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.stage, Stage::Implement);
+    }
+
+    #[test]
+    fn test_reviewer_requirement_fails_without_reviewer() {
+        use crate::task::{Task, TaskStatus};
+
+        let mut t1 = Task::new("t1", "Write tests", Stage::Verify, "qa", "developer");
+        t1.status = TaskStatus::Done;
+
+        let failures = Gate::check_reviewer_requirement(&[t1]);
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("Verify stage requires at least one reviewer task"));
+    }
+
+    #[test]
+    fn test_reviewer_requirement_passes_with_done_reviewer() {
+        use crate::task::{Task, TaskStatus};
+
+        let mut t1 = Task::new("t1", "Write tests", Stage::Verify, "qa", "developer");
+        t1.status = TaskStatus::Done;
+        let mut t2 = Task::new("t2", "Code review", Stage::Verify, "backend", "reviewer");
+        t2.status = TaskStatus::Done;
+
+        let failures = Gate::check_reviewer_requirement(&[t1, t2]);
+        assert!(failures.is_empty());
+    }
+
+    #[test]
+    fn test_reviewer_requirement_single_non_reviewer_task() {
+        use crate::task::Task;
+
+        let t1 = Task::new("t1", "Run checks", Stage::Verify, "qa", "developer");
+
+        let failures = Gate::check_reviewer_requirement(&[t1]);
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("Verify stage requires at least one reviewer task"));
     }
 
     #[test]
