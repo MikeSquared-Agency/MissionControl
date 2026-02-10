@@ -102,48 +102,20 @@ func Run(cfg Config) error {
 	}
 
 	// --- HTTP routes ---
+
+	// Create API server (replaces all inline /api/* handlers)
+	apiServer := api.NewServer(missionDir, hub, trk, acc)
+	apiRoutes := apiServer.Routes()
+
+	// Outer mux for WebSocket + OpenClaw (non-api.Server routes)
 	mux := http.NewServeMux()
 
 	// WebSocket
 	mux.HandleFunc("/ws", hub.HandleWebSocket)
 
-	// Health
-	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]string{"status": "ok", "version": "6.1"})
-	})
+	// Delegate all /api/ routes to api.Server
+	mux.Handle("/api/", apiRoutes)
 
-	// Status — full mission snapshot
-	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, buildState(missionDir, trk, acc))
-	})
-
-	// Tokens
-	mux.HandleFunc("/api/tokens", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, acc.Summary())
-	})
-
-	// Workers
-	mux.HandleFunc("/api/workers", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
-			writeJSON(w, 200, trk.List())
-			return
-		}
-		http.Error(w, "method not allowed", 405)
-	})
-
-	// Placeholders
-	mux.HandleFunc("/api/requirements", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, []interface{}{})
-	})
-	mux.HandleFunc("/api/requirements/coverage", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]interface{}{"total": 0, "implemented": 0, "coverage": 0.0})
-	})
-	mux.HandleFunc("/api/specs", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, []interface{}{})
-	})
-	mux.HandleFunc("/api/specs/orphans", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, []interface{}{})
-	})
 	// --- OpenClaw bridge ---
 	gatewayURL := os.Getenv("OPENCLAW_GATEWAY")
 	gatewayToken := os.Getenv("OPENCLAW_TOKEN")
@@ -165,10 +137,14 @@ func Run(cfg Config) error {
 	}
 	if !bridgeConnected {
 		mux.HandleFunc("/api/openclaw/status", func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, 200, map[string]interface{}{"connected": false})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(200)
+			json.NewEncoder(w).Encode(map[string]interface{}{"connected": false})
 		})
 		mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, 501, map[string]string{"error": "OpenClaw bridge not configured. Set OPENCLAW_GATEWAY and OPENCLAW_TOKEN."})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(501)
+			json.NewEncoder(w).Encode(map[string]string{"error": "OpenClaw bridge not configured. Set OPENCLAW_GATEWAY and OPENCLAW_TOKEN."})
 		})
 	}
 
@@ -395,6 +371,11 @@ func buildState(missionDir string, trk *tracker.Tracker, acc *tokens.Accumulator
 		}
 	}
 
+	// Audit
+	if audit, err := readJSONL(filepath.Join(missionDir, ".mission", "audit.jsonl")); err == nil {
+		state["audit"] = audit
+	}
+
 	return state
 }
 
@@ -416,12 +397,6 @@ func readJSONL(path string) ([]interface{}, error) {
 		results = append(results, obj)
 	}
 	return results, nil
-}
-
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
 }
 
 // findMissionDir tries to find the project directory.

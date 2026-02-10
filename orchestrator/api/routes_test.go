@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/DarlingtonDeveloper/MissionControl/tracker"
 )
 
 func newTestServer(t *testing.T) (*Server, string) {
@@ -314,13 +316,13 @@ func TestWorkersWithoutTracker(t *testing.T) {
 // mockTracker implements TrackerReader for testing
 type mockTracker struct{}
 
-func (m *mockTracker) List() interface{} {
-	return []map[string]string{{"id": "w1", "status": "running"}}
+func (m *mockTracker) List() []*tracker.TrackedProcess {
+	return []*tracker.TrackedProcess{{WorkerID: "w1"}}
 }
 
-func (m *mockTracker) Get(id string) (interface{}, bool) {
+func (m *mockTracker) Get(id string) (*tracker.TrackedProcess, bool) {
 	if id == "w1" {
-		return map[string]string{"id": "w1", "status": "running"}, true
+		return &tracker.TrackedProcess{WorkerID: "w1"}, true
 	}
 	return nil, false
 }

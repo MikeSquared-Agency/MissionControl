@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/DarlingtonDeveloper/MissionControl/tokens"
+	"github.com/DarlingtonDeveloper/MissionControl/tracker"
 )
 
 // Server holds dependencies for the API.
@@ -22,13 +25,13 @@ type HubBroadcaster interface {
 
 // TrackerReader is satisfied by tracker.Tracker
 type TrackerReader interface {
-	List() interface{}
-	Get(workerID string) (interface{}, bool)
+	List() []*tracker.TrackedProcess
+	Get(workerID string) (*tracker.TrackedProcess, bool)
 }
 
 // TokenReader is satisfied by tokens.Accumulator
 type TokenReader interface {
-	Summary() interface{}
+	Summary() tokens.TokenSummary
 }
 
 // NewServer creates a new API server.
@@ -120,13 +123,30 @@ func (s *Server) handleTaskRouter(w http.ResponseWriter, r *http.Request) {
 	}
 	id := parts[0]
 
-	if len(parts) > 1 && parts[1] == "dependencies" {
-		if r.Method == http.MethodPost {
-			s.handleTaskDependencies(w, r, id)
+	if len(parts) > 1 {
+		switch parts[1] {
+		case "dependencies":
+			if r.Method == http.MethodPost {
+				s.handleTaskDependencies(w, r, id)
+				return
+			}
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		case "findings":
+			if r.Method == http.MethodGet {
+				s.handleTaskFindings(w, r, id)
+				return
+			}
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		case "briefing":
+			if r.Method == http.MethodGet {
+				s.handleTaskBriefing(w, r, id)
+				return
+			}
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
 
 	switch r.Method {
