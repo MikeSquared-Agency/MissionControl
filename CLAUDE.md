@@ -40,6 +40,24 @@ cd web && npm test
 ## 10 Stages
 discovery → goal → requirements → planning → design → implement → verify → validate → document → release
 
+## Process Discipline
+
+- **Hard stop at every gate** — one approval per stage, no batching transitions
+- **Planning produces a plan, not code** — planning output is task breakdown + approach
+- **Role removal is a design decision** — removing personas must be flagged at Design stage
+- **Small changes still need Verify** — don't skip because "it's small"
+- **Retro after every mission** — mandatory, score honestly, never revise scores upward
+- **Update docs on every PR** — ARCHITECTURE.md + CHANGELOG.md must reflect changes
+- **Scope paths need type awareness** — include type-definition files alongside consumer files
+- **Findings must have Summary header** — `## Summary` required for briefing chain
+
+## Canonical Status Values
+
+- **Task status:** `pending` → `active` → `done` (not "complete", not "finished")
+- **Gate status:** `pending` → `approved`
+- **Stage exempt from task requirements:** goal, requirements, planning, design
+- **Velocity check:** blocks if stage lasted <10s with no completed tasks (non-exempt only)
+
 ## Context Management
 When running multi-agent tasks:
 - Compact at ~60% context usage — don't wait for the limit

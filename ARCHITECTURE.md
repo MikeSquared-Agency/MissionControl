@@ -150,6 +150,21 @@ Gates control stage transitions. Each stage has a gate with named criteria store
 
 **Legacy compatibility:** The loader auto-detects the old format (plain string arrays) and converts to the structured `{description, satisfied}` format on read.
 
+### Stage Enforcement (Code-Enforced)
+
+`advanceStageChecked()` runs before any stage transition (both `mc stage next` and `mc stage <name>`):
+
+| Check | Scope | Bypass |
+|-------|-------|--------|
+| **Zero-task block** | Non-exempt stages must have ≥1 task | `--force` |
+| **Velocity check** | Blocks if stage lasted <10s with 0 completed tasks | `--force`, or complete a task |
+| **Mandatory reviewer** | Verify stage requires ≥1 done reviewer task | `--force` |
+| **Integrator gate** | Implement with >1 task requires done integrator | `--force` |
+
+**Exempt stages** (no task requirements): goal, requirements, planning, design.
+
+`enforceGate()` runs BOTH gates.json criteria AND mc-core structural checks. gates.json holds user-managed criteria; mc-core adds structural requirements (integrator, reviewer). Neither short-circuits the other.
+
 ### Checkpoints & Session Continuity
 State snapshots saved at key moments (gate approvals, token thresholds, graceful shutdown). `mc checkpoint restart` compiles a ~500 token briefing and restarts the King session with full context preserved.
 

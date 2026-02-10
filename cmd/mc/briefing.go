@@ -99,7 +99,9 @@ func generateBriefing(missionDir string, taskID string, objective string) ([]byt
 		predPaths = append(predPaths, relPath)
 
 		summary, err := extractSummary(findingsPath)
-		if err == nil && summary != "" {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ %v\n", err)
+		} else if summary != "" {
 			predSummaries[dep.ID] = summary
 		}
 	}
@@ -144,5 +146,5 @@ func extractSummary(path string) (string, error) {
 			return strings.TrimSpace(strings.TrimPrefix(line, "Summary:")), nil
 		}
 	}
-	return "", nil
+	return "", fmt.Errorf("no 'Summary:' header found in %s — findings must include a Summary line for the briefing chain", path)
 }
