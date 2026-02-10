@@ -101,15 +101,18 @@ func TestStageAdvance_ZeroTaskBlock_ExemptStages(t *testing.T) {
 // --- Tests for velocity check ---
 
 func TestStageAdvance_VelocityCheck(t *testing.T) {
-	// Stage lasted <10s with zero completed tasks → should block.
-	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-5*time.Second), nil, nil)
+	// Stage lasted <10s with tasks but zero completed → should block.
+	tasks := []Task{
+		{ID: "t1", Name: "build it", Stage: "implement", Status: "pending", Persona: "developer"},
+	}
+	missionDir := setupStageTestMission(t, "implement", time.Now().Add(-5*time.Second), tasks, nil)
 
 	err := advanceStageChecked(missionDir, "implement", false)
 	if err == nil {
 		t.Fatal("expected velocity check to block advance (stage lasted <10s, zero completed tasks)")
 	}
 	got := err.Error()
-	if !contains(got, "10s") && !contains(got, "velocity") && !contains(got, "too fast") {
+	if !contains(got, "10s") && !contains(got, "rubber-stamping") {
 		t.Errorf("expected velocity-related error, got: %s", got)
 	}
 }

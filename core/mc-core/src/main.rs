@@ -321,11 +321,14 @@ fn check_gate(stage_str: &str, mission_dir: &Path) -> Result<GateCheckResult> {
         GateStatus::AwaitingApproval => "awaiting_approval",
     };
 
+    // can_approve must check ALL criteria including appended integrator/reviewer checks
+    let all_satisfied = criteria.iter().all(|c| c.satisfied);
+
     Ok(GateCheckResult {
         stage: stage_str.to_string(),
         status: status.to_string(),
         criteria,
-        can_approve: gate.all_criteria_satisfied() && gate.approved_at.is_none(),
+        can_approve: all_satisfied && gate.approved_at.is_none(),
     })
 }
 

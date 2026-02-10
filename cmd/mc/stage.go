@@ -199,26 +199,32 @@ func runStage(cmd *cobra.Command, args []string) error {
 }
 
 // enforceGate checks gate criteria before allowing stage advancement.
-// It tries gates.json first, falls back to mc-core, and handles --force bypass.
+// Checks both gates.json criteria AND mc-core structural checks (integrator, reviewer).
 func enforceGate(missionDir, stage string, force bool, stderr io.Writer) error {
 	if force {
 		fmt.Fprintf(stderr, "⚠ --force: bypassing gate check for %s\n", stage)
 		return nil
 	}
 
+	// 1. Check gates.json criteria
 	gatesFile, gatesErr := loadGates(missionDir)
-	if gatesErr == nil && allCriteriaMet(&gatesFile, stage) {
+	gatesOK := gatesErr == nil && allCriteriaMet(&gatesFile, stage)
+	if gatesOK {
 		fmt.Fprintf(stderr, "✓ All gate criteria met for %s (gates.json)\n", stage)
+	}
+
+	// 2. Always run mc-core — it checks structural requirements (integrator, reviewer)
+	// that gates.json doesn't know about
+	gateResult, coreErr := checkGateViaCore(missionDir, stage)
+	if coreErr != nil {
+		// mc-core unavailable — fall back to gates.json alone
+		if !gatesOK {
+			fmt.Fprintf(stderr, "⚠ Gate check unavailable: %v\n", coreErr)
+		}
 		return nil
 	}
 
-	// Fall back to mc-core check
-	gateResult, err := checkGateViaCore(missionDir, stage)
-	if err != nil {
-		fmt.Fprintf(stderr, "⚠ Gate check unavailable: %v\n", err)
-		return nil
-	}
-
+	// mc-core returned a result — enforce it
 	if !gateResult.CanApprove {
 		fmt.Fprintf(stderr, "✗ Gate blocked for %s:\n", stage)
 		for _, c := range gateResult.Criteria {
@@ -259,20 +265,22 @@ func advanceStageChecked(missionDir string, currentStage string, force bool) err
 		}
 	}
 
-	// Velocity check: stage lasted <10s with no completed tasks
-	stagePath := filepath.Join(missionDir, "state", "stage.json")
-	var state StageState
-	if err := readJSON(stagePath, &state); err == nil {
-		if updatedAt, err := time.Parse(time.RFC3339, state.UpdatedAt); err == nil {
-			if time.Since(updatedAt) < 10*time.Second && completedTasks == 0 {
-				return fmt.Errorf("stage %s lasted <10s with no completed tasks — are you rubber-stamping?", currentStage)
-			}
-		}
-	}
-
 	// Zero-task block (non-exempt stages)
 	if !exemptStages[currentStage] && len(stageTasks) == 0 {
 		return fmt.Errorf("stage %s has no tasks — create at least one or use --force", currentStage)
+	}
+
+	// Velocity check: stage lasted <10s with no completed tasks (non-exempt stages only)
+	if !exemptStages[currentStage] {
+		stagePath := filepath.Join(missionDir, "state", "stage.json")
+		var state StageState
+		if err := readJSON(stagePath, &state); err == nil {
+			if updatedAt, err := time.Parse(time.RFC3339, state.UpdatedAt); err == nil {
+				if time.Since(updatedAt) < 10*time.Second && completedTasks == 0 {
+					return fmt.Errorf("stage %s lasted <10s with no completed tasks — are you rubber-stamping?", currentStage)
+				}
+			}
+		}
 	}
 
 	// Mandatory reviewer for verify stage
