@@ -4,10 +4,10 @@
 
 ## Process Enforcement
 
-- [ ] **Reject tasks for future stages** — `mc task create` should error if task.stage > current stage
-- [ ] **Gate criteria per stage** — define what must be true before advancing (all tasks done, findings reviewed, etc.)
-- [ ] **`mc stage` validates gate** — wire `mc-core check-gate` into stage advancement, block if criteria unmet
-- [ ] **Auto-mark tasks done on findings** — watcher detects `findings_ready`, matches task by ID, sets status=done
+- [x] **Reject tasks for future stages** — PR #33
+- [x] **Gate criteria per stage** — `mc-core check-gate` returns per-stage criteria
+- [x] **`mc stage` validates gate** — calls `mc-core check-gate`, blocks with clear error, `--force` to bypass
+- [x] **Auto-mark tasks done on findings** — watcher `findings_ready` → task status update in serve.go
 - [ ] **Auto-advance stage on gate met** — when all gate criteria satisfied, prompt for advancement (don't auto-advance — gate is a conversation)
 
 ## Worker Lifecycle
@@ -19,8 +19,8 @@
 
 ## Developer Experience
 
-- [ ] **Objective.md required** — `mc task create` should warn/error if `.mission/state/objective.md` is empty
-- [ ] **`mc status` after transitions** — CLI should print status summary after `mc stage` and `mc task update`
+- [x] **Objective.md required** — `mc task create` warns if objective.md is missing/empty
+- [x] **`mc status` after transitions** — prints human-friendly status box to stderr after `mc stage` and `mc task update`
 - [ ] **Structured findings format** — define minimal schema: status, summary, decisions, blockers, files_changed
 - [ ] **Lean briefings** — reference predecessor findings by path instead of duplicating context
 - [ ] **Checkpoint on compaction** — automatic or prompted checkpoint before context window fills

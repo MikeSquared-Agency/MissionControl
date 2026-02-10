@@ -3,6 +3,7 @@
 package serve
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -205,7 +206,141 @@ func bridgeWatcherToHub(w *watcher.Watcher, hub *ws.Hub) {
 			topic = parts[0]
 		}
 		hub.BroadcastRaw(topic, event.Type, event.Data)
+
+		// Handle findings_ready: mark the corresponding task as done
+		if event.Type == "findings_ready" {
+			if data, ok := event.Data.(map[string]interface{}); ok {
+				if taskID, ok := data["task_id"].(string); ok {
+					handleFindingsReady(w, taskID)
+				}
+			}
+		}
 	}
+}
+
+// handleFindingsReady marks a task as complete when its findings file appears.
+func handleFindingsReady(w *watcher.Watcher, taskID string) {
+	// Derive the .mission dir from the watcher (it watches <missionDir>/.mission)
+	// We need the .mission/state/tasks.jsonl path
+	state := w.GetCurrentState()
+	// Find the task in watcher's known state to confirm it exists
+	tasks, ok := state["tasks"].([]watcher.Task)
+	if !ok {
+		log.Printf("findings_ready: could not get tasks from watcher state")
+		return
+	}
+
+	found := false
+	for _, t := range tasks {
+		if t.ID == taskID {
+			if t.Status == "complete" {
+				log.Printf("findings_ready: task %s already complete", taskID)
+				return
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		log.Printf("findings_ready: task %s not found in watcher state", taskID)
+		return
+	}
+
+	// Update via tasks.jsonl directly
+	missionDir := w.MissionDir()
+	tasksPath := filepath.Join(missionDir, "state", "tasks.jsonl")
+	if err := markTaskComplete(tasksPath, taskID); err != nil {
+		log.Printf("findings_ready: failed to mark task %s complete: %v", taskID, err)
+		return
+	}
+	log.Printf("findings_ready: marked task %s as complete", taskID)
+}
+
+// taskEntry is a minimal task struct for JSONL read/write in the serve package.
+type taskEntry struct {
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Stage     string   `json:"stage"`
+	Zone      string   `json:"zone"`
+	Persona   string   `json:"persona"`
+	Status    string   `json:"status"`
+	DependsOn []string `json:"depends_on,omitempty"`
+	WorkerID  string   `json:"worker_id,omitempty"`
+	CreatedAt string   `json:"created_at"`
+	UpdatedAt string   `json:"updated_at"`
+}
+
+// markTaskComplete reads tasks.jsonl, sets the matching task to "complete", and writes back atomically.
+func markTaskComplete(tasksPath, taskID string) error {
+	f, err := os.Open(tasksPath)
+	if err != nil {
+		return err
+	}
+
+	var tasks []taskEntry
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var t taskEntry
+		if err := json.Unmarshal(line, &t); err != nil {
+			continue
+		}
+		tasks = append(tasks, t)
+	}
+	if err := scanner.Err(); err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
+
+	found := false
+	for i := range tasks {
+		if tasks[i].ID == taskID {
+			if tasks[i].Status == "complete" {
+				return nil // idempotent
+			}
+			tasks[i].Status = "complete"
+			tasks[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("task %s not found in tasks.jsonl", taskID)
+	}
+
+	// Atomic write via temp file + rename
+	tmp, err := os.CreateTemp(filepath.Dir(tasksPath), ".tasks-*.jsonl")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+
+	w := bufio.NewWriter(tmp)
+	for _, t := range tasks {
+		data, err := json.Marshal(t)
+		if err != nil {
+			tmp.Close()
+			os.Remove(tmpPath)
+			return err
+		}
+		w.Write(data)
+		w.WriteByte('\n')
+	}
+	if err := w.Flush(); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return os.Rename(tmpPath, tasksPath)
 }
 
 // buildState returns a full mission state snapshot.

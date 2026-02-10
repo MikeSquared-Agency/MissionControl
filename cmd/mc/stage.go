@@ -1,7 +1,12 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -9,8 +14,45 @@ import (
 )
 
 func init() {
+	stageCmd.Flags().Bool("force", false, "Bypass gate check when advancing stages")
 	rootCmd.AddCommand(stageCmd)
 	rootCmd.AddCommand(phaseCmd)
+}
+
+// RustGateResult mirrors mc-core check-gate JSON output.
+type RustGateResult struct {
+	Stage      string          `json:"stage"`
+	Status     string          `json:"status"`
+	Criteria   []RustCriterion `json:"criteria"`
+	CanApprove bool            `json:"can_approve"`
+}
+
+// RustCriterion is a single gate criterion from mc-core.
+type RustCriterion struct {
+	Description string `json:"description"`
+	Satisfied   bool   `json:"satisfied"`
+}
+
+func checkGateViaCore(missionDir, stage string) (*RustGateResult, error) {
+	bin := findMcCore()
+	if bin == "" {
+		return nil, fmt.Errorf("mc-core not found (install it or place it alongside mc)")
+	}
+	cmd := exec.Command(bin, "check-gate", stage, "--mission-dir", missionDir)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil, fmt.Errorf("mc-core check-gate failed (exit %d): %s", exitErr.ExitCode(), string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("mc-core check-gate exec error: %w", err)
+	}
+	var result RustGateResult
+	if err := json.Unmarshal(out, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse mc-core output: %w", err)
+	}
+	return &result, nil
 }
 
 // phaseCmd is a deprecated alias for stageCmd
@@ -52,11 +94,39 @@ func runStage(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	var force bool
+	var stderr io.Writer = os.Stderr
+	if cmd != nil {
+		force, _ = cmd.Flags().GetBool("force")
+		stderr = cmd.ErrOrStderr()
+	}
+
 	if args[0] == "next" {
 		// Transition to next stage
 		var state StageState
 		if err := readJSON(stagePath, &state); err != nil {
 			return fmt.Errorf("failed to read stage: %w", err)
+		}
+
+		// Gate check before advancing
+		if !force {
+			gateResult, err := checkGateViaCore(missionDir, state.Current)
+			if err != nil {
+				fmt.Fprintf(stderr, "⚠ Gate check unavailable: %v\n", err)
+			} else if !gateResult.CanApprove {
+				fmt.Fprintf(stderr, "✗ Gate blocked for %s:\n", state.Current)
+				for _, c := range gateResult.Criteria {
+					icon := "✓"
+					if !c.Satisfied {
+						icon = "✗"
+					}
+					fmt.Fprintf(stderr, "  %s %s\n", icon, c.Description)
+				}
+				fmt.Fprintf(stderr, "\nUse --force to bypass.\n")
+				return fmt.Errorf("gate criteria not met for stage %q", state.Current)
+			}
+		} else {
+			fmt.Fprintf(stderr, "⚠ --force: bypassing gate check for %s\n", state.Current)
 		}
 
 		nextStage, err := getNextStage(state.Current)
@@ -79,6 +149,7 @@ func runStage(cmd *cobra.Command, args []string) error {
 		gitAutoCommit(missionDir, CommitCategoryStage, fmt.Sprintf("advance %s → %s", getPrevStage(nextStage), nextStage))
 
 		fmt.Printf("Stage transitioned: %s → %s\n", getPrevStage(nextStage), nextStage)
+		printStatusSummary(missionDir, cmd)
 		return nil
 	}
 
@@ -86,6 +157,34 @@ func runStage(cmd *cobra.Command, args []string) error {
 	targetStage := args[0]
 	if !isValidStage(targetStage) {
 		return fmt.Errorf("invalid stage: %s (valid: %v)", targetStage, stages)
+	}
+
+	// Read current stage to detect forward jumps
+	var currentState StageState
+	if err := readJSON(stagePath, &currentState); err == nil {
+		currentIdx := stageIndex(currentState.Current)
+		targetIdx := stageIndex(targetStage)
+		if currentIdx >= 0 && targetIdx > currentIdx && !force {
+			// Forward advancement — gate check required
+			gateResult, gateErr := checkGateViaCore(missionDir, currentState.Current)
+			if gateErr != nil {
+				fmt.Fprintf(stderr, "⚠ Gate check unavailable: %v\n", gateErr)
+			} else if !gateResult.CanApprove {
+				fmt.Fprintf(stderr, "✗ Gate blocked for %s:\n", currentState.Current)
+				for _, c := range gateResult.Criteria {
+					icon := "✓"
+					if !c.Satisfied {
+						icon = "✗"
+					}
+					fmt.Fprintf(stderr, "  %s %s\n", icon, c.Description)
+				}
+				fmt.Fprintf(stderr, "\nUse --force to bypass.\n")
+				return fmt.Errorf("gate criteria not met for stage %q", currentState.Current)
+			}
+		}
+		if currentIdx >= 0 && targetIdx > currentIdx && force {
+			fmt.Fprintf(stderr, "⚠ --force: bypassing gate check for %s\n", currentState.Current)
+		}
 	}
 
 	state := StageState{
@@ -104,6 +203,7 @@ func runStage(cmd *cobra.Command, args []string) error {
 	gitAutoCommit(missionDir, CommitCategoryStage, fmt.Sprintf("set %s", targetStage))
 
 	fmt.Printf("Stage set to: %s\n", targetStage)
+	printStatusSummary(missionDir, cmd)
 	return nil
 }
 
