@@ -62,7 +62,7 @@ func TestFullWalkthrough_F6(t *testing.T) {
 		completeTask(t, missionDir, taskID)
 
 		// --- Approve the gate ---
-		if err := runGateApprove(nil, []string{stage}); err != nil {
+		if err := runGateApproveWithNote(stage, "test approval"); err != nil {
 			t.Fatalf("gate approve failed for stage %q: %v", stage, err)
 		}
 
@@ -138,13 +138,13 @@ func TestFullWalkthrough_NoDoubleAdvance(t *testing.T) {
 	stagePath := filepath.Join(missionDir, "state", "stage.json")
 
 	// Approve discovery gate → should move to goal
-	if err := runGateApprove(nil, []string{"discovery"}); err != nil {
+	if err := runGateApproveWithNote("discovery", "test approval"); err != nil {
 		t.Fatalf("first gate approve failed: %v", err)
 	}
 	assertCurrentStage(t, stagePath, "goal")
 
 	// Approve discovery gate AGAIN → should error since we're now on "goal"
-	err := runGateApprove(nil, []string{"discovery"})
+	err := runGateApproveWithNote("discovery", "test approval")
 	if err == nil {
 		t.Error("expected error when approving gate for non-current stage")
 	}

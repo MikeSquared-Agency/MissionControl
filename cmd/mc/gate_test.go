@@ -314,3 +314,176 @@ func TestAllCriteriaMet(t *testing.T) {
 		t.Error("expected false for non-existent stage")
 	}
 }
+
+// --- Tests for --note requirement on gate approve ---
+
+func TestGateApprove_RequiresNote(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalDir)
+
+	if err := runInit(nil, nil); err != nil {
+		t.Fatalf("mc init failed: %v", err)
+	}
+
+	missionDir := filepath.Join(tmpDir, ".mission")
+	addTask(t, missionDir, Task{ID: "t1", Name: "work", Stage: "discovery", Status: "pending", Persona: "dev", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+	completeTask(t, missionDir, "t1")
+
+	// Approve without note should fail
+	err := runGateApproveWithNote("discovery", "")
+	if err == nil {
+		t.Fatal("expected error when approving gate without --note")
+	}
+	if !strings.Contains(err.Error(), "note") {
+		t.Errorf("expected error about --note, got: %s", err.Error())
+	}
+}
+
+func TestGateApprove_WithNote(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalDir)
+
+	if err := runInit(nil, nil); err != nil {
+		t.Fatalf("mc init failed: %v", err)
+	}
+
+	missionDir := filepath.Join(tmpDir, ".mission")
+	addTask(t, missionDir, Task{ID: "t1", Name: "work", Stage: "discovery", Status: "pending", Persona: "dev", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+	completeTask(t, missionDir, "t1")
+
+	// Approve with note should succeed
+	err := runGateApproveWithNote("discovery", "Reviewed findings, no issues found")
+	if err != nil {
+		t.Fatalf("expected gate approve with note to succeed, got: %v", err)
+	}
+
+	// Verify note is stored in gates.json
+	gatesPath := filepath.Join(missionDir, "state", "gates.json")
+	var gatesState GatesState
+	if err := readJSON(gatesPath, &gatesState); err != nil {
+		t.Fatalf("failed to read gates.json: %v", err)
+	}
+	gate := gatesState.Gates["discovery"]
+	if gate.ApprovalNote != "Reviewed findings, no issues found" {
+		t.Errorf("expected approval note stored, got: %q", gate.ApprovalNote)
+	}
+}
+
+func TestGateApprove_EmptyNoteRejected(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalDir)
+
+	if err := runInit(nil, nil); err != nil {
+		t.Fatalf("mc init failed: %v", err)
+	}
+
+	missionDir := filepath.Join(tmpDir, ".mission")
+	addTask(t, missionDir, Task{ID: "t1", Name: "work", Stage: "discovery", Status: "pending", Persona: "dev", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+	completeTask(t, missionDir, "t1")
+
+	// Empty string note should fail
+	err := runGateApproveWithNote("discovery", "   ")
+	if err == nil {
+		t.Fatal("expected error when approving gate with empty/whitespace note")
+	}
+}
+
+func TestGateApprove_NoteInAuditLog(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalDir)
+
+	if err := runInit(nil, nil); err != nil {
+		t.Fatalf("mc init failed: %v", err)
+	}
+
+	missionDir := filepath.Join(tmpDir, ".mission")
+	addTask(t, missionDir, Task{ID: "t1", Name: "work", Stage: "discovery", Status: "pending", Persona: "dev", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+	completeTask(t, missionDir, "t1")
+
+	err := runGateApproveWithNote("discovery", "All findings reviewed and addressed")
+	if err != nil {
+		t.Fatalf("gate approve failed: %v", err)
+	}
+
+	// Verify audit log contains the note
+	entries, err := readAuditLog(missionDir)
+	if err != nil {
+		t.Fatalf("readAuditLog failed: %v", err)
+	}
+
+	found := false
+	for _, e := range entries {
+		if e.Action == AuditGateApproved {
+			if note, ok := e.Details["note"]; ok && note == "All findings reviewed and addressed" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("expected audit log entry with approval note")
+	}
+}
+
+func TestGateApprove_StageAdvances(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalDir)
+
+	if err := runInit(nil, nil); err != nil {
+		t.Fatalf("mc init failed: %v", err)
+	}
+
+	missionDir := filepath.Join(tmpDir, ".mission")
+	addTask(t, missionDir, Task{ID: "t1", Name: "work", Stage: "discovery", Status: "pending", Persona: "dev", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+	completeTask(t, missionDir, "t1")
+
+	err := runGateApproveWithNote("discovery", "Discovery complete")
+	if err != nil {
+		t.Fatalf("gate approve failed: %v", err)
+	}
+
+	// Verify stage advanced to goal
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	var stage StageState
+	if err := readJSON(stagePath, &stage); err != nil {
+		t.Fatalf("failed to read stage: %v", err)
+	}
+	if stage.Current != "goal" {
+		t.Errorf("expected stage to advance to 'goal', got %q", stage.Current)
+	}
+}
+
+func TestGateApprove_ReApprovalRejected(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalDir)
+
+	if err := runInit(nil, nil); err != nil {
+		t.Fatalf("mc init failed: %v", err)
+	}
+
+	missionDir := filepath.Join(tmpDir, ".mission")
+	addTask(t, missionDir, Task{ID: "t1", Name: "work", Stage: "discovery", Status: "pending", Persona: "dev", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
+	completeTask(t, missionDir, "t1")
+
+	// First approval
+	if err := runGateApproveWithNote("discovery", "First approval"); err != nil {
+		t.Fatalf("first approve failed: %v", err)
+	}
+
+	// Re-approval should fail (stage already advanced, so it's "wrong stage" now)
+	err := runGateApproveWithNote("discovery", "Second approval attempt")
+	if err == nil {
+		t.Fatal("expected error on re-approval")
+	}
+}

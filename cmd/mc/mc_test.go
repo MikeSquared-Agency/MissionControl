@@ -164,7 +164,7 @@ func TestStageTransition(t *testing.T) {
 	missionDir := filepath.Join(tmpDir, ".mission")
 	addTask(t, missionDir, Task{ID: "d1", Name: "discover", Stage: "discovery", Status: "pending", Persona: "researcher", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
 	completeTask(t, missionDir, "d1")
-	if err := runGateApprove(nil, []string{"discovery"}); err != nil {
+	if err := runGateApproveWithNote("discovery", "test approval"); err != nil {
 		t.Fatalf("gate approve failed: %v", err)
 	}
 	// Gate approval auto-advances the stage
@@ -335,7 +335,7 @@ func TestStageSequence(t *testing.T) {
 		taskID := currentStage + "-task"
 		addTask(t, missionDir, Task{ID: taskID, Name: "work", Stage: currentStage, Status: "pending", Persona: "dev", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"})
 		completeTask(t, missionDir, taskID)
-		if err := runGateApprove(nil, []string{currentStage}); err != nil {
+		if err := runGateApproveWithNote(currentStage, "test approval"); err != nil {
 			t.Fatalf("gate approve failed for %s: %v", currentStage, err)
 		}
 		_ = expected // gate approval auto-advances to this stage
@@ -486,7 +486,7 @@ func TestGateApproveCreatesCheckpoint(t *testing.T) {
 	}
 
 	// Approve gate
-	err = runGateApprove(nil, []string{"discovery"})
+	err = runGateApproveWithNote("discovery", "test approval")
 	if err != nil {
 		t.Fatalf("mc gate approve failed: %v", err)
 	}
@@ -756,7 +756,7 @@ func TestF8_AutoCheckpointOnGateApproval(t *testing.T) {
 	beforeCount := len(beforeEntries)
 
 	// Approve the discovery gate
-	err := runGateApprove(nil, []string{"discovery"})
+	err := runGateApproveWithNote("discovery", "test approval")
 	if err != nil {
 		t.Fatalf("runGateApprove failed: %v", err)
 	}
@@ -791,13 +791,13 @@ func TestF8_AutoCheckpointOnGateApproval(t *testing.T) {
 	}
 
 	// BUG REGRESSION: Verify re-approving the same gate fails (prevents double-advance)
-	err = runGateApprove(nil, []string{"discovery"})
+	err = runGateApproveWithNote("discovery", "test approval")
 	if err == nil {
 		t.Error("Re-approving an already-approved gate should fail")
 	}
 
 	// BUG REGRESSION: Verify approving a non-current stage fails
-	err = runGateApprove(nil, []string{"requirements"})
+	err = runGateApproveWithNote("requirements", "test approval")
 	if err == nil {
 		t.Error("Approving gate for non-current stage should fail")
 	}

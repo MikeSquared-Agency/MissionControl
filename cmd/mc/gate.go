@@ -168,6 +168,7 @@ func init() {
 	gateCmd.AddCommand(gateApproveCmd)
 	gateCmd.AddCommand(gateSatisfyCmd)
 	gateCmd.AddCommand(gateStatusCmd)
+	gateApproveCmd.Flags().String("note", "", "Reason for approving this gate (required)")
 	gateSatisfyCmd.Flags().Bool("all", false, "Satisfy all criteria at once")
 }
 
@@ -300,8 +301,12 @@ func runGateCheck(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runGateApprove(cmd *cobra.Command, args []string) error {
-	stage := args[0]
+// runGateApproveWithNote is the internal helper for approving a gate with a note.
+func runGateApproveWithNote(stage, note string) error {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return fmt.Errorf("--note is required (explain why you're approving this gate)")
+	}
 
 	if !isValidStage(stage) {
 		return fmt.Errorf("invalid stage: %s", stage)
@@ -312,6 +317,34 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	return doGateApprove(missionDir, stage, note)
+}
+
+func runGateApprove(cmd *cobra.Command, args []string) error {
+	stage := args[0]
+
+	var note string
+	if cmd != nil {
+		note, _ = cmd.Flags().GetString("note")
+	}
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return fmt.Errorf("--note is required (explain why you're approving this gate)")
+	}
+
+	if !isValidStage(stage) {
+		return fmt.Errorf("invalid stage: %s", stage)
+	}
+
+	missionDir, err := findMissionDir()
+	if err != nil {
+		return err
+	}
+
+	return doGateApprove(missionDir, stage, note)
+}
+
+func doGateApprove(missionDir, stage, note string) error {
 	if err := requireV6(missionDir); err != nil {
 		return err
 	}
@@ -358,6 +391,7 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 
 	gate.Status = "approved"
 	gate.ApprovedAt = time.Now().UTC().Format(time.RFC3339)
+	gate.ApprovalNote = note
 	gatesState.Gates[stage] = gate
 
 	if err := writeJSON(gatesPath, gatesState); err != nil {
@@ -366,6 +400,7 @@ func runGateApprove(cmd *cobra.Command, args []string) error {
 
 	writeAuditLog(missionDir, AuditGateApproved, "cli", map[string]interface{}{
 		"stage": stage,
+		"note":  note,
 	})
 
 	// Auto-commit gate approval

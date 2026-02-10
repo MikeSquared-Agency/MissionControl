@@ -269,10 +269,11 @@ type WorkersState struct {
 }
 
 type Gate struct {
-	Stage      string   `json:"stage"`
-	Status     string   `json:"status"` // pending, ready, approved
-	Criteria   []string `json:"criteria"`
-	ApprovedAt string   `json:"approved_at,omitempty"`
+	Stage        string   `json:"stage"`
+	Status       string   `json:"status"` // pending, ready, approved
+	Criteria     []string `json:"criteria"`
+	ApprovedAt   string   `json:"approved_at,omitempty"`
+	ApprovalNote string   `json:"approval_note,omitempty"`
 }
 
 type GatesState struct {
