@@ -247,13 +247,11 @@ func advanceStageChecked(missionDir string, currentStage string, force bool) err
 		return nil
 	}
 
-	// Exempt stages don't require tasks
-	exemptStages := map[string]bool{
-		"goal": true, "requirements": true, "planning": true, "design": true,
-	}
-
 	// Load tasks for the current stage
-	tasks, _ := loadTasks(missionDir)
+	tasks, err := loadTasks(missionDir)
+	if err != nil {
+		return fmt.Errorf("failed to load tasks: %w", err)
+	}
 	var stageTasks []Task
 	var completedTasks int
 	for _, t := range tasks {
@@ -265,21 +263,35 @@ func advanceStageChecked(missionDir string, currentStage string, force bool) err
 		}
 	}
 
-	// Zero-task block (non-exempt stages)
-	if !exemptStages[currentStage] && len(stageTasks) == 0 {
+	// Zero-task block — ALL stages require at least one task
+	if len(stageTasks) == 0 {
 		return fmt.Errorf("stage %s has no tasks — create at least one or use --force", currentStage)
 	}
 
-	// Velocity check: stage lasted <10s with no completed tasks (non-exempt stages only)
-	if !exemptStages[currentStage] {
-		stagePath := filepath.Join(missionDir, "state", "stage.json")
-		var state StageState
-		if err := readJSON(stagePath, &state); err == nil {
-			if updatedAt, err := time.Parse(time.RFC3339, state.UpdatedAt); err == nil {
-				if time.Since(updatedAt) < 10*time.Second && completedTasks == 0 {
-					return fmt.Errorf("stage %s lasted <10s with no completed tasks — are you rubber-stamping?", currentStage)
-				}
+	// Velocity check: stage lasted <10s with no completed tasks
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	var state StageState
+	if err := readJSON(stagePath, &state); err == nil {
+		if updatedAt, err := time.Parse(time.RFC3339, state.UpdatedAt); err == nil {
+			if time.Since(updatedAt) < 10*time.Second && completedTasks == 0 {
+				return fmt.Errorf("stage %s lasted <10s with no completed tasks — are you rubber-stamping?", currentStage)
 			}
+		}
+	}
+
+	// Findings content validation: each done task must have a findings file >200 bytes
+	findingsDir := filepath.Join(missionDir, "findings")
+	for _, t := range stageTasks {
+		if t.Status != "done" {
+			continue
+		}
+		fPath := filepath.Join(findingsDir, t.ID+".md")
+		info, err := os.Stat(fPath)
+		if err != nil {
+			return fmt.Errorf("task %s is done but findings file missing: %s", t.ID, fPath)
+		}
+		if info.Size() < 200 {
+			return fmt.Errorf("task %s findings file too small (%d bytes < 200 minimum): %s", t.ID, info.Size(), fPath)
 		}
 	}
 
