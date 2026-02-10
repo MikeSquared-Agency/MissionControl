@@ -1,6 +1,6 @@
 # TODO — MissionControl
 
-*From retro 2026-02-09. Prioritised by impact.*
+*From retros 2026-02-09 through 2026-02-10. Prioritised by impact.*
 
 ## Process Enforcement
 
@@ -23,8 +23,8 @@
 - [x] **`mc status` after transitions** — prints human-friendly status box to stderr after `mc stage` and `mc task update`
 - [x] **Structured findings format** — docs/findings-format.md, markdown header with Task ID, Status, Summary
 - [x] **Lean briefings** — `mc briefing generate` references findings by path, extracts summaries — PR #37
-- [ ] **Document stage changes in ARCHITECTURE.md** — gate enforcement, status summary, findings callback not yet documented
-- [ ] **Update docs on every PR** — add to process checklist: ARCHITECTURE.md must reflect any new features
+- [x] **Document stage changes in ARCHITECTURE.md** — stage enforcement table + findings callback section — PR #41
+- [x] **Update docs on every PR** — added to CLAUDE.md process discipline + SKILL.md rules — PR #41
 - [ ] **Checkpoint on compaction** — automatic or prompted checkpoint before context window fills
 
 ## Dashboard Integration
@@ -41,25 +41,25 @@
 
 ## Stage Discipline
 
-- [x] **Don't skip validate** — now code-enforced: zero-task block + velocity check on non-exempt stages — PR #40
-- [x] **Don't rubber-stamp stages** — now code-enforced: velocity check (<10s), zero-task block, mandatory reviewer/integrator — PR #40
-- [ ] **Role removal is a design decision** — removing roles (Security, QA, etc.) must be flagged at Design stage and approved before implementing
-- [ ] **Small changes still need Verify** — a 3-file change that removes security roles is exactly when review catches mistakes
-- [ ] **Scope paths need type awareness** — if a task modifies a function using types from another file, include both files in scope_paths
-- [ ] **Don't inflate retro scores** — score honestly at time of retro, don't revise upward later. Kai scored retro 6 as 8 in memory but it was 4 at the time.
+- [x] **Don't skip validate** — code-enforced: zero-task block + velocity check on non-exempt stages — PR #40
+- [x] **Don't rubber-stamp stages** — code-enforced: velocity check (<10s), zero-task block, mandatory reviewer/integrator — PR #40
+- [x] **Role removal is a design decision** — documented in SKILL.md rule #11, CLAUDE.md — PR #41
+- [x] **Small changes still need Verify** — documented in SKILL.md rule #12, CLAUDE.md — PR #41
+- [x] **Scope paths need type awareness** — documented in SKILL.md rule #15, CLAUDE.md — PR #41
+- [x] **Don't inflate retro scores** — documented in SKILL.md rule #13 — PR #41
 
 ## Gate UX
 
 - [x] **`mc gate satisfy <criterion>`** — fuzzy match + `--all` flag, writes to gates.json — PR #38
 - [x] **`mc gate status`** — shows ✓/✗ per criterion for current stage — PR #38
 - [x] **`auto_mode` in config.json** — King can run without human gate approval — PR #38
-- [x] **Document canonical status values** — "done" not "complete", added to ARCHITECTURE.md — PR #40
-- [ ] **Enforce structured findings format** — validate Summary header on write, or add a linter. Workers that skip it break the briefing chain.
-- [ ] **mc-core graceful fallback** — check-gate should handle stages without specific criteria instead of erroring
+- [x] **Document canonical status values** — "done" not "complete", added to ARCHITECTURE.md + CLAUDE.md — PR #40, #41
+- [x] **Enforce structured findings format** — `extractSummary()` warns when findings lack Summary header — PR #41
+- [x] **mc-core graceful fallback** — verified: mc-core already handles all stages + missing mission dirs gracefully. Original error was gates.json format mismatch, fixed in PR #40.
 
 ## Process
 
-- [ ] **Hard stop at every gate** — no batching stage transitions, one approval per stage
-- [ ] **Never skip stages** — every stage exists for a reason, even if the output seems obvious
-- [ ] **Planning produces a plan, not code** — planning stage output is task breakdown + approach, not implementation
-- [ ] **Retro after every project** — mandatory retrospective after each mission completes, write to `memory/YYYY-MM-DD-{project}-retro.md`, extract lessons into MEMORY.md and update TODO.md
+- [x] **Hard stop at every gate** — documented in SKILL.md rule #9, CLAUDE.md. Code-enforced via velocity check — PR #40, #41
+- [x] **Never skip stages** — documented + code-enforced via zero-task block — PR #40, #41
+- [x] **Planning produces a plan, not code** — documented in SKILL.md rule #10, CLAUDE.md — PR #41
+- [x] **Retro after every project** — documented in SKILL.md rule #13 — PR #41
