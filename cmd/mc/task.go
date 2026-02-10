@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -94,7 +96,12 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	// Read current stage
 	var currentStage string
 	var stageState StageState
-	if err := readJSON(filepath.Join(missionDir, "state", "stage.json"), &stageState); err == nil {
+	stagePath := filepath.Join(missionDir, "state", "stage.json")
+	if err := readJSON(stagePath, &stageState); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("failed to read stage: %w", err)
+		}
+	} else {
 		currentStage = stageState.Current
 	}
 
