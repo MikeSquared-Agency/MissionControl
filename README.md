@@ -1,15 +1,28 @@
-# MissionControl
+# DutyBound
 
-A multi-agent orchestration system where a **King** agent coordinates **worker** agents through a **10-stage workflow**. Workers spawn, complete tasks, and die. Context lives in files, not conversation memory.
+**Provenance-driven agentic project orchestration.**
 
-Inspired by [Vibecraft](https://vibecraft.dev), [Ralv](https://ralv.dev), and [Gastown](https://gastown.dev).
+AI agents that are *bound by duty* to follow process. DutyBound enforces a 10-stage gated workflow where every commit traces back to a task, every task traces back to a stage, and no agent can skip the rules — not even the orchestrator.
+
+Built on **MissionControl** (`mc`), a CLI and process engine that coordinates an orchestrating agent (**Kai**) and ephemeral worker agents through gated stages. Context lives in files, not conversation memory.
+
+## Why DutyBound?
+
+AI agents can write code fast. But "fast" doesn't mean "auditable." In enterprise contexts, you need to know *who* decided *what*, *when*, and *why* — and you need proof that process was followed, not just promises.
+
+DutyBound makes AI development auditable by default:
+
+- Every commit links to a task via provenance trailers (`MC-Task`, `MC-Persona`, `MC-Stage`)
+- Every task belongs to a stage with gate criteria that must be satisfied before advancing
+- A trusted CI validator (built from `main`) checks that PRs follow the rules — the PR can't ship a tampered validator that approves itself
+- The orchestrating agent (Kai) cannot bypass gates — only humans can `--force`
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph UI["darlington.dev"]
-        MC[MC Dashboard]
+    subgraph UI["darlington.dev/dutybound"]
+        DB[DutyBound Dashboard]
         KC[Kai Chat]
     end
 
@@ -21,92 +34,95 @@ flowchart TB
         OC[OpenClaw Bridge]
     end
 
+    subgraph Core["Rust Core (mc-core)"]
+        VAL[Handoff Validator]
+        TOK[Token Counter]
+        GATE[Gate Checker]
+    end
+
     subgraph Agents["Agent Sessions"]
-        KING["King (Kai/OpenClaw)"]
+        KAI["Kai (OpenClaw)"]
         W1["Worker 1"]
         W2["Worker 2"]
     end
 
     UI <-->|WebSocket| WS
-    OC <-->|WebSocket| KING
+    OC <-->|WebSocket| KAI
     CLI -->|spawns| W1
     CLI -->|spawns| W2
     FW -->|watches| STATE[.mission/state/]
     FW -->|emits| WS
+    CLI --> Core
 ```
 
-**Key insight:** The King is an OpenClaw agent (Kai) with a good system prompt. The Go bridge spawns worker processes and relays events — no custom LLM API calls.
+**Key insight:** Kai is an OpenClaw agent with a system prompt — not a custom LLM integration. The Go orchestrator spawns worker processes and relays events. Rust handles deterministic operations (validation, token counting, gate checking) that shouldn't consume LLM tokens.
 
 ## 10-Stage Workflow
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> Discovery
-    Discovery --> Goal : ✓ Gate
-    Goal --> Requirements : ✓ Gate
-    Requirements --> Planning : ✓ Gate
-    Planning --> Design : ✓ Gate
-    Design --> Implement : ✓ Gate
-    Implement --> Verify : ✓ Gate
-    Verify --> Validate : ✓ Gate
-    Validate --> Document : ✓ Gate
-    Document --> Release : ✓ Gate
-    Release --> [*]
+```
+Discovery → Goal → Requirements → Planning → Design → Implement → Verify → Validate → Document → Release
 ```
 
-Each stage has a **gate** with criteria that must be met before advancing. Gates can auto-advance when all criteria are satisfied, or be manually approved by the King.
+Each transition is gated. Gates have named criteria that must be satisfied before the workflow advances. Gates can auto-advance when all criteria pass, or require explicit approval.
 
-## Key Concepts
+| Stage | Purpose | Workers |
+|-------|---------|---------|
+| **Discovery** | Research feasibility & prior art | Researcher |
+| **Goal** | Define goals & success metrics | Analyst |
+| **Requirements** | Document requirements & acceptance criteria | Requirements Engineer |
+| **Planning** | API contracts, data models, system design | Architect |
+| **Design** | UI mockups, wireframes, user flows | Designer |
+| **Implement** | TDD: tester writes failing tests, developer makes them pass | Tester, Developer |
+| **Verify** | Code review, security review, quality checks | Reviewer, Security |
+| **Validate** | E2E integration testing in real environment | Integration Tester |
+| **Document** | README, API docs, architecture docs | Docs |
+| **Release** | Deploy & verify | DevOps |
 
-### King Agent
-The King is the only persistent agent. It orchestrates the workflow, decides what to build, spawns workers, and approves stage gates. It never implements directly.
+## Process Enforcement
+
+DutyBound enforces its own workflow — it's not optional guidance, it's code-enforced rules.
+
+**Provenance trailers** — `mc commit --task <id>` appends `MC-Task`, `MC-Persona`, and `MC-Stage` to the commit message. Every commit traces back to a mission task.
+
+**Scope-path enforcement** — tasks declare which files they're allowed to touch. Commits that modify out-of-scope files are rejected.
+
+**Mandatory task binding** — `mc commit` requires `--task <id>`. No unattributed commits. Infrastructure changes use `--no-task --reason <reason>`.
+
+**Trusted CI validator** — GitHub Actions builds `mc` from `main` and validates the PR with it. The PR can't tamper with its own validator.
+
+**Stage enforcement** — code-enforced checks block rushing: zero-task detection, velocity checks (<10s stages), mandatory reviewer in verify, mandatory integrator when parallelizing.
+
+**Strict validation:**
+```bash
+mc commit --validate-only --strict
+```
+
+## How It Works
+
+### Kai (the Orchestrator)
+Kai is the only persistent agent. It talks to the user, decides what to build, creates tasks, spawns workers, and manages stage transitions. It never implements directly.
 
 ### Workers
-Workers are ephemeral. They receive a **briefing** (~300 tokens), do their task, output **findings**, and die. This keeps context lean and costs low.
+Workers are ephemeral. They receive a briefing (~300 tokens), do their task, write findings, and terminate. This keeps context lean and costs low. Briefings auto-compose from task metadata and predecessor findings.
 
-### Agent Teams
-Workers can be organized into teams with shared context and coordinated task assignment.
-
-### Task Dependencies
-Tasks support `blocks`/`blockedBy` relationships with cycle detection. `mc ready` shows tasks with no open blockers.
-
-### Checkpoints
-State snapshots saved at key moments (stage transitions, before compaction). Supports manual and auto-checkpoint on gate approvals.
+### State
+All state lives in `.mission/` — JSONL task files, gate status, audit logs, findings, checkpoints. File-based state means agents read/write naturally, git diffs are clean, and everything is inspectable.
 
 ### Audit Trail
-Append-only `audit/interactions.jsonl` logs all state mutations with actor, action, target, and timestamp.
-
-### Git Auto-Commit
-All state mutations (tasks, gates, checkpoints, workers, handoffs) automatically commit to git with descriptive messages. Configurable per-category via `.mission/config.json`.
-
-## Status
-
-| Version | Status | Description |
-|---------|--------|-------------|
-| v1 | ✅ Done | Python agent fundamentals |
-| v2 | ✅ Done | Go orchestrator + Rust parser |
-| v3 | ✅ Done | Full 2D dashboard (81 tests) |
-| v4 | ✅ Done | Rust core (workflow, knowledge, health) |
-| v5 | ✅ Done | King orchestration + mc CLI |
-| v6 | ✅ Done | 10-stage workflow, JSONL, dependencies, OpenClaw bridge |
-| v7 | 📋 Planned | Requirements & traceability |
-| v8 | 📋 Planned | Infrastructure & scale |
+Append-only `audit/interactions.jsonl` logs every state mutation with actor, action, target, and timestamp. Combined with provenance trailers, this gives you full traceability from business requirement to deployed commit.
 
 ## Stack
 
 | Component | Language | Purpose |
 |-----------|----------|---------|
-| **mc CLI** | Go | MissionControl CLI commands |
-| **Orchestrator** | Go | Process management, REST, WebSocket, OpenClaw bridge |
+| **mc CLI** | Go | All state operations — tasks, stages, gates, commits, workers |
+| **Orchestrator** | Go | Process management, REST API, WebSocket hub, OpenClaw bridge |
 | **mc-core** | Rust | Validation, token counting, gate checking |
-| **King** | OpenClaw (Kai) | Orchestration agent |
-| **Workers** | Claude Code | Task execution |
-| **UI** | React (darlington.dev) | Dashboard on Vercel |
+| **Kai** | OpenClaw | Orchestrating agent |
+| **Workers** | Claude Code | Ephemeral task execution |
+| **Dashboard** | React | Real-time dashboard on darlington.dev |
 
 ## Installation
-
-### From Source
 
 ```bash
 git clone https://github.com/DarlingtonDeveloper/MissionControl.git
@@ -114,6 +130,8 @@ cd MissionControl
 make build
 make install
 ```
+
+**Prerequisites:** Go 1.22+, Rust (stable), Make
 
 ## Quick Start
 
@@ -126,101 +144,83 @@ mc init
 mc status
 
 # Create a task
-mc task create "Build login form" --stage implement --zone frontend --persona developer
+mc task create "Build login form" --stage implement --persona developer --scope-paths "src/auth/"
 
-# Check dependencies
+# Manage dependencies
 mc ready              # Tasks with no open blockers
 mc dep tree <id>      # Dependency graph
 mc blocked            # All blocked tasks
 
 # Gate management
-mc gate check discovery
-mc gate approve discovery
-
-# Checkpoints
-mc checkpoint         # Manual checkpoint
-mc checkpoint list    # List all checkpoints
+mc gate status        # Show criteria for current stage
+mc gate satisfy "unit tests"  # Satisfy a criterion
+mc stage next         # Advance (auto-checks gate)
 
 # Workers
 mc spawn --persona developer --task <id>
 mc workers
 mc kill <worker-id>
 
+# Commits with provenance
+mc commit --task <id> -m "Implement login form"
+
+# Checkpoints
+mc checkpoint         # Snapshot current state
+mc checkpoint restart # Resume with compiled briefing
+
 # Audit
 mc audit              # View mutation history
 ```
 
-### Orchestrator
+### Start the Orchestrator
 
 ```bash
 cd orchestrator
 go run . --workdir /path/to/project
-
 # REST API on localhost:8080
-curl localhost:8080/api/mission/status
-curl -X POST localhost:8080/api/mission/gates/discovery/approve
 ```
-
-## v6 Features
-
-- **10-Stage Workflow** — Discovery → Goal → Requirements → Planning → Design → Implement → Verify → Validate → Document → Release
-- **JSONL Storage** — Line-based task storage for clean git diffs and concurrent writes
-- **Hash-Based Task IDs** — Deterministic `mc-xxxxx` IDs from SHA256(title + timestamp)
-- **Task Dependencies** — `blocks`/`blockedBy` with cycle detection, ready queue, dependency visualization
-- **Agent Teams** — Organize workers into coordinated teams
-- **Project Symlinks** — Global registry for quick project switching
-- **OpenClaw WebSocket Bridge** — Native integration with OpenClaw gateway
-- **Message Relay** — Bridge relays messages between orchestrator and OpenClaw
-- **Auto-Checkpoint** — Automatic state snapshots on gate approvals
-- **Git Auto-Commit** — All mutations auto-committed with `[mc:{category}]` prefix
-- **Audit Trail** — Append-only interaction log
-- **CI Pipeline** — GitHub Actions (build, test, vet, golangci-lint), pre-commit hooks
-
-## Process Enforcement
-
-MissionControl enforces its own workflow via `--strict` validation:
-
-```bash
-mc commit --validate-only --strict
-```
-
-**What `--strict` checks:**
-- **Verify persona coverage** — verify stage must have `done` tasks for `reviewer`, `security`, and `tester` personas
-- **Integrator requirement** — implement stages with multiple tasks require at least one `integrator` persona task to be done
-
-**CI Pipeline (`mc-validate`):**
-- Runs on all PRs to `main` via GitHub Actions
-- Builds `mc` + `mc-core` using `make build-ci` (lightweight, no web assets)
-- Executes `mc commit --validate-only --strict` to enforce process gates
-- PRs that violate workflow rules cannot merge
-
-**Trusted Validator (Phase 2):**
-- CI builds from `main` produce a trusted `mc` binary (two-step: build on main → validate on PR)
-- Prevents PRs from shipping a tampered validator that approves itself
-- OpenClaw agent config enforces per-persona tool policies (e.g. reviewers can't write code, developers can't approve gates)
-
-**Provenance Trailers (Phase 3):**
-- `mc commit --task <id>` — appends `MC-Task`, `MC-Persona`, and `MC-Stage` trailers to the commit message
-- Validates the task belongs to the current stage before committing
-- `mc commit --validate-only --validate-provenance` — verifies the latest commit contains valid provenance trailers
-- **Scope-path enforcement** — when a task has `scope_paths`, staged files must fall within those paths or the commit is rejected
-
-
-**Mandatory Task Binding (Phase 5):**
-- `mc commit` now requires `--task <id>` — every commit must link to a mission task
-- `--no-task --reason <reason>` escape hatch for infrastructure/config changes outside the task graph
-- `--task` and `--no-task` are mutually exclusive; `--no-task` requires `--reason`
-- **Empty scope restriction** — tasks with no `scope_paths` can only touch `.mission/` files
-- **`scope_exempt_paths`** — config array in `.mission/config.json` for files that bypass scope checks (e.g. `go.sum`, `.gitignore`)
-- **Selective staging** — scope validation runs against `git diff --cached`, so stage only what the task covers
 
 ## Development
 
 ```bash
-make build    # Build all components
-make test     # Run tests
-make dev      # Start dev environment
+make build    # Build all (Go + Rust)
+make test     # Run all tests
+make lint     # golangci-lint + clippy
+make fmt      # Format all code
 ```
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed system documentation.
-See [FUTURETODO.md](./FUTURETODO.md) for the roadmap.
+## Project Structure
+
+```
+cmd/mc/           Go CLI — all mc commands
+orchestrator/     Go orchestrator — bridge, API, WebSocket, process management
+core/             Rust core — validation, token counting, gate checking
+web/              React dashboard (deployed to darlington.dev)
+agents/           Python agents (v1, educational)
+docs/             Specs and historical documentation
+```
+
+## Version History
+
+| Version | Description |
+|---------|-------------|
+| v6 | 10-stage workflow, JSONL storage, task dependencies, OpenClaw bridge, process purity enforcement |
+| v5 | King orchestration + mc CLI |
+| v4 | Rust core (workflow engine, validation, token counting) |
+| v3 | React dashboard |
+| v2 | Go orchestrator |
+| v1 | Python agent fundamentals |
+
+## Documentation
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — detailed system documentation
+- [CHANGELOG.md](./CHANGELOG.md) — version history with details
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — contribution guidelines
+
+## Naming
+
+- **DutyBound** — the product (repo, README, website)
+- **MissionControl (mc)** — the process engine (CLI, code, `.mission/` directories)
+- **Kai** — the orchestrating agent
+
+Inspired by [Vibecraft](https://vibecraft.dev), [Ralv](https://ralv.dev), and [Gastown](https://gastown.dev).
