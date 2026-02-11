@@ -304,8 +304,16 @@ func markTaskComplete(tasksPath, taskID string) error {
 			os.Remove(tmpPath)
 			return err
 		}
-		w.Write(data)
-		w.WriteByte('\n')
+		if _, err := w.Write(data); err != nil {
+			tmp.Close()
+			os.Remove(tmpPath)
+			return err
+		}
+		if err := w.WriteByte('\n'); err != nil {
+			tmp.Close()
+			os.Remove(tmpPath)
+			return err
+		}
 	}
 	if err := w.Flush(); err != nil {
 		tmp.Close()
