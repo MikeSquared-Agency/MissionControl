@@ -241,18 +241,18 @@ func (l *launcher) stopServices() {
 	// Kill mc serve child process
 	if cmd != nil && cmd.Process != nil {
 		log.Println("launcher: stopping mc serve")
-		cmd.Process.Signal(os.Interrupt)
+		_ = cmd.Process.Signal(os.Interrupt)
 		// Give it a moment to shut down gracefully
 		done := make(chan struct{})
 		go func() {
-			cmd.Process.Wait()
+			_, _ = cmd.Process.Wait()
 			close(done)
 		}()
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
 			log.Println("launcher: mc serve did not exit, killing")
-			cmd.Process.Kill()
+			_ = cmd.Process.Kill()
 		}
 	}
 
