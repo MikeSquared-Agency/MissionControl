@@ -18,6 +18,7 @@ var (
 	initGit      bool
 	initOpenClaw bool
 	initConfig   string
+	initAutoMode bool
 )
 
 func init() {
@@ -27,6 +28,7 @@ func init() {
 	initCmd.Flags().BoolVar(&initGit, "git", false, "Initialize git repository")
 	initCmd.Flags().BoolVar(&initOpenClaw, "openclaw", true, "Enable OpenClaw mode")
 	initCmd.Flags().StringVar(&initConfig, "config", "", "Path to JSON config file with workflow matrix")
+	initCmd.Flags().BoolVar(&initAutoMode, "auto-mode", false, "Enable automatic gate approval")
 }
 
 var initCmd = &cobra.Command{
@@ -137,6 +139,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 		Audience: "personal",
 		Zones:    []string{"frontend", "backend", "database", "infra", "shared"},
 		OpenClaw: initOpenClaw,
+	}
+
+	if initAutoMode {
+		config.AutoMode = true
 	}
 
 	// If matrix provided, include it in config
