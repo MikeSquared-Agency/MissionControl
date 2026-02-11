@@ -15,8 +15,8 @@
 
 - [x] 1.1 Fix CI pipeline — fixed: `--validate-only` exits cleanly when no `.mission/` dir
 - [x] 1.2 Full README rewrite — reframed as DutyBound, "Why DutyBound?" section, updated architecture diagram, process enforcement, quick start, stack, naming hierarchy
-- [ ] 1.3 Update agent personas — stale personas undermine the demo
-- [ ] 1.4 Remove `--force` gate from Kai's allowed commands — AI must respect enforcement
+- [x] ~~1.3 Update agent personas~~ — **SKIPPED** (low priority for now)
+- [x] 1.4 Remove `--force` from Kai — added explicit ban to openClawPrompt and .mission/CLAUDE.md
 - [ ] 1.5 Fix broken dashboard views — agent views, token usage display, audit filters
 
 ## Stream 2: On-Demand Container
