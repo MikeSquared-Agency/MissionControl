@@ -17,13 +17,13 @@
 - [x] 1.2 Full README rewrite — reframed as DutyBound, "Why DutyBound?" section, updated architecture diagram, process enforcement, quick start, stack, naming hierarchy
 - [x] ~~1.3 Update agent personas~~ — **SKIPPED** (low priority for now)
 - [x] 1.4 Remove `--force` from Kai — added explicit ban to openClawPrompt and .mission/CLAUDE.md
-- [ ] 1.5 Fix broken dashboard views — agent views, token usage display, audit filters
+- [x] 1.5 Fix broken dashboard views — fixed: "done" vs "complete" status mismatch across all components, token WS handler now uses adaptTokens() instead of shallow merge, audit filters derived from actual data
 
 ## Stream 2: On-Demand Container
 
-- [ ] 2.1 Wake-on-request endpoint — hit URL, container starts, Kai available
-- [ ] 2.2 Auto-shutdown on idle — container stops after N minutes of inactivity
-- [ ] 2.3 Health/status page — loading state during cold start, then transitions to chat
+- [x] 2.1 Wake-on-request endpoint — `mc launcher` with `/api/wake` + auto-wake on any request; `mc wake` CLI command
+- [x] 2.2 Auto-shutdown on idle — launcher stops both services after `--idle-timeout` (default 30m)
+- [x] 2.3 Health/status page — `dutybound-client.tsx` polls `/api/health`, shows loading state, renders KaiClient when ready
 
 ## Stream 3: Kai Setup Wizard
 
