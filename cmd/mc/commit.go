@@ -154,6 +154,12 @@ var commitCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		missionDir, err := findMissionDir()
 		if err != nil {
+			// If --validate-only and no .mission/, exit cleanly (nothing to validate)
+			validateOnly, _ := cmd.Flags().GetBool("validate-only")
+			if validateOnly {
+				fmt.Fprintf(os.Stderr, "OK: no .mission/ directory found — nothing to validate\n")
+				return nil
+			}
 			fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
 			os.Exit(2)
 			return nil
