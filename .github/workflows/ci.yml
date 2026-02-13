@@ -33,3 +33,40 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           working-directory: orchestrator
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build mc CLI
+        run: cd cmd/mc && go build -o ../../bin/mc .
+      - name: Set up test project
+        run: |
+          mkdir -p /tmp/test-project/.mission/state
+          mkdir -p /tmp/test-project/.mission/findings
+          mkdir -p /tmp/test-project/.mission/handoffs
+          mkdir -p /tmp/test-project/.mission/specs
+          mkdir -p /tmp/test-project/.mission/orchestrator/checkpoints
+          echo '{"current":"implement"}' > /tmp/test-project/.mission/state/stage.json
+          echo '{}' > /tmp/test-project/.mission/state/gates.json
+          echo '[]' > /tmp/test-project/.mission/state/zones.json
+          printf '{"id":"mc-test1","name":"Test task","stage":"implement","status":"pending","zone":"core","persona":"engineer"}\n' > /tmp/test-project/.mission/state/tasks.jsonl
+          touch /tmp/test-project/.mission/audit.jsonl
+      - name: Start orchestrator
+        run: cd /tmp/test-project && $GITHUB_WORKSPACE/bin/mc serve --port 8080 --api-only &
+        env:
+          MC_API_TOKEN: e2e-test-token
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf -H "Authorization: Bearer e2e-test-token" http://localhost:8080/api/health && exit 0 || sleep 1
+          done
+          echo "Orchestrator failed to start within 30 seconds"
+          exit 1
+      - name: Run E2E tests
+        run: bash scripts/e2e-orchestrator.sh
+        env:
+          MC_API_TOKEN: e2e-test-token
