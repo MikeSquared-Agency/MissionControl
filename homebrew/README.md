@@ -6,12 +6,12 @@ This directory contains the Homebrew formula for MissionControl.
 
 1. Create a new GitHub repository named `homebrew-tap`:
    ```bash
-   # On GitHub, create: DarlingtonDeveloper/homebrew-tap
+   # On GitHub, create: MikeSquared-Agency/homebrew-tap
    ```
 
 2. Clone and add the formula:
    ```bash
-   git clone https://github.com/DarlingtonDeveloper/homebrew-tap.git
+   git clone https://github.com/MikeSquared-Agency/homebrew-tap.git
    cd homebrew-tap
    mkdir Formula
    cp /path/to/MissionControl/homebrew/mission-control.rb Formula/
@@ -38,7 +38,7 @@ This directory contains the Homebrew formula for MissionControl.
 Once the tap is set up:
 
 ```bash
-brew tap DarlingtonDeveloper/tap
+brew tap MikeSquared-Agency/tap
 brew install mission-control
 ```
 

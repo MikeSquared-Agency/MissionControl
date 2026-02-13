@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DarlingtonDeveloper/MissionControl/hashid"
+	"github.com/MikeSquared-Agency/MissionControl/hashid"
 	"github.com/google/uuid"
 )
 

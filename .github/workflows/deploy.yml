@@ -1,0 +1,15 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, openclaw]
+    steps:
+      - run: cd ~/MissionControl && git pull origin main
+      - run: cd ~/MissionControl/cmd/mc && go build -o ../../bin/mc .
+      - run: cd ~/MissionControl/orchestrator && go build -o ../bin/mc-orchestrator .
+      - run: sudo systemctl restart mc-orchestrator.service

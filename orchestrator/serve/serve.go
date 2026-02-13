@@ -15,12 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DarlingtonDeveloper/MissionControl/api"
-	"github.com/DarlingtonDeveloper/MissionControl/openclaw"
-	"github.com/DarlingtonDeveloper/MissionControl/tokens"
-	"github.com/DarlingtonDeveloper/MissionControl/tracker"
-	"github.com/DarlingtonDeveloper/MissionControl/watcher"
-	"github.com/DarlingtonDeveloper/MissionControl/ws"
+	"github.com/MikeSquared-Agency/MissionControl/api"
+	"github.com/MikeSquared-Agency/MissionControl/openclaw"
+	"github.com/MikeSquared-Agency/MissionControl/tokens"
+	"github.com/MikeSquared-Agency/MissionControl/tracker"
+	"github.com/MikeSquared-Agency/MissionControl/watcher"
+	"github.com/MikeSquared-Agency/MissionControl/ws"
 )
 
 // Config holds serve command options.

@@ -1,9 +1,9 @@
-module github.com/DarlingtonDeveloper/MissionControl/cmd/mc
+module github.com/MikeSquared-Agency/MissionControl/cmd/mc
 
 go 1.22
 
 require (
-	github.com/DarlingtonDeveloper/MissionControl v0.0.0
+	github.com/MikeSquared-Agency/MissionControl v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.8.1
 )
@@ -15,4 +15,4 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 )
 
-replace github.com/DarlingtonDeveloper/MissionControl => ../../orchestrator
+replace github.com/MikeSquared-Agency/MissionControl => ../../orchestrator

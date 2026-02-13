@@ -28,7 +28,7 @@ cd web && npm test
 ```
 
 ## Conventions
-- Go module: `github.com/DarlingtonDeveloper/MissionControl`
+- Go module: `github.com/MikeSquared-Agency/MissionControl`
 - `cmd/mc` uses `replace` directive for cross-module hashid import
 - Tasks stored in JSONL format (one JSON object per line)
 - Task IDs are hash-based: `mc-xxxxx` (SHA256 truncated)

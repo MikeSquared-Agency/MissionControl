@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/DarlingtonDeveloper/MissionControl/tokens"
-	"github.com/DarlingtonDeveloper/MissionControl/tracker"
+	"github.com/MikeSquared-Agency/MissionControl/tokens"
+	"github.com/MikeSquared-Agency/MissionControl/tracker"
 )
 
 // Server holds dependencies for the API.

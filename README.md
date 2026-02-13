@@ -125,7 +125,7 @@ Append-only `audit/interactions.jsonl` logs every state mutation with actor, act
 ## Installation
 
 ```bash
-git clone https://github.com/DarlingtonDeveloper/MissionControl.git
+git clone https://github.com/MikeSquared-Agency/MissionControl.git
 cd MissionControl
 make build
 make install

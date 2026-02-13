@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/DarlingtonDeveloper/MissionControl/ollama"
+	"github.com/MikeSquared-Agency/MissionControl/ollama"
 )
 
 // OllamaHandler handles Ollama-related API endpoints

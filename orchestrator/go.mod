@@ -1,4 +1,4 @@
-module github.com/DarlingtonDeveloper/MissionControl
+module github.com/MikeSquared-Agency/MissionControl
 
 go 1.22
 
