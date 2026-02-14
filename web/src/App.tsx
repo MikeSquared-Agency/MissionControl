@@ -23,9 +23,10 @@ import { StageView } from './domains/workflow/StageView'
 import { TokenUsage } from './domains/knowledge/TokenUsage'
 import { GateApproval } from './domains/strategy/GateApproval'
 import { FindingsViewer } from './components/FindingsViewer'
+import { SwarmDashboard } from './domains/swarm/SwarmDashboard'
 import type { Zone, Agent } from './types'
 
-type ViewMode = 'agents' | 'workflow' | 'tokens' | 'gates' | 'findings'
+type ViewMode = 'agents' | 'workflow' | 'tokens' | 'gates' | 'findings' | 'swarm'
 
 function App() {
   // View mode for v4 panels
@@ -229,14 +230,14 @@ function App() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* View mode tabs */}
           <div className="flex items-center gap-1 px-3 py-2 bg-gray-900 border-b border-gray-800">
-            {(['agents', 'workflow', 'tokens', 'gates', 'findings'] as ViewMode[]).map((mode) => (
+            {(['agents', 'workflow', 'tokens', 'gates', 'findings', 'swarm'] as ViewMode[]).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
                 className={`
                   px-3 py-1.5 text-xs font-medium rounded transition-colors
                   ${viewMode === mode
-                    ? 'bg-blue-600 text-white'
+                    ? mode === 'swarm' ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white'
                     : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800'
                   }
                 `}
@@ -246,6 +247,7 @@ function App() {
                 {mode === 'tokens' && '🪙 Tokens'}
                 {mode === 'gates' && '🚦 Gates'}
                 {mode === 'findings' && '📝 Findings'}
+                {mode === 'swarm' && '🐝 Swarm'}
               </button>
             ))}
           </div>
@@ -273,6 +275,8 @@ function App() {
               <div className="p-4 overflow-y-auto h-full">
                 <FindingsViewer />
               </div>
+            ) : viewMode === 'swarm' ? (
+              <SwarmDashboard />
             ) : null}
           </div>
         </div>

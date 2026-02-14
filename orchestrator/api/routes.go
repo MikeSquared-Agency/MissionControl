@@ -93,6 +93,11 @@ func (s *Server) Routes() http.Handler {
 	// Stages
 	mux.HandleFunc("/api/stages/override", s.methodPOST(s.handleStageOverride))
 
+	// Swarm BFF
+	mux.HandleFunc("/api/swarm/overview", s.methodGET(s.handleSwarmOverview))
+	mux.HandleFunc("/api/swarm/warren/health", s.methodGET(s.handleSwarmWarrenHealth))
+	mux.HandleFunc("/api/swarm/warren/events", s.methodGET(s.handleSwarmWarrenEvents))
+
 	// Placeholders
 	mux.HandleFunc("/api/openclaw/status", s.methodGET(s.handleOpenClawStatus))
 	mux.HandleFunc("/api/requirements", s.methodGET(s.handleRequirements))

@@ -2,6 +2,33 @@
 
 All notable changes to MissionControl are documented in this file.
 
+## v6.14 — Swarm Dashboard (2026-02-14)
+
+### Swarm BFF (Backend for Frontend)
+- New `/api/swarm/overview` endpoint — fans out to Warren, Chronicle, Dispatch, PromptForge, and Alexandria in parallel, returns unified JSON with per-service error isolation
+- `/api/swarm/warren/health` — proxies Warren health endpoint
+- `/api/swarm/warren/events` — proxies Warren SSE event stream with buffered passthrough
+- Shared HTTP client with 3s timeout; overview uses 4s context deadline
+- Service URLs configurable via `WARREN_URL`, `CHRONICLE_URL`, `DISPATCH_URL`, `PROMPTFORGE_URL`, `ALEXANDRIA_URL` environment variables
+
+### Swarm Dashboard (Frontend)
+- New "Swarm" tab in the main dashboard with Live and Schedule sub-tabs
+- **FleetOverview** — agent counts, DLQ depth, prompt/collection counts
+- **ServiceStatus** — per-service health indicators with error highlighting
+- **TaskPipeline** — dispatch stats (pending, in-progress, completed, failed)
+- **AgentGrid** — combined warren + dispatch agent roster
+- **EventTimeline** — live SSE event stream from Warren
+- Zustand store (`useSwarmStore`) with alert derivation (service-down, DLQ spike detection)
+- `useSwarmPolling` hook — 10s interval polling, active only on Live tab
+- `useWarrenSSE` hook — EventSource with exponential backoff reconnection
+
+### Testing
+- `swarm_test.go` — 6 Go tests: full overview, partial failure, method guard, health proxy, health down, SSE passthrough
+- `useSwarmStore.test.ts` — 14 Vitest tests: state actions, alert derivation, DLQ spike detection, fleet/pipeline computations
+- `swarm.spec.ts` — 4 Playwright E2E tests: tab visibility, sub-tab navigation, schedule placeholder
+
+---
+
 ## v6.13 — Process Purity Phase 5 (2026-02-10)
 
 ### Mandatory Task Binding (`mc commit --task`)

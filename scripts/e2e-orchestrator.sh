@@ -56,7 +56,7 @@ echo "--- Task CRUD ---"
 HTTP=$(curl -s -o /tmp/e2e_body -w '%{http_code}' -X POST \
   "${AUTH[@]}" \
   -H "Content-Type: application/json" \
-  -d '{"name":"E2E smoke task","stage":"implement","zone":"core","persona":"engineer"}' \
+  -d '{"title":"E2E smoke task","stage":"implement","zone":"core"}' \
   "$BASE/tasks")
 if [ "$HTTP" = "201" ] || [ "$HTTP" = "200" ]; then
   pass "POST /api/tasks -> $HTTP"

@@ -257,6 +257,37 @@ Both modes fire the same `EventCallback` (`"spawned"`, `"status_changed"`, `"hea
 | `/api/mc/worker/register` | POST | Pre-register worker metadata before spawn |
 | `/api/mc/workers` | GET | List active workers from tracker |
 
+## Swarm BFF (Backend for Frontend)
+
+The Swarm Dashboard provides a unified view across all OpenClaw services. The BFF layer (`orchestrator/api/swarm.go`) implements a fan-out pattern:
+
+```text
+Browser → GET /api/swarm/overview → Orchestrator
+                                        ├─→ Warren     /admin/health + /admin/agents
+                                        ├─→ Chronicle  /api/v1/metrics/summary + /api/v1/dlq/stats
+                                        ├─→ Dispatch   /api/v1/stats + /api/v1/agents
+                                        ├─→ PromptForge /api/prompts (array → count)
+                                        └─→ Alexandria /api/collections (array → count)
+```
+
+All 5 services are fetched concurrently with a 4s context deadline and 3s per-request timeout. Partial failures are isolated: if Chronicle is down, its error appears in the `errors` map while other services return normally.
+
+### Swarm Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/swarm/overview` | GET | Fan-out to all 5 services, return unified JSON |
+| `/api/swarm/warren/health` | GET | Proxy Warren `/admin/health` |
+| `/api/swarm/warren/events` | GET | Proxy Warren `/admin/events` SSE stream |
+
+### Frontend Architecture
+
+The Swarm tab uses a dedicated Zustand store (`useSwarmStore`) that:
+- Polls `/api/swarm/overview` every 10s (only when the Live sub-tab is active)
+- Connects to Warren SSE events via `EventSource` with exponential backoff
+- Derives alerts from cross-service data (service-down detection, DLQ spike detection)
+- Provides computed selectors (`useFleetSummary`, `usePipelineSummary`) for dashboard widgets
+
 ## Stack
 
 | Component | Language | Purpose |
