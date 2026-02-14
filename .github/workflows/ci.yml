@@ -53,10 +53,14 @@ jobs:
           echo '{"current":"implement"}' > /tmp/test-project/.mission/state/stage.json
           echo '{}' > /tmp/test-project/.mission/state/gates.json
           echo '[]' > /tmp/test-project/.mission/state/zones.json
+          echo '{"auto_commit":{"enabled":false}}' > /tmp/test-project/.mission/config.json
           printf '{"id":"mc-test1","name":"Test task","stage":"implement","status":"pending","zone":"core","persona":"engineer"}\n' > /tmp/test-project/.mission/state/tasks.jsonl
           touch /tmp/test-project/.mission/audit.jsonl
+          cd /tmp/test-project && git init && git add -A && git commit -m "init"
+      - name: Add bin to PATH
+        run: echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
       - name: Start orchestrator
-        run: cd /tmp/test-project && $GITHUB_WORKSPACE/bin/mc serve --port 8080 --api-only &
+        run: cd /tmp/test-project && mc serve --port 8080 --api-only &
         env:
           MC_API_TOKEN: e2e-test-token
       - name: Wait for health
