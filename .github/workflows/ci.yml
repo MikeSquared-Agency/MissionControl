@@ -43,6 +43,8 @@ jobs:
           go-version: '1.22'
       - name: Build mc CLI
         run: cd cmd/mc && go build -o ../../bin/mc .
+      - name: Add mc to PATH
+        run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
       - name: Set up test project
         run: |
           mkdir -p /tmp/test-project/.mission/state
